@@ -1,0 +1,35 @@
+version: 2
+
+jobs:
+  build_and_test_1804:
+    resource_class: xlarge
+    docker:
+      - image: pytorch/elf:ci_ubuntu_1804
+    steps:
+      - checkout
+      - run:
+          name: submodules
+          command: |
+            git submodule sync
+            git submodule update --init --recursive
+      - run:
+          name: cpp_style
+          command: ./codetools/check_cpp_style.sh
+      - run:
+          name: python_style
+          command: ./codetools/check_py_style.sh
+      - run:
+          name: compile
+          command: make clean all VERBOSE=1
+      - run:
+          name: cpp_tests
+          command: make test_cpp
+      - run:
+          name: python_tests
+          command: "true"
+
+workflows:
+  version: 2
+  build_and_test_1804:
+    jobs:
+      - build_and_test_1804

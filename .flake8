@@ -1,0 +1,8 @@
+[flake8]
+exclude =
+    __init__.py
+    __pycache__,
+    .git,
+    build,
+    experimental,
+    third_party,
