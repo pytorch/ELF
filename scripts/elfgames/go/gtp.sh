@@ -14,5 +14,5 @@ game=elfgames.go.game model=df_pred model_file=elfgames.go.df_model3 python3 df_
     --server_addr localhost --port 1234 \
     --replace_prefix resnet.module,resnet \
     --no_check_loaded_options \
-    --no_parameter_print --leaky_relu \
+    --no_parameter_print \
     "$@"
