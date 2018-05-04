@@ -80,7 +80,7 @@ Here are the dependency installation commands for Ubuntu 18.04 and conda::
 
 You also need to install PyTorch from source (see instructions `here`__). As an alternative, you can install the nightly build (the necessary changes will soon make their way into stable)::
 
-    conda install -c pytorch pytorch-nightly
+    conda install -c pytorch pytorch-nightly cuda90
 
 __ https://github.com/pytorch/pytorch#from-source
 
