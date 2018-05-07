@@ -1,6 +1,6 @@
 # Record
 
-- record in folder src_cpp/elfgames/go/record.h is a c++ implementation with **json**
+- record in folder src_cpp/elfgames/go/record.h is a c++ implementation with **json** for serialization.
 
 ## Json Utils
 - JSON util functions are defined as macros in src_cpp/elf/utils/json_utils.h
