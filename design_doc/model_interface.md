@@ -1,7 +1,8 @@
 # Model Interface in ELF
 
 ## Model Interface
-- class ModelInterface is a python class saving network models
+- class ModelInterface is a python class saving network models.
+- Its member `models` is a k-v store to call a CNN model by name.
 ```python
 class ModelInterface(object):
   def __init__(self, option_map):

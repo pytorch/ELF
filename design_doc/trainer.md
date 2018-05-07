@@ -27,7 +27,7 @@ class Evaluator(object):
 ```
 
 ## Trainer
-- An extra rl_method added to the Evaluator, has a member as evaluator
+- Trainer is also a pure python class wrapped on evaluator.
 ```python
 class Trainer(object):
   def __init__(self, option_map, ...):

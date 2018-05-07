@@ -1,6 +1,6 @@
 # Sampler in ELF
 
-Python class in src_py/rlpytorch/sampler/ folder.
+Python class in src_py/rlpytorch/sampler/ folder. It is a little out-of-date and not realy used in the Go project.
 
 ## Class Sampler
 - Used to sample an action from policy.

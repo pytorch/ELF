@@ -2,7 +2,7 @@
 
 Go Game Rule part.
 
-## 0. Basic info
+## Basic info
 - in src_cpp/elfgames/go/base/board.h
 - Define basic types and coordinates operation:
 ```cpp
@@ -42,7 +42,7 @@ FindAllCandidateMoves();
 float getTrompTaylorScore();
 ```
 
-## 1. Go State
+## Go State
 - A class with all the above functions integrated;
 - in src_cpp/elfgames/go/base/go_state.h
 ```cpp
@@ -61,7 +61,7 @@ private:
 };
 ```
 
-## 2. Go State Ext
+## Go State Ext
 - A class wrapped on GoState to support online behavior;
 - in src_cpp/elfgames/go/go_state_ext.h
 ```cpp
@@ -85,7 +85,7 @@ class GoStateExt {
 ```
 - class GoStateExtOffline
 ```cpp
-class GoStateExtOffline {}
+class GoStateExtOffline {
  fromRecord();
  switchRandomMove(rng);
  generateD4Code(rng);
