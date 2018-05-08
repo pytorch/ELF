@@ -1,4 +1,4 @@
-# MCTS AI C++ Interface
+# MCTS in ELF OpenGo
 
 - MCTS is generally implemented in C++ with templates.
 - Three important concepts: **Actor**, **Action**, **State**.
@@ -6,7 +6,7 @@
 - Go-specific available in src_cpp/elfgames/go/mcts/
 - Two modes are supported: a multi-threading mode for training (used in selfplay games), and a pseudo-multi-threading batch mode for online games (e.g., gtp).
 
-## 1. ``Actor``
+## Actor
 - class MCTSActor, a go specific implementation in src_cpp/elfgames/go/mcts/mcts.h
 - Important member function **evaluate** pre-evaluate, get feature and call neural network if necessary, post-process and save in resp;
 ```cpp
@@ -31,7 +31,7 @@ private:
  post_nn(); // pi2response
 ```
 
-## 2. MCTS Go AI
+## MCTS Go AI
 - class **MCTSGoAI**, derived from class **MCTSAI_T<MCTSActor>**. In the class we add following members:
 ```cpp
 class MCTSGoAI : public MCTSAI_T<MCTSActor> {
@@ -82,7 +82,7 @@ private:
 };
 ```
 
-## 2. ``Tree Search Details``
+## Tree Search Details
 - class **TreeSearchSingleThread** in folder src_cpp/elf/ai/tree_search/tree_search.h is for training multi-threading execution.
 ```cpp
 template <typename State, typename Action>
@@ -164,7 +164,7 @@ private:
 };
 ```
 
-## 3. Tree and Nodes
+## Tree and Nodes
 - Base class **NodeBase**
 ```cpp
 template<State>

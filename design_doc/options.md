@@ -1,20 +1,21 @@
 # ELF Option Parser and Interface
 
-## 0. Design of Option
- 1. Basically in the folder src_cpp/elf/options/ and src_py/elf/options/;
- 2. Important classes like **game**, **model**, **trainer**, **evaluator**, **sampler** and so forth;
+Since ELF Go project has a lot of options, we have a separate folding to manage and implement options in both C++ and python.
 
-## 1. Option Spec Class
- 1. All arguments from command line are parsed by argparser in py_option_spec.py
- 2. class **PyOptionSpec** does the parsing;
- 3. Inheritted from class **OptionSpec** in C++;
- 3. After doing the parsing, **parse()** will convert the parsed arguments to a Option Map class.
+## Design of Option
+- Basically in the folder src_cpp/elf/options/ and src_py/elf/options/;
+- Important classes like **game**, **model**, **trainer**, **evaluator**, **sampler** and so forth;
 
+## Option Spec Class (Python)
+- All arguments from command line are parsed by argparser in py_option_spec.py
+- class **PyOptionSpec** does the parsing;
+- Inheritted from class **OptionSpec** in C++;
+- After doing the parsing, **parse()** will convert the parsed arguments to a Option Map class.
 
-## 2. Option Map Class
- 1. A class to handle Argument by Json shared info between python and C++;
- 2. class **PyOptionMap** receives a **PyOptionSpec** class and saves as a member;
- 3. Inherited from class **OptionMap** in C++;
+## Option Map Class (Python)
+- A class to handle Argument by Json shared info between python and C++;
+- class **PyOptionMap** receives a **PyOptionSpec** class and saves as a member;
+- Inherited from class **OptionMap** in C++;
 
 ## 3. Detailed Design
 - class OptionSpec (C++)
