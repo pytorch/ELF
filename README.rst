@@ -24,6 +24,10 @@ __ https://github.com/facebookresearch/ELF
 
 Although we intend to release significant improvements over the next month, we're a small team so your patience is greatly appreciated.
 
+|build|
+
+.. |build| image:: https://circleci.com/gh/pytorch/ELF.png?style=shield
+
 License
 =======
 
