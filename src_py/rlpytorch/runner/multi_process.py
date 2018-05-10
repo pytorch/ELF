@@ -108,5 +108,4 @@ class MultiProcessRun(object):
                     self.success_train_count,
                     self.total_train_count))
 
-        self.GC.printSummary()
         self.GC.stop()

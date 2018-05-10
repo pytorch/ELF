@@ -118,6 +118,4 @@ class GCWrapper:
   # import signal and send signal to handler
   # not used in Go?
   def reg_sig_int(self):
-
-  def printSummary(self):
 ```
