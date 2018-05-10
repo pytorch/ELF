@@ -110,8 +110,6 @@ class SingleProcessRun(object):
             if self.episode_summary is not None:
                 self.episode_summary(k)
 
-        self.GC.printSummary()
-
         if self.before_stop is not None:
             self.before_stop()
         self.GC.stop()

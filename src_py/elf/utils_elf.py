@@ -457,7 +457,3 @@ class GCWrapper:
             self.stop()
             sys.exit(0)
         signal.signal(signal.SIGINT, signal_handler)
-
-    def printSummary(self):
-        '''Print summary'''
-        self.GC.printSummary()
