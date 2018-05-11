@@ -13,7 +13,7 @@ from rlpytorch.trainer.timer import RLTimer
 
 
 _logger_factory = logging.IndexedLoggerFactory(
-    lambda name: logging.stdout_color_mt(name))
+    lambda name: logging.stderr_color_mt(name))
 
 
 class MCTSPrediction(object):
