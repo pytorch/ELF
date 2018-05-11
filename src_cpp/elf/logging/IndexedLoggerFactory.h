@@ -23,9 +23,10 @@
  *
  *  private:
  *   static IndexedLoggerFactory* getLoggerFactory() {
- *     IndexedLoggerFactory factory([](const std::string& name) {
- *       return spdlog::stdout_color_mt(name);
+ *     static IndexedLoggerFactory factory([](const std::string& name) {
+ *       return spdlog::stderr_color_mt(name);
  *     });
+ *     return &factory;
  *   }
  *
  *   std::shared_ptr<spdlog::logger> logger_;

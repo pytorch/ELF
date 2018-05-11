@@ -18,7 +18,7 @@ from .utils.fp16_utils import FP16Model
 
 
 _logger_factory = logging.IndexedLoggerFactory(
-    lambda name: logging.stdout_color_mt(name))
+    lambda name: logging.stderr_color_mt(name))
 
 
 def load_module(mod):
@@ -190,7 +190,7 @@ class ModelLoader(object):
             DeprecationWarning)
 
 
-_load_env_logger = logging.stdout_color_mt('rlpytorch.model_loader.load_env')
+_load_env_logger = logging.stderr_color_mt('rlpytorch.model_loader.load_env')
 
 
 def load_env(
