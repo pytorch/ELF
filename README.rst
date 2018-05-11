@@ -136,3 +136,18 @@ Here is a basic set of commands to run and play the bot via the GTP protocol:
 We've found that the above settings work well for playing the bot. You may change ``mcts_rollout_per_thread`` to tune the thinking time per move.
 
 After the environment is set up and the model is loaded, you can start to type gtp commands to get the response from the engine.
+
+Analysis mode
+-------------
+
+Here is the command to analyze an existing sgf file:
+
+1) Build ELF and run ``source scripts/devmode_set_pythonpath.sh`` as described above.
+
+2) Train a model, or grab a pretrained model from the repository's Github "Releases" tab.
+
+3) Change directory to ``scripts/elfgames/go/``
+
+4) Run ``./analysis.sh /path/to/model --preload_sgf /path/to/sgf --preload_sgf_move_to [move_number] --dump_record_prefix [tree] --verbose --gpu 0 --mcts_puct 1.50 --batchsize 16 --mcts_rollout_per_batch 16 --mcts_threads 2 --mcts_rollout_per_thread 8192 --resign_thres 0.0 --mcts_virtual_loss 1 --num_games 1``
+
+The settings for rollouts are similar as above. The process should run automatically after loading the environment, models and previous moves. You should see the move suggested by the AI after each move, along with its value and prior. This process will also generate a lot of tree files, prefixed with ``tree`` (you can change it with ``--dump_record_prefix`` option above.) The tree files will contain the full search at each move along with its prior and value. To abort the process simply kill it as the current implementation will run it to the end of the game. 
