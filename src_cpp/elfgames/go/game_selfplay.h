@@ -13,6 +13,7 @@
 #include <string>
 
 #include "elf/legacy/python_options_utils_cpp.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 
 #include "game_base.h"
 #include "game_ctrl.h"
@@ -51,20 +52,6 @@ class GoGameSelfPlay : public GoGameBase {
   }
 
  private:
-  EvalCtrl* eval_ctrl_ = nullptr;
-
-  GoStateExt _state_ext;
-
-  Sgf _preload_sgf;
-  Sgf::iterator _sgf_iter;
-
-  int _online_counter = 0;
-
-  std::unique_ptr<MCTSGoAI> _ai;
-  // Opponent ai (used for selfplay evaluation)
-  std::unique_ptr<MCTSGoAI> _ai2;
-  std::unique_ptr<AI> _human_player;
-
   void check_new_request();
   void setAsync();
 
@@ -80,4 +67,23 @@ class GoGameSelfPlay : public GoGameBase {
 
   void restart();
   void finish_game(FinishReason reason);
+
+  static elf::logging::IndexedLoggerFactory* getLoggerFactory();
+
+ private:
+  EvalCtrl* eval_ctrl_ = nullptr;
+
+  GoStateExt _state_ext;
+
+  Sgf _preload_sgf;
+  Sgf::iterator _sgf_iter;
+
+  int _online_counter = 0;
+
+  std::unique_ptr<MCTSGoAI> _ai;
+  // Opponent ai (used for selfplay evaluation)
+  std::unique_ptr<MCTSGoAI> _ai2;
+  std::unique_ptr<AI> _human_player;
+
+  std::shared_ptr<spdlog::logger> logger_;
 };

@@ -11,8 +11,6 @@
 #include "mcts/ai.h"
 #include "mcts/mcts.h"
 
-#include <fstream>
-
 ////////////////// GoGame /////////////////////
 GoGameSelfPlay::GoGameSelfPlay(
     int game_idx,
@@ -22,7 +20,10 @@ GoGameSelfPlay::GoGameSelfPlay(
     EvalCtrl* eval_ctrl)
     : GoGameBase(game_idx, client, context_options, options),
       eval_ctrl_(eval_ctrl),
-      _state_ext(game_idx, options) {}
+      _state_ext(game_idx, options),
+      logger_(
+          getLoggerFactory()->makeLogger("elfgames::go::GoGameSelfPlay-", "")) {
+}
 
 MCTSGoAI* GoGameSelfPlay::init_ai(
     const std::string& actor_name,
@@ -31,11 +32,13 @@ MCTSGoAI* GoGameSelfPlay::init_ai(
     int mcts_rollout_per_batch_override,
     int mcts_rollout_per_thread_override,
     int64_t model_ver) {
-  /*
-  cout << "Initialize " << actor_name << ", puct_override: " << puct_override
-    << ", batch_override: " << mcts_rollout_per_batch_override
-    << ", thread_override: " << mcts_rollout_per_thread_override << endl;
-  */
+  logger_->info(
+      "Initializing actor {}; puct_override: {}; batch_override: {}; "
+      "per_thread_override: {}",
+      actor_name,
+      puct_override,
+      mcts_rollout_per_batch_override,
+      mcts_rollout_per_thread_override);
 
   MCTSActorParams params;
   params.actor_name = actor_name;
@@ -46,20 +49,22 @@ MCTSGoAI* GoGameSelfPlay::init_ai(
 
   elf::ai::tree_search::TSOptions opt = mcts_options;
   if (puct_override > 0.0) {
-    std::cout << "PUCT overridden: " << opt.alg_opt.c_puct << " -> "
-              << puct_override << std::endl;
+    logger_->warn(
+        "PUCT overridden: {} -> {}", opt.alg_opt.c_puct, puct_override);
     opt.alg_opt.c_puct = puct_override;
   }
   if (mcts_rollout_per_batch_override > 0) {
-    std::cout << "mcts_rollout_per_batch_override overridden: "
-              << opt.num_rollouts_per_batch << " -> "
-              << mcts_rollout_per_batch_override << std::endl;
+    logger_->warn(
+        "Batch size overridden: {} -> {}",
+        opt.num_rollouts_per_batch,
+        mcts_rollout_per_batch_override);
     opt.num_rollouts_per_batch = mcts_rollout_per_batch_override;
   }
   if (mcts_rollout_per_thread_override > 0) {
-    std::cout << "mcts_rollout_per_thread_override overridden: "
-              << opt.num_rollouts_per_thread << " -> "
-              << mcts_rollout_per_thread_override << std::endl;
+    logger_->warn(
+        "Rollouts per thread overridden: {} -> {}",
+        opt.num_rollouts_per_thread,
+        mcts_rollout_per_thread_override);
     opt.num_rollouts_per_thread = mcts_rollout_per_thread_override;
   }
 
@@ -156,12 +161,10 @@ void GoGameSelfPlay::check_new_request() {
     bool is_prev_waiting = _state_ext.currRequest().vers.wait();
 
     if (_options.verbose && !(is_waiting && is_prev_waiting)) {
-      std::cout << "Receive request: "
-                << (!is_waiting ? request.info() : "[wait]");
-      std::cout << ", old: "
-                << (!is_prev_waiting ? _state_ext.currRequest().info()
-                                     : "[wait]");
-      std::cout << std::endl;
+      logger_->debug(
+          "Receive request: {}, old: {}",
+          (!is_waiting ? request.info() : "[wait]"),
+          (!is_prev_waiting ? _state_ext.currRequest().info() : "[wait]"));
     }
 
     bool same_vers = (request.vers == _state_ext.currRequest().vers);
@@ -252,7 +255,7 @@ void GoGameSelfPlay::restart() {
         request.vers.black_ver));
     _human_player.reset(new AI(client_, {"human_actor"}));
   } else {
-    std::cout << "Unknown mode! " << _options.mode << std::endl;
+    logger_->critical("Unknown mode! {}", _options.mode);
     throw std::range_error("Unknown mode");
   }
 
@@ -266,11 +269,10 @@ void GoGameSelfPlay::restart() {
     while (!_sgf_iter.done() && i < _options.preload_sgf_move_to) {
       auto curr = _sgf_iter.getCurrMove();
       if (!_state_ext.forward(curr.move)) {
-        std::cout << _state_ext.state().showBoard() << std::endl;
-        std::cout << "Proposed move: "
-                  << elf::ai::tree_search::ActionTrait<Coord>::to_string(
-                         curr.move)
-                  << std::endl;
+        logger_->critical(
+            "Board: {}; proposed invalid move: {}",
+            _state_ext.state().showBoard(),
+            elf::ai::tree_search::ActionTrait<Coord>::to_string(curr.move));
         throw std::runtime_error("Preload sgf: move not valid!");
       }
       i++;
@@ -321,8 +323,11 @@ void GoGameSelfPlay::act() {
         }
         return;
       }
-      // cout << "Invalid move: x = " << X(c) << " y = " << Y(c) << " move: " <<
-      // coord2str(c) << " please try again" << endl;
+      logger_->warn(
+          "Invalid move: x = {} y = {} move: {} please try again",
+          X(reply.c),
+          Y(reply.c),
+          coord2str(reply.c));
     } while (!client_->checkPrepareToStop());
   } else {
     // If re receive this, then we should not send games anymore
@@ -347,7 +352,7 @@ void GoGameSelfPlay::act() {
       funcs = client_->BindStateToFunctions({"game_end"}, &_state_ext.state());
       client_->sendWait({"game_end"}, &funcs);
 
-      // std::cout << "Got prepare to stop .. " << endl;
+      logger_->info("Received command to prepare to stop");
       std::this_thread::sleep_for(std::chrono::seconds(1));
       return;
     }
@@ -372,11 +377,11 @@ void GoGameSelfPlay::act() {
   c = mcts_update_info(curr_ai, c);
 
   if (show_board) {
-    std::cout << "Current board: " << std::endl;
-    std::cout << s.showBoard() << std::endl;
-    std::cout << "[" << s.getPly() << "] Propose move "
-              << elf::ai::tree_search::ActionTrait<Coord>::to_string(c)
-              << std::endl;
+    logger_->info(
+        "Current board:\n{}\n[{}] Propose move {}\n",
+        s.showBoard(),
+        s.getPly(),
+        elf::ai::tree_search::ActionTrait<Coord>::to_string(c));
   }
 
   const bool shouldResign = _state_ext.shouldResign(&_rng);
@@ -391,24 +396,24 @@ void GoGameSelfPlay::act() {
       return;
     }
     Coord new_c = _sgf_iter.getCurrMove().move;
-    std::cout << "[" << s.getPly() << "] Move changes from "
-              << elf::ai::tree_search::ActionTrait<Coord>::to_string(c)
-              << " to "
-              << elf::ai::tree_search::ActionTrait<Coord>::to_string(new_c)
-              << std::endl;
+    logger_->info(
+        "[{}] Move changes from {} to {}",
+        s.getPly(),
+        elf::ai::tree_search::ActionTrait<Coord>::to_string(c),
+        elf::ai::tree_search::ActionTrait<Coord>::to_string(new_c));
     c = new_c;
     ++_sgf_iter;
   }
 
   if (!_state_ext.forward(c)) {
-    std::cout << "Something wrong! Move: " << c << "cannot be applied"
-              << std::endl;
-    std::cout << "Current board: " << std::endl;
-    std::cout << s.showBoard() << std::endl;
-    std::cout << "[" << s.getPly() << "] Propose move "
-              << elf::ai::tree_search::ActionTrait<Coord>::to_string(c)
-              << std::endl;
-    std::cout << _state_ext.dumpSgf("") << std::endl;
+    logger_->error(
+        "Something is wrong! Move {} cannot be applied\nCurrent board: "
+        "{}\n[{}] Propose move {}\nSGF: {}\n",
+        c,
+        s.showBoard(),
+        s.getPly(),
+        elf::ai::tree_search::ActionTrait<Coord>::to_string(c),
+        _state_ext.dumpSgf(""));
     return;
   }
 
@@ -422,4 +427,10 @@ void GoGameSelfPlay::act() {
   if (_options.move_cutoff > 0 && s.getPly() >= _options.move_cutoff) {
     finish_game(FR_MAX_STEP);
   }
+}
+
+elf::logging::IndexedLoggerFactory* GoGameSelfPlay::getLoggerFactory() {
+  static elf::logging::IndexedLoggerFactory factory(
+      [](const std::string& name) { return spdlog::stderr_color_mt(name); });
+  return &factory;
 }
