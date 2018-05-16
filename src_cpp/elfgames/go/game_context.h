@@ -65,11 +65,13 @@ class GameContext {
                          std::string* msg) -> bool {
         (void)reader;
         trainCtrl_->onReply(identity, msg);
-        logger_->info(
-            "Replier: about to send: recipient {}; msg {}; reader {}",
-            identity,
-            *msg,
-            reader_->info());
+        if (logger_->should_log(spdlog::level::level_enum::debug)) {
+          logger_->debug(
+              "Replier: about to send: recipient {}; msg {}; reader {}",
+              identity,
+              *msg,
+              reader_->info());
+        }
         return true;
       };
 
