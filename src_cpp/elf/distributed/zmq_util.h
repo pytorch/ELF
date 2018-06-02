@@ -81,36 +81,65 @@ class SegmentedRecv {
  public:
   SegmentedRecv(zmq::socket_t& socket) : socket_(socket) {}
 
-  void recvBlocked(int n, std::vector<std::string>* p_msgs) {
+  /*
+  void recvBlocked(size_t n, std::vector<std::string>* p_msgs) {
     auto& msgs = *p_msgs;
-    int i = get_last_msgs(n, p_msgs);
-    while (i < n) {
-      msgs[i] = s_recv(socket_);
+    get_from_buffer(n, p_msgs);
+    while (msgs.size() < n) {
+      msgs.push_back(s_recv(socket_));
       // std::cout << "Receive block "
       //         << i << "/" << n << ": " << msgs[i] << std::endl;
-      i++;
     }
   }
+  */
 
-  bool recvNonblocked(int n, std::vector<std::string>* p_msgs) {
-    auto& msgs = *p_msgs;
-    int i = get_last_msgs(n, p_msgs);
-    //
-    while (i < n) {
-      if (!s_recv_noblock(socket_, &msgs[i])) {
+  bool recvNonblocked(size_t n, std::vector<std::string>* p_msgs) {
+    p_msgs->clear();
+    while (p_msgs->size() < n) {
+      std::string s;
+      if (getNoblock(&s)) {
+        p_msgs->push_back(s);
+      } else {
         // If we don't get the message, return everything to last_msgs_.
-        for (int j = 0; j < i; ++j) {
-          last_msgs_.push_back(msgs[j]);
-        }
-        p_msgs->clear();
+        revoke(p_msgs);
         return false;
       }
-      i++;
     }
     // std::cout << "Receive noblock: " << msgs[i] << std::endl;
     return true;
   }
 
+  bool recvNonblockedWithPrefix(
+      size_t n,
+      const std::string& prefix,
+      size_t prefix_idx,
+      std::vector<std::string>* p_msgs) {
+    std::vector<std::string> msgs;
+    p_msgs->clear();
+    //
+    while (p_msgs->size() < n) {
+      std::string s;
+      if (getNoblock(&s)) {
+        msgs.push_back(s);
+        bool at_prefix = p_msgs->size() == prefix_idx;
+        if (!at_prefix || s == prefix) {
+          p_msgs->push_back(s);
+        } else if (at_prefix) {
+          std::cout << "recvNonblockedWithPrefix: " << prefix << " != " << s
+                    << std::endl;
+        }
+      } else {
+        // If we don't get the message, return everything to last_msgs_.
+        revoke(&msgs);
+        p_msgs->clear();
+        return false;
+      }
+    }
+    // std::cout << "Receive noblock: " << msgs[i] << std::endl;
+    return true;
+  }
+
+  /*
   void recvPrefixBlocked(const std::string& prefix) {
     // std::cout << "Wait for prefix " << prefix << " blocked " << std::endl;
     std::vector<std::string> msgs;
@@ -118,32 +147,32 @@ class SegmentedRecv {
       recvBlocked(1, &msgs);
     } while (msgs[0] != prefix);
   }
-
-  bool recvPrefixNonblocked(const std::string& prefix) {
-    // std::cout << "Wait for prefix " << prefix << " nonblocked " << std::endl;
-    std::vector<std::string> msgs;
-    do {
-      if (!recvNonblocked(1, &msgs))
-        return false;
-    } while (msgs[0] != prefix);
-    return true;
-  }
+  */
 
  private:
   zmq::socket_t& socket_;
   std::deque<std::string> last_msgs_;
 
-  int get_last_msgs(int n, std::vector<std::string>* p_msgs) {
-    auto& msgs = *p_msgs;
-    msgs.resize(n);
-    // if we have last_msgs_, retrieve that first.
-    int i = 0;
-    while (i < n && !last_msgs_.empty()) {
-      msgs[i] = last_msgs_.front();
+  bool getNoblock(std::string* s) {
+    if (!last_msgs_.empty()) {
+      *s = last_msgs_.front();
       last_msgs_.pop_front();
-      i++;
+      return true;
+    } else {
+      return s_recv_noblock(socket_, s);
     }
-    return i;
+  }
+
+  void revoke(std::vector<std::string>* msgs) {
+    if (msgs->empty())
+      return;
+
+    size_t i = msgs->size();
+    do {
+      i--;
+      last_msgs_.push_front((*msgs)[i]);
+    } while (i > 0);
+    msgs->clear();
   }
 };
 
@@ -171,6 +200,9 @@ class SameThreadChecker {
   std::thread::id id_;
 };
 
+static const std::string kSendPrefix = "ZMQSend";
+static const std::string kRecvPrefix = "ZMQRecv";
+
 class ZMQReceiver : public SameThreadChecker {
  public:
   ZMQReceiver(int port, bool use_ipv6) : context_(1) {
@@ -194,6 +226,8 @@ class ZMQReceiver : public SameThreadChecker {
     try {
       s_sendmore(*broker_, identity);
       s_sendmore(*broker_, "");
+      s_sendmore(*broker_, kRecvPrefix);
+      s_sendmore(*broker_, "");
       s_sendmore(*broker_, title);
       s_sendmore(*broker_, "");
 
@@ -211,12 +245,12 @@ class ZMQReceiver : public SameThreadChecker {
 
     try {
       std::vector<std::string> msgs;
-      if (!receiver_->recvNonblocked(5, &msgs))
+      if (!receiver_->recvNonblockedWithPrefix(7, kSendPrefix, 2, &msgs))
         return false;
 
       *identity = msgs[0];
-      *title = msgs[2];
-      *msg = msgs[4];
+      *title = msgs[4];
+      *msg = msgs[6];
       return true;
     } catch (const std::exception& e) {
       std::cout << "Exception encountered! " << e.what() << std::endl;
@@ -262,6 +296,8 @@ class ZMQSender : public SameThreadChecker {
     std::lock_guard<std::mutex> locker(mutex_);
     try {
       s_sendmore(*sender_, "");
+      s_sendmore(*sender_, kSendPrefix);
+      s_sendmore(*sender_, "");
       s_sendmore(*sender_, title);
       s_sendmore(*sender_, "");
       s_send(*sender_, msg);
@@ -277,11 +313,11 @@ class ZMQSender : public SameThreadChecker {
     try {
       std::vector<std::string> msgs;
 
-      if (!receiver_->recvNonblocked(4, &msgs))
+      if (!receiver_->recvNonblockedWithPrefix(6, kRecvPrefix, 1, &msgs))
         return false;
 
-      *title = msgs[1];
-      *msg = msgs[3];
+      *title = msgs[3];
+      *msg = msgs[5];
       return true;
     } catch (const std::exception& e) {
       std::cout << "Exception encountered! " << e.what() << std::endl;
