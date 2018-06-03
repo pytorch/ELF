@@ -69,8 +69,8 @@ class TreeSearchSingleThreadT {
   TreeSearchSingleThreadT(int thread_id, const TSOptions& options)
       : threadId_(thread_id), options_(options) {
     if (options_.verbose) {
-      std::string log_file =
-          "tree_search_" + std::to_string(thread_id) + ".txt";
+      std::string log_file = "tree_search_" + 
+        std::to_string(thread_id) + ".txt";
       output_.reset(new std::ofstream(log_file));
     }
   }
@@ -103,10 +103,11 @@ class TreeSearchSingleThreadT {
                << std::flush;
     }
 
-    for (int idx = 0; idx < num_rollout &&
-         (stop_search == nullptr || !stop_search->load());) {
+    for (int idx = 0;
+         idx < num_rollout && (stop_search == nullptr || !stop_search->load());
+         idx += options_.num_rollouts_per_batch) {
       // Start from the root and run one path
-      idx += batch_rollouts<Actor>(
+      batch_rollouts<Actor>(
           RunContext(run_id, idx, num_rollout), root, actor, search_tree);
     }
 
@@ -190,7 +191,7 @@ class TreeSearchSingleThreadT {
   }
 
   template <typename Actor>
-  size_t batch_rollouts(
+  void batch_rollouts(
       const RunContext& ctx,
       Node* root,
       Actor& actor,
@@ -212,7 +213,7 @@ class TreeSearchSingleThreadT {
     //   1. Other threads lock it
     //   2. Duplicated leaf.
     for (Traj& traj : trajs) {
-      if (traj.leaf->lockNodeForEvaluation()) {
+      if (traj.leaf->requestEvaluation()) {
         locked_leaves.push_back(traj.leaf);
         locked_states.push_back(traj.leaf->getStatePtr());
       }
@@ -231,7 +232,7 @@ class TreeSearchSingleThreadT {
     for (size_t j = 0; j < locked_leaves.size(); ++j) {
       // Now the node points to a recently created node.
       // Evaluate it and backpropagate.
-      locked_leaves[j]->setNodeEvaluationAndUnlock(resps[j]);
+      locked_leaves[j]->setEvaluation(resps[j]);
     }
 
     for (auto& traj_pair : traj_counts) {
@@ -239,7 +240,7 @@ class TreeSearchSingleThreadT {
       Traj* traj = traj_pair.second.first;
       int count = traj_pair.second.second;
 
-      leaf->waitForEvaluation();
+      leaf->waitEvaluation();
       float reward = get_reward(actor, leaf);
       // PRINT_TS("Reward: " << reward << " Start backprop");
 
@@ -251,8 +252,6 @@ class TreeSearchSingleThreadT {
     }
 
     printHelper(ctx, "Done backprop");
-    // Return the leaves that are actually expanded.
-    return locked_leaves.size();
   }
 
   template <typename Actor>
@@ -274,7 +273,6 @@ class TreeSearchSingleThreadT {
         break;
       }
 
-      printHelper(ctx, "No available action");
       // PRINT_TS(" Action: " << action);
 
       // Add virtual loss if there is any.

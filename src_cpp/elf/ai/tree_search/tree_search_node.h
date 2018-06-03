@@ -90,13 +90,15 @@ class NodeT : public NodeBaseT<State> {
   using SearchTree = SearchTreeT<State, Action>;
 
   enum VisitType {
-    NODE_NOT_VISITED = 0,
-    NODE_JUST_VISITED,
-    NODE_ALREADY_VISITED
+    NOT_VISITED = 0,
+    EVAL_REQUESTED,
+    VISITED,
   };
 
   NodeT(float unsigned_parent_q)
-      : visited_(false), numVisits_(0), unsignedParentQ_(unsigned_parent_q) {
+      : status_(NOT_VISITED),
+        numVisits_(0),
+        unsignedParentQ_(unsigned_parent_q) {
     unsignedMeanQ_ = unsignedParentQ_;
   }
 
@@ -119,8 +121,12 @@ class NodeT : public NodeBaseT<State> {
     return unsignedMeanQ_;
   }
 
+  VisitType status() const {
+    return status_;
+  }
+
   bool isVisited() const {
-    return visited_;
+    return status_ == VISITED;
   }
 
   void enhanceExploration(float epsilon, float alpha, std::mt19937* rng) {
@@ -148,58 +154,33 @@ class NodeT : public NodeBaseT<State> {
     }
   }
 
-  bool lockNodeForEvaluation() {
-    if (visited_)
+  bool requestEvaluation() {
+    if (status_ != NOT_VISITED)
       return false;
-    return lockNode_.try_lock();
+
+    std::lock_guard<std::mutex> lock(lockNode_);
+    if (status_ != NOT_VISITED)
+      return false;
+
+    status_ = EVAL_REQUESTED;
+    return true;
   }
 
-  void waitForEvaluation() {
+  void waitEvaluation() {
     // Simple busy wait here.
-    while (!visited_) {
+    while (status_ != VISITED) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }
 
-  bool setNodeEvaluationAndUnlock(const NodeResponseT<Action>& resp) {
-    if (visited_)
+  bool setEvaluation(const NodeResponseT<Action>& resp) {
+    if (status_ == VISITED)
       return false;
-    // Then we need to allocate sa_val_
-    for (const std::pair<Action, float>& action_pair : resp.pi) {
-      stateActions_.insert(
-          std::make_pair(action_pair.first, EdgeInfo(action_pair.second)));
-      lockStateActions_[action_pair.first].reset(new std::mutex());
 
-      // Compute v here.
-      // Node *child = alloc[res.first->second.next];
-      // child->V_ = V_ + log(action_pair.second + 1e-6);
-    }
-
-    // value
-    V_ = resp.value;
-    flipQSign_ = resp.q_flip;
-
-    // Once sa_ is allocated, its structure won't change.
-    visited_ = true;
-    lockNode_.unlock();
-    return true;
-  }
-
-  template <typename ExpandFunc>
-  VisitType expandIfNecessary(ExpandFunc func) {
-    if (visited_) {
-      return NODE_ALREADY_VISITED;
-    }
-
-    // Otherwise visit.
     std::lock_guard<std::mutex> lock(lockNode_);
 
-    if (visited_) {
-      return NODE_ALREADY_VISITED;
-    }
-
-    NodeResponseT<Action> resp;
-    func(this, &resp);
+    if (status_ == VISITED)
+      return false;
 
     // Then we need to allocate sa_val_
     for (const std::pair<Action, float>& action_pair : resp.pi) {
@@ -217,8 +198,8 @@ class NodeT : public NodeBaseT<State> {
     flipQSign_ = resp.q_flip;
 
     // Once sa_ is allocated, its structure won't change.
-    visited_ = true;
-    return NODE_JUST_VISITED;
+    status_ = VISITED;
+    return true;
   }
 
   bool findMove(
@@ -227,6 +208,9 @@ class NodeT : public NodeBaseT<State> {
       // const NodeDynInfo& node_info,
       Action* action,
       std::ostream* oo = nullptr) {
+    if (status_ != VISITED)
+      return false;
+
     std::lock_guard<std::mutex> lock(lockNode_);
 
     if (stateActions_.empty()) {
@@ -247,6 +231,9 @@ class NodeT : public NodeBaseT<State> {
   }
 
   bool addVirtualLoss(const Action& action, float virtual_loss) {
+    if (status_ != VISITED)
+      return false;
+
     auto it = stateActions_.find(action);
 
     if (it == stateActions_.end()) {
@@ -264,6 +251,9 @@ class NodeT : public NodeBaseT<State> {
   }
 
   bool updateEdgeStats(const Action& action, float reward, float virtual_loss) {
+    if (status_ != VISITED)
+      return false;
+
     auto it = stateActions_.find(action);
     if (it == stateActions_.end()) {
       return false;
@@ -288,6 +278,9 @@ class NodeT : public NodeBaseT<State> {
   }
 
   NodeId followEdge(const Action& action, SearchTree& tree) {
+    if (status_ != VISITED)
+      return InvalidNodeId;
+
     auto it = stateActions_.find(action);
     if (it == stateActions_.end()) {
       return InvalidNodeId;
@@ -312,8 +305,8 @@ class NodeT : public NodeBaseT<State> {
   // for unit-test purpose only
   friend class NodeTest;
 
+  std::atomic<VisitType> status_;
   std::mutex lockNode_;
-  std::atomic<bool> visited_;
   std::unordered_map<Action, EdgeInfo> stateActions_;
   std::unordered_map<Action, std::unique_ptr<std::mutex>> lockStateActions_;
 

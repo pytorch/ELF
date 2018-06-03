@@ -51,7 +51,7 @@ set(GO_TEST_SOURCES
     base/board_feature_test.cc
     base/symmetry_test.cc
     sgf/sgf_test.cc
-    mcts/mcts_test.cc
+    # mcts/mcts_test.cc
 )
 enable_testing()
 add_cpp_tests(test_cpp_elfgames_go_ elfgames_go9 ${GO_TEST_SOURCES})
