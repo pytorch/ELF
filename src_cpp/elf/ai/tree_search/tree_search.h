@@ -69,8 +69,8 @@ class TreeSearchSingleThreadT {
   TreeSearchSingleThreadT(int thread_id, const TSOptions& options)
       : threadId_(thread_id), options_(options) {
     if (options_.verbose) {
-      std::string log_file = "tree_search_" + 
-        std::to_string(thread_id) + ".txt";
+      std::string log_file =
+          "tree_search_" + std::to_string(thread_id) + ".txt";
       output_.reset(new std::ofstream(log_file));
     }
   }
