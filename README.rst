@@ -92,6 +92,8 @@ You also need to install PyTorch from source (see instructions `here`__). As an 
 
 __ https://github.com/pytorch/pytorch#from-source
 
+A Dockerfile has been provided if you wish to build ELF using Docker.
+
 Building
 ========
 

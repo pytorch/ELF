@@ -22,8 +22,8 @@ stdbuf -o 0 -e 0 python ./selfplay.py \
     --policy_distri_cutoff 30    --policy_distri_training_for_all \
     --port 1234 \
     --no_check_loaded_options0    --no_check_loaded_options1 \
-    --replace_prefix0 resnet.module,resnet \
-    --replace_prefix1 resnet.module,resnet \
+    --replace_prefix0 resnet.module,resnet init_conv.module,init_conv\
+    --replace_prefix1 resnet.module,resnet init_conv.module,init_conv\
     --resign_thres 0.0    --selfplay_timeout_usec 10 \
     --server_id myserver    --use_mcts \
     --use_fp160 --use_fp161 \
