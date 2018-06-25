@@ -58,8 +58,8 @@ RUN ${ELF_FOLDER}/${MINICONDA_INSTALL_SCRIPT_NAME} -b
 ENV PATH="${PATH}:/root/miniconda3/bin"
 RUN conda install -c pytorch pytorch-nightly cuda90 numpy zeromq pyzmq
 
-WORKDIR ${ELF_FOLDER}
-RUN git clone https://github.com/pytorch/ELF.git
+RUN mkdir -p ${ELF_FOLDER}/ELF
+ADD . ${ELF_FOLDER}/ELF
 WORKDIR ${ELF_FOLDER}/ELF
 
 RUN git submodule sync && git submodule update --init --recursive 
