@@ -450,7 +450,7 @@ struct FuncsWithState {
         funcs.state_to_mem_funcs =
             _MergePackage(pkg1.state_to_mem_funcs,
                           pkg2.state_to_mem_funcs);
-        funcs.mem_to_state_funcs = 
+        funcs.mem_to_state_funcs =
             _MergePackage(pkg1.mem_to_state_funcs,
                           pkg2.mem_to_state_funcs);
         return funcs;
@@ -611,12 +611,19 @@ class ClassFieldT {
   template <typename T>
   FuncMapT<T>* get(const std::string& key) {
     FuncMapT<T>* f = ext_->getFunctions<T>(key);
-    assert(f != nullptr);
+    if (f == nullptr) {
+      std::cout << "ClassFieldT: cannot find " << key << std::endl;
+      assert(false);
+    }
     return f;
   }
 
   FuncMapBase* get(const std::string& key) {
     FuncMapBase* f = ext_->getFunctions(key);
+    if (f == nullptr) {
+      std::cout << "ClassFieldT: cannot find " << key << std::endl;
+      assert(false);
+    }
     assert(f != nullptr);
     return f;
   }

@@ -10,11 +10,11 @@
 #include <iostream>
 #include <vector>
 
-#define assert(p, text) \
-  do {                  \
-    if (!(p)) {         \
-      printf((text));   \
-    }                   \
+#define myassert(p, text) \
+  do {                    \
+    if (!(p)) {           \
+      printf((text));     \
+    }                     \
   } while (0)
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
@@ -126,8 +126,8 @@ bool PlaceHandicap(Board* board, int x, int y, Stone player) {
 }
 
 void copyBoard(Board* dst, const Board* src) {
-  assert(dst, "dst cannot be nullptr");
-  assert(src, "src cannot be nullptr");
+  myassert(dst, "dst cannot be nullptr");
+  myassert(src, "src cannot be nullptr");
   memcpy(dst, src, sizeof(Board));
 }
 
@@ -787,8 +787,8 @@ bool TryPlay2(const Board* board, Coord m, GroupId4* ids) {
 
 bool TryPlay(const Board* board, int x, int y, Stone player, GroupId4* ids) {
   // Place the stone on the coordinate, and update other structures.
-  assert(board, "TryPlay: Board is nil!");
-  assert(ids, "TryPlay: GroupIds4 is nil!");
+  myassert(board, "TryPlay: Board is nil!");
+  myassert(ids, "TryPlay: GroupIds4 is nil!");
 
   Coord c = OFFSETXY(x, y);
   if (c == M_PASS || c == M_RESIGN) {
@@ -1022,7 +1022,7 @@ void Expand(Region* r, Coord c) {
 }
 
 void getBoardBBox(const Board* board, Region* r) {
-  assert(r, "Input region cannot be nullptr!");
+  myassert(r, "Input region cannot be nullptr!");
   // Get the bounding box that covers the stones.
   r->left = BOARD_SIZE;
   r->top = BOARD_SIZE;
@@ -1295,8 +1295,8 @@ return false;
 }
 
 bool Play(Board* board, const GroupId4* ids) {
-  assert(board, "Play: Board is nil!");
-  assert(ids, "Play: GroupIds4 is nil!");
+  myassert(board, "Play: Board is nil!");
+  myassert(ids, "Play: GroupIds4 is nil!");
 
   board->_num_group_removed = 0;
 

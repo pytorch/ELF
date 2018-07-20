@@ -10,6 +10,7 @@
 
 #include <assert.h>
 
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -25,6 +26,7 @@
 namespace elf {
 
 struct Addr {
+  // Should construct an invalid thread id
   std::thread::id id;
   std::string label;
 
@@ -34,12 +36,20 @@ struct Addr {
     }
     return label.substr(0, prefix.size()) == prefix;
   }
+
+  friend bool operator==(const Addr& a1, const Addr& a2) {
+    return a1.id == a2.id && a1.label == a2.label;
+  }
+
+  friend bool operator!=(const Addr& a1, const Addr& a2) {
+    return !(a1 == a2);
+  }
 };
 
 class CtrlFuncs {
  public:
   template <typename T>
-  using RecvCB_T = std::function<bool(const Addr& info, const T& msg)>;
+  using RecvCB_T = std::function<bool(const Addr& info, T& msg)>;
 
   // For processor
   template <typename T>
@@ -99,34 +109,39 @@ using MailboxMap =
     std::unordered_map<std::type_index, std::unique_ptr<_MailboxQueueBase>>;
 
 template <typename... Queues>
-void init_mailbox(MailboxMap& mailbox);
+void add_mailbox(MailboxMap& mailbox);
 
 template <typename Q, typename... Queues>
-inline void init_mailbox_helper(MailboxMap& mailbox) {
+inline void add_mailbox_helper(MailboxMap& mailbox) {
   mailbox[std::type_index(typeid(typename Q::value_type))].reset(
       new _MailboxQueue<Q>());
-  init_mailbox<Queues...>(mailbox);
+  add_mailbox<Queues...>(mailbox);
 }
 
 template <typename... Queues>
-inline void init_mailbox(MailboxMap& mailbox) {
-  init_mailbox_helper<Queues...>(mailbox);
+inline void add_mailbox(MailboxMap& mailbox) {
+  add_mailbox_helper<Queues...>(mailbox);
 }
 
 template <>
-inline void init_mailbox(MailboxMap&) {}
+inline void add_mailbox(MailboxMap&) {}
 
 template <template <typename> class Queue>
 struct _ThreadInfoT {
  public:
   using Id = std::thread::id;
 
-  template <typename... RecvTs>
-  const Addr& Init(Id id, const std::string& label) {
+  const Addr& reg(Id id, const std::string& label) {
     addr_.id = id;
     addr_.label = label;
-    init_mailbox<Queue<RecvTs>...>(mailbox_);
     return addr_;
+  }
+
+  template <typename... RecvTs>
+  void addMailbox() {
+    // Make sure reg is called.
+    assert(addr_.id != std::thread::id());
+    add_mailbox<Queue<RecvTs>...>(mailbox_);
   }
 
   const Addr& info() const {
@@ -156,16 +171,36 @@ class ThreadInfosT {
   using Id = std::thread::id;
   using _ThreadInfo = _ThreadInfoT<Queue>;
 
-  template <typename... MailboxTs>
-  const Addr& registerThreadId(Id id, std::string label = "") {
+  const Addr& reg(Id id, std::string label = "") {
     typename ThreadInfoMap::accessor elem;
     bool uninitialized = threadInfoMap_.insert(elem, id);
     if (uninitialized) {
       elem->second.reset(new _ThreadInfo());
     }
-    _ThreadInfo& info = *(elem->second);
-    const Addr& addr = info.template Init<MailboxTs...>(id, label);
+    const Addr& addr = elem->second->reg(id, label);
+
+    if (label != "") {
+      typename ThreadStrMap::accessor elem2;
+      bool uninitialized = threadStrMap_.insert(elem2, label);
+      assert(uninitialized);
+      elem2->second = id;
+    }
     return addr;
+  }
+
+  template <typename... MailboxTs>
+  void addMailbox(Id id) {
+    _th_info(id).template addMailbox<MailboxTs...>();
+  }
+
+  bool isRegistered(Id id) const {
+    typename ThreadInfoMap::const_accessor elem;
+    return threadInfoMap_.find(elem, id);
+  }
+
+  bool isRegistered(const std::string label) const {
+    typename ThreadStrMap::const_accessor elem;
+    return threadStrMap_.find(elem, label);
   }
 
   const Addr& getAddr(Id id) const {
@@ -193,6 +228,11 @@ class ThreadInfosT {
     q->push(r);
   }
 
+  template <typename R>
+  void sendMail(const std::string& label, const R& r) {
+    sendMail<R>(_th_label2id(label), r);
+  }
+
   std::vector<Addr> filterPrefix(const std::string& prefix) {
     std::vector<Addr> senders;
     for (auto& elem : threadInfoMap_.range()) {
@@ -214,6 +254,14 @@ class ThreadInfosT {
     return res;
   }
 
+  std::thread::id _th_label2id(const std::string& label) const {
+    typename ThreadStrMap::accessor elem;
+    // std::cout << "looking for label: " << label << std::endl;
+    bool found = threadStrMap_.find(elem, label);
+    assert(found);
+    return elem->second;
+  }
+
   _ThreadInfo& _th_info(Id id) {
     return *_th_info_impl(id);
   }
@@ -224,8 +272,10 @@ class ThreadInfosT {
 
   using ThreadInfoMap =
       tbb::concurrent_hash_map<std::thread::id, std::unique_ptr<_ThreadInfo>>;
+  using ThreadStrMap = tbb::concurrent_hash_map<std::string, std::thread::id>;
 
   ThreadInfoMap threadInfoMap_;
+  ThreadStrMap threadStrMap_;
 };
 
 template <template <typename> class Queue>
@@ -234,19 +284,31 @@ class CtrlT {
   using Ctrl = CtrlT<Queue>;
 
   // Sender side.
-  template <typename... RecvTs>
-  const Addr& RegMailbox(std::string label = "") {
-    return threads_.template registerThreadId<RecvTs...>(
-        std::this_thread::get_id(), label);
+  const Addr& reg(std::string label = "") {
+    return threads_.reg(std::this_thread::get_id(), label);
   }
 
+  bool isRegistered() const {
+    return threads_.isRegistered(std::this_thread::get_id());
+  }
+
+  bool isRegistered(std::string label) const {
+    return threads_.isRegistered(label);
+  }
+
+  template <typename... RecvTs>
+  void addMailbox() {
+    return threads_.template addMailbox<RecvTs...>(std::this_thread::get_id());
+  }
+
+  // Only works if the id is registered.
   const Addr& getAddr() const {
     return threads_.getAddr(std::this_thread::get_id());
   }
 
-  // Process it immediately.
+  // Call the registered function via the same thread/another thread.
   template <typename T>
-  bool process(const T& msg) {
+  bool call(T& msg) {
     auto cb = callbacks_.template getCallback<T>();
     assert(cb != nullptr);
     const auto& addr = threads_.getAddr(std::this_thread::get_id());
@@ -280,6 +342,11 @@ class CtrlT {
     threads_.template sendMail<R>(addr.id, r);
   }
 
+  template <typename R>
+  void sendMail(const std::string& label, const R& r) {
+    threads_.template sendMail<R>(label, r);
+  }
+
   std::vector<Addr> filterPrefix(const std::string& prefix) {
     return threads_.template filterPrefix(prefix);
   }
@@ -290,23 +357,19 @@ class CtrlT {
 };
 
 template <template <typename> class Queue>
-class ThreadedCtrlBase {
+class ThreadedCtrlBaseT {
  public:
   using Ctrl = CtrlT<Queue>;
 
-  ThreadedCtrlBase(Ctrl& ctrl, int time_millisec)
+  ThreadedCtrlBaseT(Ctrl& ctrl, int time_millisec)
       : ctrl_(ctrl), time_millisec_(time_millisec), done_(false) {}
-
-  const Addr& addr() const {
-    return addr_;
-  }
 
   template <typename T>
   void sendToThread(const T& msg) {
     ctrl_.sendMail(addr_, msg);
   }
 
-  virtual ~ThreadedCtrlBase() {
+  virtual ~ThreadedCtrlBaseT() {
     done_ = true;
     // std::cout << "ThreadedCtrlBase: Ending thread.." << std::endl;
     if (thread_ != nullptr) {
@@ -326,14 +389,19 @@ class ThreadedCtrlBase {
   std::atomic_bool done_;
   std::unique_ptr<std::thread> thread_;
 
+  // Sample usage:
+  //  start<Received Types>
+  //  ctrl_.sendMail(label, content);
+  //  ctrl_.waitMail/peekMail.
   virtual void on_thread() = 0;
   virtual void before_loop() {}
 
   template <typename... Ts>
-  void start() {
+  void start(std::string label = "") {
     done_ = false;
-    thread_.reset(new std::thread([this]() {
-      addr_ = ctrl_.template RegMailbox<Ts...>();
+    thread_.reset(new std::thread([this, label]() {
+      addr_ = ctrl_.reg(label);
+      ctrl_.template addMailbox<Ts...>();
       startedSwitch_.set(true);
       before_loop();
 
@@ -350,3 +418,19 @@ class ThreadedCtrlBase {
 };
 
 } // namespace elf
+
+namespace std {
+
+template <>
+struct hash<elf::Addr> {
+  typedef elf::Addr argument_type;
+  typedef std::size_t result_type;
+  result_type operator()(argument_type const& s) const noexcept {
+    result_type const h1(std::hash<std::thread::id>{}(s.id));
+    result_type const h2(std::hash<std::string>{}(s.label));
+    // [TODO] Not a good combination..we might need to try something different.
+    return h1 ^ (h2 << 1);
+  }
+};
+
+} // namespace std

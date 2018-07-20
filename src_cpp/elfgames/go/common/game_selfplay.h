@@ -12,27 +12,31 @@
 #include <random>
 #include <string>
 
+#include "elf/base/dispatcher.h"
 #include "elf/legacy/python_options_utils_cpp.h"
 #include "elf/logging/IndexedLoggerFactory.h"
 
+#include "../mcts/mcts.h"
+#include "../sgf/sgf.h"
 #include "game_base.h"
-#include "game_ctrl.h"
 #include "game_feature.h"
 #include "game_stats.h"
-#include "mcts/mcts.h"
-#include "sgf/sgf.h"
+#include "notifier.h"
 
 // Game interface for Go.
 class GoGameSelfPlay : public GoGameBase {
  public:
+  using ThreadedDispatcher = elf::ThreadedDispatcherT<MsgRequest, RestartReply>;
   GoGameSelfPlay(
       int game_idx,
       elf::GameClient* client,
       const ContextOptions& context_options,
       const GameOptions& options,
-      EvalCtrl* eval_ctrl);
+      ThreadedDispatcher* dispatcher,
+      GameNotifierBase* notifier = nullptr);
 
   void act() override;
+  bool OnReceive(const MsgRequest& request, RestartReply* reply);
 
   std::string showBoard() const {
     return _state_ext.state().showBoard();
@@ -52,8 +56,8 @@ class GoGameSelfPlay : public GoGameBase {
   }
 
  private:
-  void check_new_request();
   void setAsync();
+  void restart();
 
   MCTSGoAI* init_ai(
       const std::string& actor_name,
@@ -64,15 +68,11 @@ class GoGameSelfPlay : public GoGameBase {
       int64_t model_ver);
   Coord mcts_make_diverse_move(MCTSGoAI* curr_ai, Coord c);
   Coord mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c);
-
-  void restart();
   void finish_game(FinishReason reason);
 
-  static elf::logging::IndexedLoggerFactory* getLoggerFactory();
-
  private:
-  EvalCtrl* eval_ctrl_ = nullptr;
-
+  ThreadedDispatcher* dispatcher_ = nullptr;
+  GameNotifierBase* notifier_ = nullptr;
   GoStateExt _state_ext;
 
   Sgf _preload_sgf;

@@ -7,9 +7,9 @@
  */
 
 #include "game_selfplay.h"
+#include "../mcts/ai.h"
+#include "../mcts/mcts.h"
 #include "go_game_specific.h"
-#include "mcts/ai.h"
-#include "mcts/mcts.h"
 
 ////////////////// GoGame /////////////////////
 GoGameSelfPlay::GoGameSelfPlay(
@@ -17,13 +17,15 @@ GoGameSelfPlay::GoGameSelfPlay(
     elf::GameClient* client,
     const ContextOptions& context_options,
     const GameOptions& options,
-    EvalCtrl* eval_ctrl)
+    ThreadedDispatcher* dispatcher,
+    GameNotifierBase* notifier)
     : GoGameBase(game_idx, client, context_options, options),
-      eval_ctrl_(eval_ctrl),
+      dispatcher_(dispatcher),
+      notifier_(notifier),
       _state_ext(game_idx, options),
-      logger_(
-          getLoggerFactory()->makeLogger("elfgames::go::GoGameSelfPlay-", "")) {
-}
+      logger_(elf::logging::getLogger(
+          "elfgames::go::GoGameSelfPlay-" + std::to_string(game_idx) + "-",
+          "")) {}
 
 MCTSGoAI* GoGameSelfPlay::init_ai(
     const std::string& actor_name,
@@ -66,6 +68,10 @@ MCTSGoAI* GoGameSelfPlay::init_ai(
         opt.num_rollouts_per_thread,
         mcts_rollout_per_thread_override);
     opt.num_rollouts_per_thread = mcts_rollout_per_thread_override;
+  }
+  if (opt.verbose) {
+    opt.log_prefix = "ts-game" + std::to_string(_game_idx) + "-mcts";
+    logger_->warn("Log prefix {}", opt.log_prefix);
   }
 
   return new MCTSGoAI(opt, [&](int) { return new MCTSActor(client_, params); });
@@ -112,10 +118,9 @@ Coord GoGameSelfPlay::mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c) {
     c = M_PASS;
 
   // Check the ranking of selected move.
-  auto move_rank = mcts_go_ai->getLastResult().getRank(
-      c, elf::ai::tree_search::MCTSResultT<Coord>::PRIOR);
-  eval_ctrl_->getGameStats().feedMoveRanking(move_rank.first);
-
+  if (notifier_ != nullptr) {
+    notifier_->OnMCTSResult(c, mcts_go_ai->getLastResult());
+  }
   return c;
 }
 
@@ -149,65 +154,11 @@ void GoGameSelfPlay::finish_game(FinishReason reason) {
     _ai2->endGame(_state_ext.state());
   }
 
-  // tell python / remote
-  eval_ctrl_->ctrl()->process(_state_ext);
+  if (notifier_ != nullptr) {
+    notifier_->OnGameEnd(_state_ext);
+  }
   // clear state, MCTS polices et.al.
   _state_ext.restart();
-}
-
-void GoGameSelfPlay::check_new_request() {
-  auto on_recv = [this](MsgRequest&& request) -> MsgRestart {
-    bool is_waiting = request.vers.wait();
-    bool is_prev_waiting = _state_ext.currRequest().vers.wait();
-
-    if (_options.verbose && !(is_waiting && is_prev_waiting)) {
-      logger_->debug(
-          "Receive request: {}, old: {}",
-          (!is_waiting ? request.info() : "[wait]"),
-          (!is_prev_waiting ? _state_ext.currRequest().info() : "[wait]"));
-    }
-
-    bool same_vers = (request.vers == _state_ext.currRequest().vers);
-    bool same_player_swap =
-        (request.client_ctrl.player_swap ==
-         _state_ext.currRequest().client_ctrl.player_swap);
-
-    bool async = request.client_ctrl.async;
-
-    bool no_restart =
-        (same_vers || async) && same_player_swap && !is_prev_waiting;
-
-    // Then we need to reset everything.
-    _state_ext.setRequest(request);
-
-    if (is_waiting) {
-      return MsgRestart(RestartReply::ONLY_WAIT, _game_idx);
-    } else {
-      if (!no_restart) {
-        restart();
-        return MsgRestart(RestartReply::UPDATE_MODEL, _game_idx);
-      } else {
-        if (!async)
-          return MsgRestart(RestartReply::UPDATE_REQUEST_ONLY, _game_idx);
-        else {
-          setAsync();
-          if (same_vers)
-            return MsgRestart(RestartReply::UPDATE_REQUEST_ONLY, _game_idx);
-          else
-            return MsgRestart(RestartReply::UPDATE_MODEL_ASYNC, _game_idx);
-        }
-      }
-    }
-  };
-
-  MsgRestart msg;
-  do {
-    msg = eval_ctrl_->BroadcastReceiveIfDifferent(
-        _state_ext.currRequest(), on_recv);
-  } while (msg.result == RestartReply::ONLY_WAIT);
-
-  // Update current state.
-  eval_ctrl_->updateState(_state_ext.getThreadState());
 }
 
 void GoGameSelfPlay::setAsync() {
@@ -281,10 +232,75 @@ void GoGameSelfPlay::restart() {
   }
 }
 
+bool GoGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* reply) {
+  if (*reply == RestartReply::UPDATE_COMPLETE)
+    return false;
+
+  bool is_waiting = request.vers.wait();
+  bool is_prev_waiting = _state_ext.currRequest().vers.wait();
+
+  if (_options.verbose && !(is_waiting && is_prev_waiting)) {
+    logger_->debug(
+        "Receive request: {}, old: {}",
+        (!is_waiting ? request.info() : "[wait]"),
+        (!is_prev_waiting ? _state_ext.currRequest().info() : "[wait]"));
+  }
+
+  bool same_vers = (request.vers == _state_ext.currRequest().vers);
+  bool same_player_swap =
+      (request.client_ctrl.player_swap ==
+       _state_ext.currRequest().client_ctrl.player_swap);
+
+  bool async = request.client_ctrl.async;
+
+  bool no_restart =
+      (same_vers || async) && same_player_swap && !is_prev_waiting;
+
+  // Then we need to reset everything.
+  _state_ext.setRequest(request);
+
+  if (is_waiting) {
+    *reply = RestartReply::ONLY_WAIT;
+    return false;
+  } else {
+    if (!no_restart) {
+      restart();
+      *reply = RestartReply::UPDATE_MODEL;
+      return true;
+    } else {
+      if (!async)
+        *reply = RestartReply::UPDATE_REQUEST_ONLY;
+      else {
+        setAsync();
+        if (same_vers)
+          *reply = RestartReply::UPDATE_REQUEST_ONLY;
+        else
+          *reply = RestartReply::UPDATE_MODEL_ASYNC;
+      }
+      return false;
+    }
+  }
+}
+
 void GoGameSelfPlay::act() {
   if (_online_counter % 5 == 0) {
+    using std::placeholders::_1;
+    using std::placeholders::_2;
+    auto f = std::bind(&GoGameSelfPlay::OnReceive, this, _1, _2);
+
+    do {
+      dispatcher_->checkMessage(_state_ext.currRequest().vers.wait(), f);
+    } while (_state_ext.currRequest().vers.wait());
+
     // Check request every 5 times.
-    check_new_request();
+    // Update current state.
+    if (notifier_ != nullptr) {
+      // std::cout << "Thread[" << _game_idx << ",ply:" <<
+      // _state_ext.state().getPly()
+      // << "] state updating: " << _state_ext.getThreadState().info() <<
+      // std::endl;
+      notifier_->OnStateUpdate(_state_ext.getThreadState());
+    }
   }
   _online_counter++;
 
@@ -374,6 +390,7 @@ void GoGameSelfPlay::act() {
     curr_ai->act(s, &c);
     c = mcts_make_diverse_move(curr_ai, c);
   }
+
   c = mcts_update_info(curr_ai, c);
 
   if (show_board) {
@@ -418,19 +435,13 @@ void GoGameSelfPlay::act() {
   }
 
   if (s.terminated()) {
-    finish_game(
-        s.isTwoPass()
-            ? FR_TWO_PASSES
-            : s.getPly() >= BOARD_MAX_MOVE ? FR_MAX_STEP : FR_ILLEGAL);
+    auto reason = s.isTwoPass()
+        ? FR_TWO_PASSES
+        : s.getPly() >= BOARD_MAX_MOVE ? FR_MAX_STEP : FR_ILLEGAL;
+    finish_game(reason);
   }
 
   if (_options.move_cutoff > 0 && s.getPly() >= _options.move_cutoff) {
     finish_game(FR_MAX_STEP);
   }
-}
-
-elf::logging::IndexedLoggerFactory* GoGameSelfPlay::getLoggerFactory() {
-  static elf::logging::IndexedLoggerFactory factory(
-      [](const std::string& name) { return spdlog::stderr_color_mt(name); });
-  return &factory;
 }

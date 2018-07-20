@@ -14,7 +14,7 @@
 #include <gtest/gtest.h>
 
 #include "elfgames/go/base/go_state.h"
-#include "elfgames/go/base/test_utils.h"
+#include "elfgames/go/base/test/test_utils.h"
 #include "elfgames/go/sgf/sgf.h"
 
 // notice we have different translate system

@@ -70,7 +70,7 @@ class TreeSearchSingleThreadT {
       : threadId_(thread_id), options_(options) {
     if (options_.verbose) {
       std::string log_file =
-          "tree_search_" + std::to_string(thread_id) + ".txt";
+          options_.log_prefix + std::to_string(thread_id) + ".txt";
       output_.reset(new std::ofstream(log_file));
     }
   }
@@ -374,10 +374,7 @@ class TreeSearchT {
     return searchTree_.printTree();
   }
 
-  MCTSResult runPolicyOnly(const State& /*root_state*/) {
-    // TODO Policy only doesn't work.
-    assert(false);
-    /*
+  MCTSResult runPolicyOnly(const State& root_state) {
     if (actors_.empty() || treeSearches_.empty()) {
       throw std::range_error(
           "TreeSearch::runPolicyOnly works when there is at least one thread");
@@ -386,15 +383,17 @@ class TreeSearchT {
 
     // Some hack here.
     Node* root = searchTree_.getRootNode();
-    treeSearches_[0]->visit(*actors_[0], root);
 
-    // return StrongestPrior(root->getStateActions());
-    */
+    if (!root->isVisited()) {
+      NodeResponseT<Action> resp;
+      actors_[0]->evaluate(*root->getStatePtr(), &resp);
+      root->setEvaluation(resp);
+    }
 
     MCTSResult result;
-    // result.action_rank_method = MCTSResult::PRIOR;
-    // result.addActions(root->getStateActions());
-
+    result.action_rank_method = MCTSResult::PRIOR;
+    result.addActions(root->getStateActions());
+    result.root_value = root->getValue();
     return result;
   }
 
@@ -490,6 +489,8 @@ class TreeSearchT {
 
     // Pick the best solution.
     MCTSResult result;
+    result.root_value = root->getValue();
+
     // MCTSResult result2;
     if (options_.pick_method == "strongest_prior") {
       result.action_rank_method = MCTSResult::PRIOR;

@@ -13,7 +13,7 @@
 #include <map>
 #include <random>
 #include <set>
-#include "base/go_state.h"
+#include "../base/go_state.h"
 #include "game_utils.h"
 #include "go_game_specific.h"
 #include "record.h"
@@ -273,8 +273,9 @@ class GoStateExtOffline {
   bool switchRandomMove(std::mt19937* rng) {
     // Random sample one move
     if ((int)_offline_all_moves.size() <= _options.num_future_actions - 1) {
-      std::cout << "#moves " << _offline_all_moves.size() << " smaller than "
-                << _options.num_future_actions << " - 1" << std::endl;
+      std::cout << "[" << _game_idx << "] #moves " << _offline_all_moves.size()
+                << " smaller than " << _options.num_future_actions << " - 1"
+                << std::endl;
       return false;
     }
     size_t move_to = (*rng)() %
@@ -294,6 +295,14 @@ class GoStateExtOffline {
     for (size_t i = 0; i < move_to; ++i) {
       _state.forward(_offline_all_moves[i]);
     }
+  }
+
+  int getNumMoves() const {
+    return _offline_all_moves.size();
+  }
+
+  float getPredictedValue(int move_idx) const {
+    return _predicted_values[move_idx];
   }
 
  private:

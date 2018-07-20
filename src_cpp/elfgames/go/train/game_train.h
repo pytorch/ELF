@@ -6,8 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "game_base.h"
-#include "game_ctrl.h"
+#include "../common/game_base.h"
+#include "elf/distributed/shared_reader.h"
 
 class GoGameTrain : public GoGameBase {
  public:
@@ -16,14 +16,13 @@ class GoGameTrain : public GoGameBase {
       elf::GameClient* client,
       const ContextOptions& context_options,
       const GameOptions& options,
-      TrainCtrl* train_ctrl,
       elf::shared::ReaderQueuesT<Record>* reader);
 
   void act() override;
 
  private:
-  TrainCtrl* train_ctrl_ = nullptr;
   elf::shared::ReaderQueuesT<Record>* reader_ = nullptr;
 
-  GoStateExtOffline _state_ext;
+  static constexpr size_t kNumState = 64;
+  std::vector<std::unique_ptr<GoStateExtOffline>> _state_ext;
 };

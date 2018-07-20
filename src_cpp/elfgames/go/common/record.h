@@ -15,12 +15,10 @@
 #include <vector>
 
 #include <nlohmann/json.hpp>
+#include "model_pair.h"
 
-#include "elf/ai/tree_search/tree_search_options.h"
-#include "elf/utils/json_utils.h"
-
-#include "base/board.h"
-#include "base/common.h"
+#include "../base/board.h"
+#include "../base/common.h"
 
 using json = nlohmann::json;
 
@@ -93,76 +91,6 @@ struct ClientCtrl {
   }
 };
 
-struct ModelPair {
-  int64_t black_ver = -1;
-  int64_t white_ver = -1;
-  elf::ai::tree_search::TSOptions mcts_opt;
-
-  bool wait() const {
-    return black_ver < 0;
-  }
-  void set_wait() {
-    black_ver = white_ver = -1;
-  }
-
-  bool is_selfplay() const {
-    return black_ver >= 0 && white_ver == -1;
-  }
-
-  std::string info() const {
-    std::stringstream ss;
-    if (wait())
-      ss << "[wait]";
-    else if (is_selfplay())
-      ss << "[selfplay=" << black_ver << "]";
-    else
-      ss << "[b=" << black_ver << "][w=" << white_ver << "]";
-    ss << mcts_opt.info();
-    return ss.str();
-  }
-
-  friend bool operator==(const ModelPair& p1, const ModelPair& p2) {
-    return p1.black_ver == p2.black_ver && p1.white_ver == p2.white_ver &&
-        p1.mcts_opt == p2.mcts_opt;
-  }
-  friend bool operator!=(const ModelPair& p1, const ModelPair& p2) {
-    return !(p1 == p2);
-  }
-
-  void setJsonFields(json& j) const {
-    JSON_SAVE(j, black_ver);
-    JSON_SAVE(j, white_ver);
-    JSON_SAVE_OBJ(j, mcts_opt);
-  }
-
-  static ModelPair createFromJson(const json& j) {
-    ModelPair p;
-    // cout << "extract black_Ver" << endl;
-    JSON_LOAD(p, j, black_ver);
-    // cout << "extract white_Ver" << endl;
-    JSON_LOAD(p, j, white_ver);
-    // cout << "extract MCTS" << endl;
-    JSON_LOAD_OBJ(p, j, mcts_opt);
-    // cout << "extract MCTS complete" << endl;
-    return p;
-  }
-};
-
-namespace std {
-template <>
-struct hash<ModelPair> {
-  typedef ModelPair argument_type;
-  typedef std::size_t result_type;
-  result_type operator()(argument_type const& s) const noexcept {
-    result_type const h1(std::hash<int64_t>{}(s.black_ver));
-    result_type const h2(std::hash<int64_t>{}(s.white_ver));
-    result_type const h3(
-        std::hash<elf::ai::tree_search::TSOptions>{}(s.mcts_opt));
-    return h1 ^ (h2 << 1) ^ (h3 << 2);
-  }
-};
-} // namespace std
-
 struct MsgVersion {
   int64_t model_ver;
   MsgVersion(int ver = -1) : model_ver(ver) {}
@@ -173,7 +101,8 @@ enum RestartReply {
   ONLY_WAIT,
   UPDATE_REQUEST_ONLY,
   UPDATE_MODEL,
-  UPDATE_MODEL_ASYNC
+  UPDATE_MODEL_ASYNC,
+  UPDATE_COMPLETE,
 };
 
 struct MsgRestart {
@@ -372,7 +301,10 @@ struct Record {
 
   // Extra serialization.
   static std::vector<Record> createBatchFromJson(const std::string& json_str) {
-    auto j = json::parse(json_str);
+    return createBatchFromJson(json::parse(json_str));
+  }
+
+  static std::vector<Record> createBatchFromJson(const json& j) {
     // cout << "from json_batch" << endl;
     std::vector<Record> records;
     for (size_t i = 0; i < j.size(); ++i) {
@@ -384,19 +316,30 @@ struct Record {
     return records;
   }
 
+  static bool loadContent(const std::string& f, std::string* msg) {
+    try {
+      std::ifstream iFile(f.c_str());
+      iFile.seekg(0, std::ios::end);
+      size_t size = iFile.tellg();
+      msg->resize(size, ' ');
+      iFile.seekg(0);
+      iFile.read(&(*msg)[0], size);
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
   static bool loadBatchFromJsonFile(
       const std::string& f,
       std::vector<Record>* records) {
     assert(records != nullptr);
 
     try {
-      std::ifstream iFile(f.c_str());
-      iFile.seekg(0, std::ios::end);
-      size_t size = iFile.tellg();
-      std::string buffer(size, ' ');
-      iFile.seekg(0);
-      iFile.read(&buffer[0], size);
-
+      std::string buffer;
+      if (!loadContent(f, &buffer)) {
+        return false;
+      }
       *records = createBatchFromJson(buffer);
       return true;
     } catch (...) {
@@ -530,6 +473,14 @@ struct Records {
   }
 
   static Records createFromJsonString(const std::string& s) {
-    return createFromJson(json::parse(s));
+    json j = json::parse(s);
+    if (j.find("identity") == j.end()) {
+      // This is a vector<Records>
+      Records rs("");
+      rs.records = Record::createBatchFromJson(s);
+      return rs;
+    } else {
+      return createFromJson(j);
+    }
   }
 };

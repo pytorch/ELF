@@ -61,8 +61,10 @@ struct StateTrait {
     return s1 == s2;
   }
 
-  static bool
-  moves_since(const S& s, size_t* next_move_number, std::vector<A>* moves) {
+  static bool moves_since(
+      const S& /*s*/,
+      size_t* /*next_move_number*/,
+      std::vector<A>* /*moves*/) {
     // By default it is not provided.
     return false;
   }
@@ -84,7 +86,7 @@ struct ActionTrait {
 template <typename Actor>
 struct ActorTrait {
  public:
-  static std::string to_string(const Actor& a) {
+  static std::string to_string(const Actor&) {
     return "";
   }
 };
@@ -213,6 +215,7 @@ struct MCTSResultT {
   enum RankCriterion { MOST_VISITED = 0, PRIOR = 1, UNIFORM_RANDOM };
 
   Action best_action;
+  float root_value;
   float max_score;
   EdgeInfo best_edge_info;
   MCTSPolicy<Action> mcts_policy;
@@ -224,6 +227,7 @@ struct MCTSResultT {
   //       action_edges ssengupta@fb.com
   MCTSResultT()
       : best_action(ActionTrait<Action>::default_value()),
+        root_value(0.0),
         max_score(std::numeric_limits<float>::lowest()),
         best_edge_info(0),
         total_visits(0),

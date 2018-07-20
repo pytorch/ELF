@@ -10,7 +10,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#include "elfgames/go/game_context.h"
+#include "game_context.h"
 
 namespace elfgames {
 namespace go {
@@ -24,12 +24,18 @@ void registerPy(pybind11::module& m) {
       .def("ctx", &GameContext::ctx, ref)
       .def("getParams", &GameContext::getParams)
       .def("getGame", &GameContext::getGame, ref)
-      .def("waitForSufficientSelfplay", &GameContext::waitForSufficientSelfplay)
-      .def("notifyNewVersion", &GameContext::notifyNewVersion)
-      .def("setInitialVersion", &GameContext::setInitialVersion)
-      .def("setRequest", &GameContext::setRequest)
-      .def("setEvalMode", &GameContext::setEvalMode)
-      .def("getGameStats", &GameContext::getGameStats, ref);
+      .def("getClient", &GameContext::getClient, ref)
+      .def("getServer", &GameContext::getServer, ref);
+
+  py::class_<Server>(m, "Server")
+      .def("waitForSufficientSelfplay", &Server::waitForSufficientSelfplay)
+      .def("notifyNewVersion", &Server::notifyNewVersion)
+      .def("setInitialVersion", &Server::setInitialVersion)
+      .def("setEvalMode", &Server::setEvalMode);
+
+  py::class_<Client>(m, "Client")
+      .def("setRequest", &Client::setRequest)
+      .def("getGameStats", &Client::getGameStats, ref);
 
   // Also register other objects.
   PYCLASS_WITH_FIELDS(m, ContextOptions)
