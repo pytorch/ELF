@@ -34,6 +34,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <functional>
 #include <mutex>
 #include <unordered_map>
@@ -45,6 +46,10 @@
 namespace elf {
 namespace concurrency {
 
+// moodycamel internally maintains a bunch of sub-queues for each producer
+// thread and sometimes is not fair (the consumer.might always pick the data
+// from a particular thread). Therefore, we amend it with a deque, which makes
+// it only works for a single consumer.
 template <typename T>
 class ConcurrentQueueMoodyCamel {
  public:
@@ -55,17 +60,50 @@ class ConcurrentQueueMoodyCamel {
   }
 
   void pop(T* value) {
+    _check_consumer();
+    if (_prefetch(value))
+      return;
     q_.wait_dequeue(*value);
   }
 
   template <typename Rep, typename Period>
   bool pop(T* value, std::chrono::duration<Rep, Period> timeout) {
+    _check_consumer();
+    if (_prefetch(value))
+      return true;
     return q_.wait_dequeue_timed(*value, timeout);
   }
 
  private:
   using QueueT = moodycamel::BlockingConcurrentQueue<T>;
   QueueT q_;
+  std::deque<T> buffer_;
+
+  std::thread::id single_consumer_;
+  bool no_consumer_ = true;
+
+  void _check_consumer() {
+    if (no_consumer_) {
+      single_consumer_ = std::this_thread::get_id();
+      no_consumer_ = false;
+    } else {
+      assert(single_consumer_ == std::this_thread::get_id());
+    }
+  }
+
+  bool _prefetch(T* v) {
+    T value;
+    while (q_.wait_dequeue_timed(value, std::chrono::microseconds(0))) {
+      buffer_.push_back(value);
+    }
+
+    if (buffer_.empty())
+      return false;
+
+    *v = buffer_.front();
+    buffer_.pop_front();
+    return true;
+  }
 };
 
 template <typename T>

@@ -88,9 +88,9 @@ class AIClientT : public AI_T<S, A> {
         status == comm::ReplyStatus::UNKNOWN;
   }
 
-  virtual bool act_batch(
+  bool act_batch(
       const std::vector<const S*>& batch_s,
-      const std::vector<A*>& batch_a) {
+      const std::vector<A*>& batch_a) override {
     std::vector<elf::FuncsWithState> funcs_s =
         client_->BindStateToFunctions(targets_, batch_s);
     std::vector<elf::FuncsWithState> funcs_a =

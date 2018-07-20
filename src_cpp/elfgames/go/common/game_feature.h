@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "base/go_state.h"
+#include "../base/go_state.h"
 #include "go_game_specific.h"
 #include "go_state_ext.h"
 
@@ -73,7 +73,17 @@ class GoFeature {
   /////////////
   // Training part.
   static void extractMoveIdx(const GoStateExtOffline& s, int* move_idx) {
-    *move_idx = s._state.getPly();
+    *move_idx = s._state.getPly() - 1;
+  }
+
+  static void extractNumMove(const GoStateExtOffline& s, int* num_move) {
+    *num_move = s.getNumMoves();
+  }
+
+  static void extractPredictedValue(
+      const GoStateExtOffline& s,
+      float* predicted_value) {
+    *predicted_value = s.getPredictedValue(s._state.getPly() - 1);
   }
 
   static void extractAugCode(const GoStateExtOffline& s, int* code) {
@@ -162,10 +172,11 @@ class GoFeature {
     e.addField<int64_t>("rv").addExtent(batchsize);
     e.addField<int64_t>("offline_a")
         .addExtents(batchsize, {batchsize, options_.num_future_actions});
-    e.addField<float>({"V", "winner"}).addExtent(batchsize);
+    e.addField<float>({"V", "winner", "predicted_value"}).addExtent(batchsize);
     e.addField<float>({"pi", "mcts_scores"})
         .addExtents(batchsize, {batchsize, BOARD_NUM_ACTION});
-    e.addField<int32_t>({"move_idx", "aug_code"}).addExtent(batchsize);
+    e.addField<int32_t>({"move_idx", "aug_code", "num_move"})
+        .addExtent(batchsize);
 
     e.addField<int64_t>({"black_ver", "white_ver", "selfplay_ver"})
         .addExtent(batchsize);
@@ -178,6 +189,8 @@ class GoFeature {
 
     e.addClass<GoStateExtOffline>()
         .addFunction<int32_t>("move_idx", extractMoveIdx)
+        .addFunction<int32_t>("num_move", extractNumMove)
+        .addFunction<float>("predicted_value", extractPredictedValue)
         .addFunction<int32_t>("aug_code", extractAugCode)
         .addFunction<float>("winner", extractWinner)
         .addFunction<float>("mcts_scores", extractMCTSPi)

@@ -6,6 +6,7 @@
 
 import os
 
+import torch
 import torch.nn as nn
 import torch.distributed as dist
 
@@ -32,6 +33,10 @@ class Block(Model):
             'bn_momentum',
             'batch norm momentum (pytorch style)',
             0.1)
+        spec.addFloatOption(
+            "bn_eps",
+            "batch norm running vars eps",
+            1e-5)
         spec.addIntOption(
             'dim',
             'model dimension',
@@ -66,7 +71,8 @@ class Block(Model):
         if self.options.bn:
             layers.append(
                 nn.BatchNorm2d(output_channel,
-                               momentum=(self.options.bn_momentum or None)))
+                               momentum=(self.options.bn_momentum or None),
+                               eps=self.options.bn_eps))
         if relu:
             layers.append(self.relu)
 
@@ -190,9 +196,18 @@ class Model_PolicyValue(Model):
         self.logsoftmax = nn.LogSoftmax(dim=1)
         self.tanh = nn.Tanh()
         self.resnet = GoResNet(option_map, params)
+
+        if torch.cuda.is_available() and self.options.gpu is not None:
+            self.init_conv.cuda(self.options.gpu)
+            self.resnet.cuda(self.options.gpu)
+
         if self.options.use_data_parallel:
-            self.resnet = nn.DataParallel(
-                self.resnet, output_device=self.options.gpu)
+            if self.options.gpu is not None:
+                self.init_conv = nn.DataParallel(
+                    self.init_conv, output_device=self.options.gpu)
+                self.resnet = nn.DataParallel(
+                    self.resnet, output_device=self.options.gpu)
+
         self._check_and_init_distributed_model()
 
     def _check_and_init_distributed_model(self):
@@ -225,10 +240,11 @@ class Model_PolicyValue(Model):
         # initialization will require the model be on the GPU, even though
         # the later code will put the same model on the GPU again with
         # self.options.gpu, so this should be ok
-        self.resnet.cuda(master_gpu)
+        # self.resnet.cuda(master_gpu)
+        self.init_conv = nn.parallel.DistributedDataParallel(
+            self.init_conv)
         self.resnet = nn.parallel.DistributedDataParallel(
-            self.resnet,
-            output_device=master_gpu)
+            self.resnet)
 
     def _conv_layer(
             self,
@@ -251,7 +267,8 @@ class Model_PolicyValue(Model):
         if self.options.bn:
             layers.append(
                 nn.BatchNorm2d(output_channel,
-                               momentum=(self.options.bn_momentum or None)))
+                               momentum=(self.options.bn_momentum or None),
+                               eps=self.options.bn_eps))
         if relu:
             layers.append(self.relu)
 

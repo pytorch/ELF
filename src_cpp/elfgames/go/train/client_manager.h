@@ -8,7 +8,7 @@
 
 #pragma once
 #include <atomic>
-#include "record.h"
+#include "../common/record.h"
 
 class ClientManager;
 
@@ -121,38 +121,30 @@ class ClientManager {
     selfplay_only_ratio_ = ratio;
   }
 
-  void updateClients() {
-    std::vector<std::string> newly_dead;
-    std::vector<std::string> newly_alive;
-
+  const ClientInfo& updateStates(
+      const std::string& identity,
+      const std::unordered_map<int, ThreadState>& states) {
     std::lock_guard<std::mutex> lock(mutex_);
-    for (auto& p : clients_) {
-      auto& c = *p.second;
-      auto status = c.updateActive();
-      if (status == ClientInfo::ALIVE2DEAD) {
-        newly_dead.push_back(p.first);
-        dealloc_type(c.type());
-      } else if (status == ClientInfo::DEAD2ALIVE) {
-        newly_alive.push_back(p.first);
-        c.set_type(alloc_type());
-      }
+    ClientInfo& info = _getClient(identity);
+
+    // Print out the stats.
+    /*
+    std::cout << "State update[" << rs.identity << "][" << elf_utils::now() <<
+    "]"; for (const auto& s : rs.states) { std::cout << s.second.info() << ", ";
+    }
+    std::cout << std::endl;
+    */
+
+    for (const auto& s : states) {
+      info.stateUpdate(s.second);
     }
 
-    if (!newly_dead.empty() || !newly_alive.empty()) {
-      std::cout << getCurrTimeStamp()
-                << " Client newly dead: " << newly_dead.size()
-                << ", newly alive: " << newly_alive.size() << ", " << _info()
-                << std::endl;
-      for (const auto& s : newly_dead) {
-        std::cout << "Newly dead: " << s << std::endl;
-      }
-      for (const auto& s : newly_alive) {
-        std::cout << "Newly alive: " << s << std::endl;
-      }
-    }
+    // A client is considered dead after 20 min.
+    updateClients();
+    return info;
   }
 
-  const ClientInfo* getClient(const std::string& identity) const {
+  const ClientInfo* getClientC(const std::string& identity) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = clients_.find(identity);
     if (it != clients_.end()) {
@@ -164,15 +156,7 @@ class ClientManager {
 
   ClientInfo& getClient(const std::string& identity) {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = clients_.find(identity);
-    if (it != clients_.end())
-      return *it->second;
-
-    auto& e = clients_[identity];
-    e.reset(new ClientInfo(
-        *this, identity, max_num_threads_, max_client_delay_sec_));
-    e->set_type(alloc_type());
-    return *e;
+    return _getClient(identity);
   }
 
   size_t getNumEval() const {
@@ -248,5 +232,47 @@ class ClientManager {
       num_eval_then_selfplay_--;
     else if (t == CLIENT_SELFPLAY_ONLY)
       num_selfplay_only_--;
+  }
+
+  void updateClients() {
+    std::vector<std::string> newly_dead;
+    std::vector<std::string> newly_alive;
+
+    for (auto& p : clients_) {
+      auto& c = *p.second;
+      auto status = c.updateActive();
+      if (status == ClientInfo::ALIVE2DEAD) {
+        newly_dead.push_back(p.first);
+        dealloc_type(c.type());
+      } else if (status == ClientInfo::DEAD2ALIVE) {
+        newly_alive.push_back(p.first);
+        c.set_type(alloc_type());
+      }
+    }
+
+    if (!newly_dead.empty() || !newly_alive.empty()) {
+      std::cout << getCurrTimeStamp()
+                << " Client newly dead: " << newly_dead.size()
+                << ", newly alive: " << newly_alive.size() << ", " << _info()
+                << std::endl;
+      for (const auto& s : newly_dead) {
+        std::cout << "Newly dead: " << s << std::endl;
+      }
+      for (const auto& s : newly_alive) {
+        std::cout << "Newly alive: " << s << std::endl;
+      }
+    }
+  }
+
+  ClientInfo& _getClient(const std::string& identity) {
+    auto it = clients_.find(identity);
+    if (it != clients_.end())
+      return *it->second;
+
+    auto& e = clients_[identity];
+    e.reset(new ClientInfo(
+        *this, identity, max_num_threads_, max_client_delay_sec_));
+    e->set_type(alloc_type());
+    return *e;
   }
 };

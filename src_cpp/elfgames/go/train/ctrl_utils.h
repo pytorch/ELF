@@ -10,7 +10,45 @@
 
 #include <fstream>
 #include <mutex>
-#include "record.h"
+#include "../common/record.h"
+
+struct RecordBufferSimple {
+ public:
+  RecordBufferSimple(const std::string& prefix) : prefix_(prefix) {}
+
+  void feed(const Record& r) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    records_.push_back(r);
+  }
+
+  bool saveAndClean(size_t num_record_threshold = 1000) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (records_.size() < num_record_threshold)
+      return false;
+
+    std::string games =
+        Record::dumpBatchJsonString(records_.begin(), records_.end());
+    std::ofstream oo(
+        prefix_ + "-" + std::to_string(num_file_saved_) + "-" +
+        std::to_string(num_record_saved_) + "-" +
+        std::to_string(records_.size()) + ".json");
+    oo << games;
+    oo.close();
+    num_file_saved_++;
+    num_record_saved_ += records_.size();
+
+    records_.clear();
+    return true;
+  }
+
+ private:
+  std::mutex mutex_;
+  std::string prefix_;
+  size_t num_file_saved_ = 0;
+  size_t num_record_saved_ = 0;
+  std::vector<Record> records_;
+};
 
 struct RecordBuffer {
  public:
@@ -24,7 +62,7 @@ struct RecordBuffer {
       saveCurrent();
       clear();
     }
-    num_saved_ = 0;
+    num_file_saved_ = 0;
     prefix_ = prefix;
   }
 
@@ -32,7 +70,7 @@ struct RecordBuffer {
     return prefix_;
   }
   std::string prefix_save_counter() const {
-    return prefix_ + "-" + std::to_string(num_saved_);
+    return prefix_ + "-" + std::to_string(num_file_saved_);
   }
 
   void feed(const Record& r) {
@@ -56,14 +94,14 @@ struct RecordBuffer {
       std::string games = Record::dumpBatchJsonString(it, it2);
 
       std::ofstream oo(
-          prefix_ + "-" + std::to_string(num_saved_) + "-" +
+          prefix_ + "-" + std::to_string(num_file_saved_) + "-" +
           std::to_string(counter) + ".json");
       oo << games;
       counter++;
       it = it2;
     } while (it != it_end);
 
-    num_saved_++;
+    num_file_saved_++;
   }
 
   void clear() {
@@ -75,7 +113,7 @@ struct RecordBuffer {
   std::mutex mutex_;
   std::vector<Record> records_;
   std::vector<Record> offline_records_;
-  int num_saved_ = 0;
+  int num_file_saved_ = 0;
   std::string prefix_;
 };
 

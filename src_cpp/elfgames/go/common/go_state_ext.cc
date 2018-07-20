@@ -86,7 +86,9 @@ void GoStateExt::showFinishInfo(FinishReason reason) const {
   std::string sgf_record = dumpSgf("");
   std::cout << sgf_record << std::endl;
 
-  std::cout << "Current request: " << curr_request_.info() << ", used_model: ";
+  std::cout << "[" << _game_idx << ":" << _seq
+            << "] Current request: " << curr_request_.info()
+            << ", used_model: ";
   for (const auto& i : using_models_) {
     std::cout << i << ", ";
   }

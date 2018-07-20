@@ -85,6 +85,7 @@ struct TSOptions {
   bool persistent_tree = false;
   float root_epsilon = 0.0;
   float root_alpha = 0.0;
+  std::string log_prefix = "";
 
   // [TODO] Not a good design.
   // string pick_method = "strongest_prior";
@@ -102,6 +103,7 @@ struct TSOptions {
       ss << "Maximal #moves (0 = no constraint): " << max_num_moves
          << std::endl;
       ss << "Seed: " << seed << std::endl;
+      ss << "Log Prefix: " << log_prefix << std::endl;
       ss << "#Threads: " << num_threads << std::endl;
       ss << "#Rollout per thread: " << num_rollouts_per_thread
          << ", #rollouts per batch: " << num_rollouts_per_batch << std::endl;
@@ -156,6 +158,9 @@ struct TSOptions {
     if (t1.pick_method != t2.pick_method) {
       return false;
     }
+    if (t1.log_prefix != t2.log_prefix) {
+      return false;
+    }
     if (t1.root_epsilon != t2.root_epsilon) {
       return false;
     }
@@ -181,6 +186,7 @@ struct TSOptions {
     JSON_SAVE(j, seed);
     JSON_SAVE(j, persistent_tree);
     JSON_SAVE(j, pick_method);
+    JSON_SAVE(j, log_prefix);
     JSON_SAVE(j, root_epsilon);
     JSON_SAVE(j, root_alpha);
     JSON_SAVE(j, virtual_loss);
@@ -198,6 +204,7 @@ struct TSOptions {
     JSON_LOAD(opt, j, seed);
     JSON_LOAD(opt, j, persistent_tree);
     JSON_LOAD(opt, j, pick_method);
+    JSON_LOAD(opt, j, log_prefix);
     JSON_LOAD(opt, j, root_epsilon);
     JSON_LOAD(opt, j, root_alpha);
     JSON_LOAD(opt, j, virtual_loss);
@@ -213,6 +220,7 @@ struct TSOptions {
       verbose,
       persistent_tree,
       pick_method,
+      log_prefix,
       virtual_loss,
       verbose_time,
       alg_opt,

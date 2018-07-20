@@ -17,7 +17,7 @@
 
 #include "elfgames/go/base/board.h"
 #include "elfgames/go/base/board_feature.h"
-#include "elfgames/go/base/test_utils.h"
+#include "elfgames/go/base/test/test_utils.h"
 #include "elfgames/go/sgf/sgf.h"
 
 // test to load an empty board and check if it is empty

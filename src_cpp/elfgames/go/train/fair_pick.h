@@ -179,7 +179,7 @@ class BatchRequest {
         continue;
 
       uint64_t delay = 0;
-      const ClientInfo* c = mgr.getClient(p.first);
+      const ClientInfo* c = mgr.getClientC(p.first);
 
       if (c == nullptr || c->IsStuck(curr_timestamp, &delay)) {
         p.second.status = Info::STUCK;

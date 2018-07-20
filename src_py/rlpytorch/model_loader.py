@@ -8,6 +8,7 @@ import importlib
 import pprint
 import random
 import time
+import torch
 import warnings
 
 from elf.options import import_options, PyOptionSpec
@@ -178,7 +179,9 @@ class ModelLoader(object):
             old_step = model.step
             model = FP16Model(self.option_map_for_model, params, model)
             model.step = old_step
-        if self.options.gpu is not None and self.options.gpu >= 0:
+        if torch.cuda.is_available() and \
+           self.options.gpu is not None and \
+           self.options.gpu >= 0:
             model.cuda(self.options.gpu)
 
         return model

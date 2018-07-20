@@ -87,7 +87,10 @@ class Model(nn.Module):
             filename(str): filename to be saved.
             num_trial(int): maximum number of retries to save a model.
         """
-        state_dict = self.clone().cpu().state_dict()
+        # Avoid calling the constructor by doing self.clone()
+        # deepcopy should do it
+        state_dict = deepcopy(self).cpu().state_dict()
+
         # Note that the save might experience issues, so if we encounter
         # errors, try a few times and then give up.
         content = {
@@ -131,8 +134,13 @@ class Model(nn.Module):
 
             keys = list(sd.keys())
             for key in keys:
+                # Should be commented out for PyTorch > 0.40
+                # if key.endswith("num_batches_tracked"):
+                #    del sd[key]
+                #     continue
                 for src, dst in replace_prefix:
                     if key.startswith(src):
+                        # print(f"Src=\"{src}\", Dst=\"{dst}\"")
                         sd[dst + key[len(src):]] = sd[key]
                         del sd[key]
 
