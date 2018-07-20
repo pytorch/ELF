@@ -133,19 +133,19 @@ class ReaderQueueT {
   ReaderCtrl ctrl_;
 };
 
-class RQInterface {
- public:
-  struct InsertInfo {
-    bool success = false;
-    int delta = 0;
-    int msg_size = 0;
-  };
+struct InsertInfo {
+  bool success = true;
+  int delta = 0;
+  int msg_size = 0;
+  int n = 0;
 
-  // bool: whether the insert is successful
-  // int: changes of the queue length.
-  virtual InsertInfo Insert(const std::string&, int queue_idx) = 0;
-  virtual InsertInfo Insert(const std::string&, std::mt19937* rng) = 0;
-  virtual size_t nqueue() const = 0;
+  InsertInfo& operator+=(const InsertInfo& info) {
+    success &= info.success;
+    delta += info.delta;
+    msg_size += info.msg_size;
+    n += info.n;
+    return *this;
+  }
 };
 
 struct RQCtrl {
@@ -155,15 +155,12 @@ struct RQCtrl {
 
 // Many reader queues to prevent locking.
 template <typename T>
-class ReaderQueuesT : public RQInterface {
+class ReaderQueuesT {
  public:
   using ReaderQueue = ReaderQueueT<T>;
 
-  using ConvertFuncSingle = std::function<bool(const std::string&, T*)>;
-  using ConvertFuncVector =
-      std::function<bool(const std::string&, std::vector<T>*)>;
-
-  ReaderQueuesT(const RQCtrl& reader_ctrl) : min_size_satisfied_(false) {
+  ReaderQueuesT(const RQCtrl& reader_ctrl)
+      : min_size_satisfied_(false), parity_sizes_(2, 0) {
     // Make sure this is an even number.
     assert(reader_ctrl.num_reader % 2 == 0);
     min_size_per_queue_ = reader_ctrl.ctrl.queue_min_size;
@@ -173,70 +170,31 @@ class ReaderQueuesT : public RQInterface {
     }
   }
 
-  void setConverter(ConvertFuncSingle f) {
-    converter_ = [f, this](const std::string& s, std::function<int()> g) {
-      RQInterface::InsertInfo info;
-
-      T v;
-      if (!f(s, &v))
-        return info;
-
-      info = Insert(std::move(v), g);
-      info.msg_size = s.size();
-
-      return info;
-    };
-  }
-
-  void setConverter(ConvertFuncVector f) {
-    converter_ = [f, this](const std::string& s, std::function<int()> g) {
-      RQInterface::InsertInfo info;
-
-      std::vector<T> vs;
-      if (!f(s, &vs))
-        return info;
-
-      info = Insert(std::move(vs), g);
-      info.msg_size = s.size();
-
-      return info;
-    };
-  }
-
-  InsertInfo Insert(const std::string& msg, int idx) override {
-    return converter_(msg, [=]() { return idx; });
-  }
-
-  InsertInfo Insert(const std::string& msg, std::mt19937* rng) override {
-    return converter_(
-        msg, [rng, this]() -> int { return (*rng)() % qs_.size(); });
-  }
-
   InsertInfo Insert(std::vector<T>&& vs, std::function<int()> g) {
-    RQInterface::InsertInfo info;
+    InsertInfo info;
 
     int delta = 0;
     for (auto&& v : vs) {
-      delta += qs_[g()]->Insert(std::move(v));
-      inc_insertion_count();
+      delta += insert_impl(g(), std::move(v));
     }
 
     info.success = true;
     info.delta = delta;
     info.msg_size = 0;
+    info.n = 1;
 
     return info;
   }
 
   InsertInfo Insert(T&& v, std::function<int()> g) {
-    RQInterface::InsertInfo info;
+    InsertInfo info;
 
-    int delta = qs_[g()]->Insert(std::move(v));
+    int delta = insert_impl(g(), std::move(v));
 
     info.success = true;
     info.delta = delta;
     info.msg_size = 0;
-    inc_insertion_count();
+    info.n = 1;
 
     return info;
   }
@@ -271,7 +229,7 @@ class ReaderQueuesT : public RQInterface {
     return res;
   }
 
-  size_t nqueue() const override {
+  size_t nqueue() const {
     return qs_.size();
   }
 
@@ -280,12 +238,32 @@ class ReaderQueuesT : public RQInterface {
   }
 
   typename ReaderQueue::Sampler getSampler(int idx, std::mt19937* rng) {
-    if (!min_size_satisfied_.load()) {
-      while (!sufficient_per_queue_size()) {
-        std::this_thread::sleep_for(std::chrono::seconds(60));
-      }
-      min_size_satisfied_ = true;
-    }
+    wait_for_sufficient_data();
+    return qs_[idx]->getSampler(rng);
+  }
+
+  typename ReaderQueue::Sampler getSamplerWithParity(
+      std::mt19937* rng,
+      int* p_idx = nullptr) {
+    wait_for_sufficient_data();
+
+    const float kSafeMargin = 0.45;
+    // Check parity count.
+    int even = parity_sizes_[0];
+    int odd = parity_sizes_[1];
+    float even_ratio = static_cast<float>(even) / (even + odd + 1e-6);
+    even_ratio = std::max(even_ratio, kSafeMargin);
+    even_ratio = std::min(even_ratio, 1.0f - kSafeMargin);
+
+    // Then we sample according to this ratio.
+    std::uniform_real_distribution<> dis(0.0, 1.0);
+    int idx = (*rng)() % (qs_.size() / 2);
+    idx *= 2;
+    if (dis(*rng) > even_ratio)
+      idx++;
+
+    if (p_idx != nullptr)
+      *p_idx = idx;
     return qs_[idx]->getSampler(rng);
   }
 
@@ -307,19 +285,27 @@ class ReaderQueuesT : public RQInterface {
 
  private:
   std::vector<std::unique_ptr<ReaderQueue>> qs_;
-  std::function<
-      RQInterface::InsertInfo(const std::string&, std::function<int()>)>
-      converter_;
   size_t min_size_per_queue_ = 0;
   std::atomic_bool min_size_satisfied_;
-  size_t total_insertion_ = 0;
 
-  void inc_insertion_count() {
+  size_t total_insertion_ = 0;
+  std::vector<int> parity_sizes_;
+
+  int insert_impl(int idx, T&& v) {
+    int delta = qs_[idx]->Insert(std::move(v));
     total_insertion_++;
+    parity_sizes_[idx % 2] += delta;
+
     if (total_insertion_ % 1000 == 0) {
+      float even_ratio = static_cast<float>(parity_sizes_[0]) /
+          (parity_sizes_[0] + parity_sizes_[1] + 1e-6);
       std::cout << elf_utils::now()
-                << ", ReaderQueue Insertion: " << total_insertion_ << std::endl;
+                << ", ReaderQueue Insertion: " << total_insertion_
+                << ", even: " << parity_sizes_[0] << " " << 100 * even_ratio
+                << "%"
+                << ", odd: " << parity_sizes_[1] << std::endl;
     }
+    return delta;
   }
 
   bool sufficient_per_queue_size() const {
@@ -328,6 +314,16 @@ class ReaderQueuesT : public RQInterface {
         return false;
     }
     return true;
+  }
+
+  void wait_for_sufficient_data() {
+    if (!min_size_satisfied_.load()) {
+      // Busy wait.
+      while (!sufficient_per_queue_size()) {
+        std::this_thread::sleep_for(std::chrono::seconds(60));
+      }
+      min_size_satisfied_ = true;
+    }
   }
 };
 

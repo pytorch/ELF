@@ -12,9 +12,9 @@
 #include <algorithm>
 #include <deque>
 
+#include "../common/go_game_specific.h"
 #include "client_manager.h"
 #include "ctrl_utils.h"
-#include "go_game_specific.h"
 
 #include "elf/ai/tree_search/tree_search_options.h"
 
@@ -32,12 +32,19 @@ class ResignThresholdCalculator {
   ResignThresholdCalculator(
       size_t histSize,
       double falsePositiveTarget,
-      double initialThreshold)
+      double initialThreshold,
+      double minThreshold,
+      double maxThreshold)
       : histSize_(histSize),
         falsePositiveTarget_(falsePositiveTarget),
-        curThreshold_(initialThreshold) {
+        curThreshold_(initialThreshold),
+        minThreshold_(minThreshold),
+        maxThreshold_(maxThreshold) {
     assert(histSize_ > 0);
     assert(falsePositiveTarget_ > 1e-6 && falsePositiveTarget_ < 1 - 1e-6);
+    assert(
+        0.0 <= minThreshold_ && minThreshold_ <= maxThreshold_ &&
+        maxThreshold_ <= 2.0);
   }
 
   void feed(const Record& r) {
@@ -100,7 +107,8 @@ class ResignThresholdCalculator {
 
     curThreshold_ = std::min(curThreshold_, oldThreshold + maxDelta);
     curThreshold_ = std::max(curThreshold_, oldThreshold - maxDelta);
-    curThreshold_ = std::max(curThreshold_, 1e-9);
+    curThreshold_ = std::max(curThreshold_, minThreshold_);
+    curThreshold_ = std::min(curThreshold_, maxThreshold_);
     return curThreshold_;
   }
 
@@ -145,6 +153,8 @@ class ResignThresholdCalculator {
   size_t histSize_;
   double falsePositiveTarget_;
   double curThreshold_;
+  double minThreshold_;
+  double maxThreshold_;
   size_t numGamesFed_ = 0;
   size_t numGamesFedBlackWin_ = 0;
   size_t numGamesFalsePositiveInNeverResign_ = 0;
@@ -314,7 +324,9 @@ class SelfPlaySubCtrl {
         resignThresholdCalculator_(
             options.resign_target_hist_size,
             options.resign_target_fp_rate,
-            options.resign_thres) {}
+            options.resign_thres,
+            options.resign_thres_lower_bound,
+            options.resign_thres_upper_bound) {}
 
   FeedResult feed(const Record& r) {
     std::lock_guard<std::mutex> lock(mutex_);

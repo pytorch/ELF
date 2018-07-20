@@ -69,5 +69,13 @@ class IndexedLoggerFactory {
   std::atomic_size_t counter_;
 };
 
+inline std::shared_ptr<spdlog::logger> getLogger(
+    const std::string& prefix,
+    const std::string& suffix) {
+  static IndexedLoggerFactory factory(
+      [](const std::string& name) { return spdlog::stderr_color_mt(name); });
+  return factory.makeLogger(prefix, suffix);
+}
+
 } // namespace logging
 } // namespace elf

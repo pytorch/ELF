@@ -14,10 +14,10 @@ set(ELF_SOURCES
     options/Pybind.cc
 )
 
-set(ELF_TEST_SOURCES
-    options/OptionMapTest.cc
-    options/OptionSpecTest.cc
-)
+# set(ELF_TEST_SOURCES
+#     options/OptionMapTest.cc
+#     options/OptionSpecTest.cc
+# )
 
 # Main ELF library
 
@@ -26,10 +26,10 @@ target_compile_definitions(elf PUBLIC
     GIT_COMMIT_HASH=${GIT_COMMIT_HASH}
     GIT_STAGED=${GIT_STAGED_STRING}
 )
+
 target_link_libraries(elf PUBLIC
     #${Boost_LIBRARIES}
     concurrentqueue
-    cppzmq
     nlohmann_json
     pybind11
     $<BUILD_INTERFACE:${PYTHON_LIBRARIES}>
@@ -40,7 +40,7 @@ target_link_libraries(elf PUBLIC
 # Tests
 
 enable_testing()
-add_cpp_tests(test_cpp_elf_ elf ${ELF_TEST_SOURCES})
+# add_cpp_tests(test_cpp_elf_ elf ${ELF_TEST_SOURCES})
 
 # Python bindings
 

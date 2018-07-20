@@ -65,9 +65,11 @@ struct GameOptions {
   bool policy_distri_training_for_all = false;
 
   float resign_thres = 0.05;
+  float resign_thres_lower_bound = 1e-9;
+  float resign_thres_upper_bound = 0.50;
   float resign_prob_never = 0.1;
   float resign_target_fp_rate = 0.05;
-  int resign_target_hist_size = 10000;
+  int resign_target_hist_size = 2500;
 
   int num_reset_ranking = 5000;
 
@@ -187,7 +189,9 @@ struct GameOptions {
     ss << "Resign Threshold: " << resign_thres << ", ";
     if (resign_prob_never > 0.0)
       ss << "Dynamic Resign Threshold, resign_prob_never: " << resign_prob_never
-         << ", target_fp_rate: " << resign_target_fp_rate << std::endl;
+         << ", target_fp_rate: " << resign_target_fp_rate
+         << ", bounded within [" << resign_thres_lower_bound << ", "
+         << resign_thres_upper_bound << "]" << std::endl;
 
     if (black_use_policy_network_only)
       ss << "Black uses policy network only" << std::endl;
@@ -233,12 +237,13 @@ struct GameOptions {
       num_reader,
       dump_record_prefix,
       use_mcts_ai2,
-      resign_thres,
       preload_sgf,
       preload_sgf_move_to,
       komi,
       print_result,
       resign_thres,
+      resign_thres_lower_bound,
+      resign_thres_upper_bound,
       resign_prob_never,
       resign_target_fp_rate,
       num_reset_ranking,

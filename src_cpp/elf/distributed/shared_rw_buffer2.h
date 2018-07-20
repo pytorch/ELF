@@ -134,42 +134,12 @@ class Writer {
 
 class Reader {
  public:
-  struct Stats {
-    std::atomic<int> client_size;
-    std::atomic<int> buffer_size;
-    std::atomic<int> failed_count;
-    std::atomic<int> msg_count;
-    std::atomic<uint64_t> total_msg_size;
+  using ProcessFunc = std::function<
+      bool(Reader*, const std::string& identity, const std::string& recv_msg)>;
 
-    Stats()
-        : client_size(0),
-          buffer_size(0),
-          failed_count(0),
-          msg_count(0),
-          total_msg_size(0) {}
+  using ReplyFunc = std::function<
+      bool(Reader*, const std::string& identity, std::string* reply_msg)>;
 
-    std::string info() const {
-      std::stringstream ss;
-      ss << "#msg: " << buffer_size << " #client: " << client_size << ", ";
-      ss << "Msg count: " << msg_count
-         << ", avg msg size: " << (float)(total_msg_size) / msg_count
-         << ", failed count: " << failed_count;
-      return ss.str();
-    }
-
-    void feed(const RQInterface::InsertInfo& insert_info) {
-      if (!insert_info.success) {
-        failed_count++;
-      } else {
-        buffer_size += insert_info.delta;
-        msg_count++;
-        total_msg_size += insert_info.msg_size;
-      }
-    }
-  };
-
-  using ReplyFunc =
-      std::function<bool(Reader*, const std::string&, std::string*)>;
   using StartFunc = std::function<void()>;
 
   Reader(const std::string& filename, const Options& opt)
@@ -180,20 +150,16 @@ class Reader {
         done_(false) {}
 
   void startReceiving(
-      RQInterface* rq,
-      StartFunc start_func = nullptr,
-      ReplyFunc replier = nullptr) {
+      ProcessFunc proc_func,
+      ReplyFunc replier = nullptr,
+      StartFunc start_func = nullptr) {
     receiver_thread_.reset(new std::thread(
         [=](Reader* reader) {
           if (start_func != nullptr)
             start_func();
-          reader->threaded_receive_msg(rq, replier);
+          reader->threaded_receive_msg(proc_func, replier);
         },
         this));
-  }
-
-  const Stats& stats() const {
-    return stats_;
   }
 
   std::string info() const {
@@ -217,42 +183,41 @@ class Reader {
   Options options_;
   std::string db_name_;
   std::mt19937 rng_;
-  Stats stats_;
 
   std::atomic_bool done_;
+  int client_size_ = 0;
+  int num_package_ = 0, num_failed_ = 0, num_skipped_ = 0;
 
-  void threaded_receive_msg(RQInterface* rq, ReplyFunc replier = nullptr) {
+  void threaded_receive_msg(
+      ProcessFunc proc_func,
+      ReplyFunc replier = nullptr) {
     std::string identity, title, msg;
     while (!done_.load()) {
       if (!receiver_.recv_noblock(&identity, &title, &msg)) {
         std::cout << elf_utils::now()
-                  << ", Reader: no message, wait for 10 sec ... " << std::endl;
+                  << ", Reader: no message, Stats: " << num_package_ << "/"
+                  << num_failed_ << "/" << num_skipped_
+                  << ", wait for 10 sec ... " << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(10));
         continue;
       }
 
       if (title == "ctrl") {
-        stats_.client_size++;
+        client_size_++;
         std::cout << elf_utils::now() << " Ctrl from " << identity << "["
-                  << stats_.client_size << "]: " << msg << std::endl;
+                  << client_size_ << "]: " << msg << std::endl;
         // receiver_.send(identity, "ctrl", "");
       } else if (title == "content") {
-        // Save to
-        auto insert_info = rq->Insert(msg, &rng_);
-        stats_.feed(insert_info);
-        if (insert_info.success) {
-          if (options_.verbose) {
-            std::cout << "Content from " << identity
-                      << ", msg_size: " << msg.size() << ", " << stats_.info()
-                      << std::endl;
-          }
-          if (stats_.msg_count % 1000 == 0) {
-            std::cout << elf_utils::now() << ", last_identity: " << identity
-                      << ", " << stats_.info() << std::endl;
-          }
+        if (!proc_func(this, identity, msg)) {
+          std::cout << "Msg processing error! from " << identity << std::endl;
+          num_failed_++;
         } else {
-          std::cout << "Msg insertion error! from " << identity << std::endl;
+          num_package_++;
         }
+      } else {
+        std::cout << elf_utils::now() << " Skipping unknown title: \"" << title
+                  << "\", identity: \"" << identity << "\"" << std::endl;
+        num_skipped_++;
       }
 
       // Send reply if there is any.

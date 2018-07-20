@@ -355,7 +355,7 @@ class MCTSGoAI : public elf::ai::tree_search::MCTSAI_T<MCTSActor> {
     // Check if we need to resign.
     const auto& result = getLastResult();
     if (result.total_visits == 0)
-      return 0.0;
+      return result.root_value;
     else
       return result.best_edge_info.getQSA();
   }

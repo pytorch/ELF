@@ -56,6 +56,28 @@ inline uint64_t get_seed(int game_idx) {
   return (time(NULL) * 1000 + duration + game_idx * 2341479) % 100000000;
 }
 
+// Input a sorted list.
+inline std::string get_gap_list(const std::vector<int>& l) {
+  if (l.empty())
+    return "";
+  int last = l[0];
+  size_t last_i = 0;
+  std::string output = std::to_string(last);
+
+  for (size_t i = 1; i < l.size(); ++i) {
+    if (l[i] > last + static_cast<int>(i - last_i)) {
+      if (l[i - 1] > last)
+        output += "-" + std::to_string(l[i - 1]);
+      last = l[i];
+      last_i = i;
+      output += ", " + std::to_string(last);
+    } else if (i == l.size() - 1) {
+      output += "-" + std::to_string(l[i]);
+    }
+  }
+  return output;
+}
+
 inline std::string trim(std::string& str) {
   str.erase(0, str.find_first_not_of(' ')); // prefixing spaces
   str.erase(str.find_last_not_of(' ') + 1); // surfixing spaces

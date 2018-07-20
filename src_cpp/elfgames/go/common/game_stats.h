@@ -15,7 +15,7 @@
 #include <thread>
 #include <vector>
 
-#include "elfgames/go/game_utils.h"
+#include "game_utils.h"
 
 class GameStats {
  public:

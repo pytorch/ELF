@@ -19,7 +19,7 @@
 #include "elf/ai/tree_search/tree_search_options.h"
 #include "elfgames/go/base/board.h"
 #include "elfgames/go/base/go_state.h"
-#include "elfgames/go/base/test_utils.h"
+#include "elfgames/go/base/test/test_utils.h"
 #include "elfgames/go/sgf/sgf.h"
 
 using State = GoState;
