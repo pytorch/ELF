@@ -46,6 +46,65 @@ namespace elf {
 namespace ai {
 namespace tree_search {
 
+struct MCTSRunOptions {
+  int64_t msec_start_time = -1;
+  int64_t msec_time_left = -1;
+  int64_t byoyomi = -1;
+  void reset() {
+    msec_start_time = -1;
+    msec_time_left = -1;
+    byoyomi = -1;
+  }
+};
+
+enum MCTSSignal {
+  MCTS_CMD_INVALID = -1,
+  MCTS_CMD_PAUSE,
+  MCTS_CMD_RESUME,
+  MCTS_CMD_STOP, 
+  MCTS_CMD_CHANGE_ROOT,
+  MCTS_CMD_CHANGE_ROOT_AND_RESUME,
+};
+
+enum MCTSReply { MCTS_REPLY = 0 };
+enum MCTSTimeCtrl { MCTS_ONTIME = 0, MCTS_TIMEOUT };
+
+inline std::ostream& operator<<(std::ostream& oo, const MCTSSignal& signal) {
+  switch (signal) {
+    case MCTS_CMD_INVALID:
+      oo << "MCTS_CMD_INVALID";
+      break;
+    case MCTS_CMD_PAUSE:
+      oo << "MCTS_CMD_PAUSE";
+      break;
+    case MCTS_CMD_RESUME:
+      oo << "MCTS_CMD_RESUME";
+      break;
+    case MCTS_CMD_STOP:
+      oo << "MCTS_CMD_STOP";
+      break;
+    case MCTS_CMD_CHANGE_ROOT:
+      oo << "MCTS_CMD_CHANGE_ROOT";
+      break;
+    case MCTS_CMD_CHANGE_ROOT_AND_RESUME:
+      oo << "MCTS_CMD_CHANGE_ROOT_AND_RESUME";
+      break;
+  }
+  return oo;
+}
+
+using SignalQ = elf::concurrency::ConcurrentQueue<MCTSSignal>;
+using ReplyQ = elf::concurrency::ConcurrentQueue<MCTSReply>;
+
+struct MCTSThreadState {
+  int thread_id = -1;
+  bool done = false;
+  int num_rollout_curr_root = 0;
+  int num_rollout_since_last_resume = 0;
+};
+
+using StateQ = elf::concurrency::ConcurrentQueue<MCTSThreadState>;
+
 struct RunContext {
   int run_id;
   int idx;
@@ -60,11 +119,12 @@ struct RunContext {
   }
 };
 
-template <typename State, typename Action>
+template <typename State, typename Action, typename Info>
 class TreeSearchSingleThreadT {
  public:
-  using Node = NodeT<State, Action>;
-  using SearchTree = SearchTreeT<State, Action>;
+  using Node = NodeT<State, Action, Info>;
+  using SearchTree = SearchTreeT<State, Action, Info>;
+  using NodeResponse = NodeResponseT<Action, Info>;
 
   TreeSearchSingleThreadT(int thread_id, const TSOptions& options)
       : threadId_(thread_id), options_(options) {
@@ -75,61 +135,128 @@ class TreeSearchSingleThreadT {
     }
   }
 
-  void notifyReady(int num_rollout) {
-    runInfoWhenStateReady_.push(num_rollout);
+  void sendSignal(const MCTSSignal& signal) {
+    input_q_.push(signal);
+  }
+
+  MCTSReply waitSignalReceived() {
+    MCTSReply reply;
+    reply_q_.pop(&reply);
+    return reply;
   }
 
   template <typename Actor>
-  bool run(
-      int run_id,
-      const std::atomic_bool* stop_search,
-      Actor& actor,
-      SearchTree& search_tree) {
-    int num_rollout;
-    runInfoWhenStateReady_.pop(&num_rollout);
-
-    Node* root = search_tree.getRootNode();
-    if (root == nullptr || root->getStatePtr() == nullptr) {
-      if (stop_search == nullptr || !stop_search->load()) {
-        std::cout << "[" << threadId_ << "] root node is nullptr!" << std::endl;
-      }
-      return false;
-    }
-
+  bool run(Actor& actor, SearchTree& search_tree, StateQ& ctrl) {
     _set_ostream(actor);
+    bool wait_state = true;
+    int rollouts_curr_root = 0;
+    int rollouts_since_last_resume = 0;
 
-    if (output_ != nullptr) {
-      *output_ << "[run=" << run_id << "] " << actor.info() << std::endl
-               << std::flush;
-    }
+    Node* root = nullptr;
 
-    for (int idx = 0;
-         idx < num_rollout && (stop_search == nullptr || !stop_search->load());
-         idx += options_.num_rollouts_per_batch) {
+    while (true) {
+      MCTSSignal signal = MCTS_CMD_INVALID;
+      if (input_q_.pop(&signal, std::chrono::seconds(0))) {
+        switch (signal) {
+          case MCTS_CMD_STOP:
+            return true;
+          case MCTS_CMD_RESUME:
+            rollouts_since_last_resume = 0;
+            wait_state = false;
+            break;
+          case MCTS_CMD_PAUSE:
+            wait_state = true;
+            break;
+          case MCTS_CMD_CHANGE_ROOT:
+          case MCTS_CMD_CHANGE_ROOT_AND_RESUME:
+            root = search_tree.getRootNode();
+            rollouts_curr_root = 0;
+            //std::cout << "[" << threadId_ << "] " 
+            //  << "Wait node spent: " << static_cast<float>(usec_wait_node_spent_) / 1e3 << " msec" 
+            //  << "Evaluation spent: " << static_cast<float>(usec_evaluation_) / 1e3 << " msec" << std::endl;
+            usec_wait_node_spent_ = 0;
+            usec_evaluation_ = 0;
+            if (signal == MCTS_CMD_CHANGE_ROOT_AND_RESUME) {
+              rollouts_since_last_resume = 0;
+              wait_state = false;
+            }
+            break;
+          default:
+            break;
+        }
+        reply_q_.push(MCTS_REPLY);
+      }
+
+      if (wait_state || root == nullptr) {
+        // std::cout << "[" << std::this_thread::get_id() << "] In wait state,
+        // sleep for a while" << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        continue;
+      }
+
       // Start from the root and run one path
-      batch_rollouts<Actor>(
-          RunContext(run_id, idx, num_rollout), root, actor, search_tree);
-    }
+      int num_rollout = batch_rollouts<Actor>(
+          RunContext(threadId_, rollouts_curr_root, options_.num_rollout_per_thread),
+          root,
+          actor,
+          search_tree);
 
-    if (output_ != nullptr) {
-      *output_ << "[run=" << run_id << "] "
-               << "Done" << std::endl
-               << std::flush;
+      if (num_rollout == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+
+      // std::cout << "#rollout: " << num_rollout << std::endl;
+      rollouts_curr_root += num_rollout;
+      rollouts_since_last_resume += num_rollout;
+
+      MCTSThreadState state;
+      state.thread_id = threadId_;
+      state.num_rollout_curr_root = rollouts_curr_root;
+      state.num_rollout_since_last_resume = rollouts_since_last_resume;
+      const int max_rollouts = 1e6;
+      const int min_rollouts = 1e2;
+      if (((options_.num_rollout_per_thread > 0 &&
+          rollouts_curr_root >= options_.num_rollout_per_thread) ||
+          rollouts_curr_root >= max_rollouts) && 
+          rollouts_curr_root >= min_rollouts) {
+        state.done = true;
+        wait_state = true;
+      }
+      ctrl.push(state);
     }
-    return true;
   }
 
  private:
   int threadId_;
   const TSOptions& options_;
+  uint64_t usec_wait_node_spent_ = 0;
+  uint64_t usec_evaluation_ = 0;
 
   struct Traj {
     std::vector<std::pair<Node*, Action>> traj;
     Node* leaf;
   };
 
+  struct TrajCount {
+    std::unordered_map<Node*, std::pair<Traj*, int>> counts;
+    void add(Traj *traj) {
+      auto it = counts.find(traj->leaf);
+      if (it == counts.end())
+        counts[traj->leaf] = std::make_pair(traj, 1);
+      else
+        it->second.second++;
+    }
+
+    const std::pair<Traj*, int> &find(Node *leaf) const {
+      auto it = counts.find(leaf);
+      assert(it != counts.end());
+      return it->second;
+    }
+  };
+
   // TODO: The weird variable name below needs to change (ssengupta@fb)
-  elf::concurrency::ConcurrentQueue<int> runInfoWhenStateReady_;
+  SignalQ input_q_;
+  ReplyQ reply_q_;
   std::unique_ptr<std::ostream> output_;
 
   MEMBER_FUNC_CHECK(reward)
@@ -191,77 +318,93 @@ class TreeSearchSingleThreadT {
   }
 
   template <typename Actor>
-  void batch_rollouts(
+  int batch_rollouts(
       const RunContext& ctx,
       Node* root,
       Actor& actor,
       SearchTree& search_tree) {
     // Start from the root and run one path
     std::vector<Traj> trajs;
-    for (int j = 0; j < options_.num_rollouts_per_batch; ++j) {
+    for (int j = 0; j < options_.num_rollout_per_batch; ++j) {
       trajs.push_back(single_rollout<Actor>(ctx, root, actor, search_tree));
     }
 
     // Now we want to batch create nodes.
     std::vector<Node*> locked_leaves;
     std::vector<const State*> locked_states;
-
-    std::unordered_map<Node*, std::pair<Traj*, int>> traj_counts;
+    TrajCount ours, others;
 
     // For unlocked leaves, just let it go
     // Reason:
     //   1. Other threads lock it
     //   2. Duplicated leaf.
+    int num_real_rollout = 0;
     for (Traj& traj : trajs) {
       if (traj.leaf->requestEvaluation()) {
         locked_leaves.push_back(traj.leaf);
         locked_states.push_back(traj.leaf->getStatePtr());
+        ours.add(&traj);
+        num_real_rollout ++;
+      } else {
+        others.add(&traj);
       }
-
-      auto it = traj_counts.find(traj.leaf);
-      if (it == traj_counts.end())
-        traj_counts[traj.leaf] = std::make_pair(&traj, 1);
-      else
-        it->second.second++;
     }
 
-    // Batch evaluate.
-    std::vector<NodeResponseT<Action>> resps;
-    actor.evaluate(locked_states, &resps);
+    auto backprop = [&](const std::pair<Traj *, int> &p) {
+      Node *leaf = p.first->leaf;
+      int count = p.second;
 
-    for (size_t j = 0; j < locked_leaves.size(); ++j) {
-      // Now the node points to a recently created node.
-      // Evaluate it and backpropagate.
-      locked_leaves[j]->setEvaluation(resps[j]);
-    }
-
-    for (auto& traj_pair : traj_counts) {
-      Node* leaf = traj_pair.first;
-      Traj* traj = traj_pair.second.first;
-      int count = traj_pair.second.second;
-
-      leaf->waitEvaluation();
+      usec_wait_node_spent_ += leaf->waitEvaluation();
       float reward = get_reward(actor, leaf);
+      
+      // std::cout << leaf->getStatePtr()->showBoard() << std::endl;
+      // std::cout << "value: " << reward << std::endl << std::endl;
       // PRINT_TS("Reward: " << reward << " Start backprop");
 
       // Add reward back.
-      for (const auto& p : traj->traj) {
-        p.first->updateEdgeStats(
-            p.second, reward, options_.virtual_loss * count);
+      for (const auto& pp : p.first->traj) {
+        pp.first->updateEdgeStats(
+            pp.second, reward, options_.virtual_loss * count);
       }
-    }
+    };
 
+    auto remove_virtual_loss = [&](const std::pair<Traj *, int> &p) {
+      int count = p.second;
+
+      for (const auto& pp : p.first->traj) {
+        pp.first->addVirtualLoss(
+            pp.second, -options_.virtual_loss * count);
+      }
+    };
+
+    auto on_success = [&](size_t idx, NodeResponse &&resp) {
+      // Now the node points to a recently created node.
+      // Evaluate it and backpropagate.
+      Node *leaf = locked_leaves[idx];
+      leaf->setEvaluation(std::move(resp));
+
+      const auto& record = ours.find(leaf);
+      backprop(record);
+    };
+
+    // Batch evaluate.
+    auto start = elf_utils::usec_since_epoch_from_now();
+    actor.evaluate(locked_states, on_success);
+    usec_evaluation_ += elf_utils::usec_since_epoch_from_now() - start;
+
+    for (const auto &p : others.counts) {
+      remove_virtual_loss(p.second);
+    } 
     printHelper(ctx, "Done backprop");
+    return num_real_rollout;
   }
 
   template <typename Actor>
   Traj single_rollout(
       RunContext ctx,
-      Node* root,
+      Node* node,
       Actor& actor,
       SearchTree& search_tree) {
-    Node* node = root;
-
     Traj traj;
     while (node->isVisited()) {
       // If there is no move available, skip.
@@ -282,13 +425,14 @@ class TreeSearchSingleThreadT {
 
       // Save trajectory.
       traj.traj.push_back(std::make_pair(node, action));
-      NodeId next = node->followEdge(action, search_tree);
+      NodeId next =
+          node->followEdgeCreateIfNull(action, search_tree.getStorage());
       // PRINT_TS(" Descent node id: " << next);
 
       assert(node->getStatePtr());
 
       // Note that next might be invalid, if there is not valid move.
-      Node* next_node = search_tree[next];
+      Node* next_node = search_tree.getStorage()[next];
       if (next_node == nullptr) {
         break;
       }
@@ -319,41 +463,25 @@ class TreeSearchSingleThreadT {
 template <typename State, typename Action, typename Actor>
 class TreeSearchT {
  public:
-  using Node = NodeT<State, Action>;
-  using TreeSearchSingleThread = TreeSearchSingleThreadT<State, Action>;
-  using SearchTree = SearchTreeT<State, Action>;
+  using Info = typename Actor::Info;
+  using TreeSearchSingleThread = TreeSearchSingleThreadT<State, Action, Info>;
+  using Node = typename TreeSearchSingleThread::Node;
+  using NodeResponse = typename TreeSearchSingleThread::NodeResponse;
+  using SearchTree = typename TreeSearchSingleThread::SearchTree;
   using MCTSResult = MCTSResultT<Action>;
 
   TreeSearchT(const TSOptions& options, std::function<Actor*(int)> actor_gen)
-      : options_(options), stopSearch_(false) {
-    for (int i = 0; i < options.num_threads; ++i) {
+      : options_(options) {
+    for (int i = 0; i < options.num_thread; ++i) {
       treeSearches_.emplace_back(new TreeSearchSingleThread(i, options_));
       actors_.emplace_back(actor_gen(i));
     }
 
     // cout << "#Thread: " << options.num_threads << endl;
-    for (int i = 0; i < options.num_threads; ++i) {
+    for (int i = 0; i < options.num_thread; ++i) {
       TreeSearchSingleThread* th = treeSearches_[i].get();
       threadPool_.emplace_back(std::thread{[i, this, th]() {
-        int counter = 0;
-        while (true) {
-          th->run(
-              counter,
-              // &this->done_.flag(),
-              &this->stopSearch_,
-              *this->actors_[i],
-              this->searchTree_);
-
-          // if (this->done_.get()) {
-          if (this->stopSearch_.load()) {
-            break;
-          }
-
-          this->treeReady_.increment();
-          counter++;
-        }
-        this->countStoppedThreads_.increment();
-        // this->done_.notify();
+        th->run(*actors_[i], searchTree_, ctrl_q_);
       }});
     }
   }
@@ -370,75 +498,115 @@ class TreeSearchT {
     return actors_.size();
   }
 
-  std::string printTree() const {
-    return searchTree_.printTree();
+  SearchTree& getSearchTree() {
+    return searchTree_;
   }
 
-  MCTSResult runPolicyOnly(const State& root_state) {
+  MCTSResult runPolicyOnly() {
     if (actors_.empty() || treeSearches_.empty()) {
       throw std::range_error(
           "TreeSearch::runPolicyOnly works when there is at least one thread");
     }
-    setRootNodeState(root_state);
-
     // Some hack here.
     Node* root = searchTree_.getRootNode();
 
     if (!root->isVisited()) {
-      NodeResponseT<Action> resp;
+      NodeResponse resp;
       actors_[0]->evaluate(*root->getStatePtr(), &resp);
-      root->setEvaluation(resp);
+      root->setEvaluation(std::move(resp));
     }
 
-    MCTSResult result;
-    result.action_rank_method = MCTSResult::PRIOR;
-    result.addActions(root->getStateActions());
-    result.root_value = root->getValue();
-    return result;
+    return root->chooseAction(MCTSResult::PRIOR);
   }
 
-  MCTSResult run(const State& root_state) {
-    setRootNodeState(root_state);
-
+  MCTSResult run(const MCTSRunOptions& run_options) {
     if (options_.root_epsilon > 0.0) {
+      sendSearchSignal(MCTS_CMD_PAUSE);
       Node* root = searchTree_.getRootNode();
-      root->enhanceExploration(
+      root->getStateActionsMutable().enhanceExploration(
           options_.root_epsilon, options_.root_alpha, actors_[0]->rng());
     }
+    sendSearchSignal(MCTS_CMD_CHANGE_ROOT_AND_RESUME);
+    searchTree_.deleteOldRoot();
 
-    notifySearches(options_.num_rollouts_per_thread);
+    std::vector<std::pair<int, int>> num_rollouts(threadPool_.size());
+    size_t num_done = 0;
+    uint64_t overhead = 0;
+    while (true) {
+      MCTSThreadState state;
+      ctrl_q_.pop(&state);
 
-    // Wait until all tree searches are done.
-    treeReady_.waitUntilCount(threadPool_.size());
-    treeReady_.reset();
+      num_rollouts[state.thread_id] =
+        std::make_pair(state.num_rollout_curr_root, state.num_rollout_since_last_resume);
 
+      if (state.done) {
+        num_done++;
+        if (num_done == threadPool_.size()) {
+          break;
+        }
+      }
+
+      uint64_t now = elf_utils::msec_since_epoch_from_now();
+      uint64_t dt = now - run_options.msec_start_time;
+      if (overhead == 0) overhead = dt;
+      if (timeCtrl(dt, overhead, run_options) == MCTS_TIMEOUT) {
+        Node* root = searchTree_.getRootNode();
+        if (root->isVisited()) {
+          int count_curr_root = 0, count_since_last_resume = 0;
+          for (const auto& p : num_rollouts) {
+            count_curr_root += p.first;
+            count_since_last_resume += p.second;
+          }
+          std::cout << "MCTS time spent: " << static_cast<float>(dt) / 1000.0
+                    << "sec, #rollouts:, curr_root: " << count_curr_root
+                    << ", since_resume: " << count_since_last_resume << std::endl;
+          break;
+        }
+      }
+    }
     return chooseAction();
   }
 
-  void treeAdvance(const Action& action) {
-    searchTree_.treeAdvance(action);
-  }
-
-  void clear() {
-    searchTree_.clear();
+  MCTSTimeCtrl timeCtrl(uint64_t time_msec, uint64_t overhead, const MCTSRunOptions& run_options) {
+    if (options_.time_sec_allowed_per_move < 0)
+      return MCTS_ONTIME;
+    uint64_t allowed_time = 0;
+    uint64_t time_msec_per_move = (uint64_t)options_.time_sec_allowed_per_move * 1000;
+    if (run_options.byoyomi == 1) {
+      // respect last byoyomi
+      allowed_time =  time_msec_per_move;
+    } else {
+      if (overhead * 3 > time_msec_per_move) {
+        // too much overhead, willing to spend more time
+        if (run_options.byoyomi == 0) {
+          // add back overhead
+          allowed_time = time_msec_per_move + overhead;
+        } else {
+          // use one byoyomi period
+          allowed_time = time_msec_per_move * 2;
+        }
+      } else {
+        allowed_time = time_msec_per_move;
+      }
+    }
+    if (time_msec >= allowed_time)
+      return MCTS_TIMEOUT;
+    else
+      return MCTS_ONTIME;
   }
 
   void stop() {
-    stopSearch_ = true;
+    if (threadPool_.empty())
+      return;
 
-    notifySearches(0);
-
-    countStoppedThreads_.waitUntilCount(threadPool_.size());
-
+    sendSearchSignal(MCTS_CMD_STOP);
     for (auto& p : threadPool_) {
       p.join();
     }
   }
 
   ~TreeSearchT() {
-    if (!stopSearch_.load()) {
-      stop();
-    }
+    stop();
   }
 
  private:
@@ -450,70 +618,43 @@ class TreeSearchT {
   std::unique_ptr<std::ostream> output_;
 
   SearchTree searchTree_;
-
+  StateQ ctrl_q_;
   TSOptions options_;
-  std::atomic<bool> stopSearch_;
-  // Notif done_;
-  elf::concurrency::Counter<size_t> treeReady_;
-  elf::concurrency::Counter<size_t> countStoppedThreads_;
 
-  void notifySearches(int num_rollout) {
+  void sendSearchSignal(const MCTSSignal& signal) {
+    // std::cout << "Sending signal: " << signal << std::endl;
     for (size_t i = 0; i < treeSearches_.size(); ++i) {
-      treeSearches_[i]->notifyReady(num_rollout);
+      treeSearches_[i]->sendSignal(signal);
     }
+    for (size_t i = 0; i < treeSearches_.size(); ++i) {
+      treeSearches_[i]->waitSignalReceived();
+    }
+    // std::cout << "Finish sending signal: " << signal << std::endl;
   }
 
-  void setRootNodeState(const State& root_state) {
-    Node* root = searchTree_.getRootNode();
-
-    if (root == nullptr) {
-      throw std::range_error("TreeSearch::root cannot be null!");
-    }
-
-    root->setStateIfUnset([&]() { return new State(root_state); });
-
-    // Check hash code.
-    if (!elf::ai::tree_search::StateTrait<State, Action>::equals(
-            root_state, *root->getStatePtr())) {
-      throw std::range_error(
-          "TreeSearch::Root state is not the same as the input state");
-    }
-  }
-
-  MCTSResult chooseAction() const {
+  MCTSResult chooseAction() {
     const Node* root = searchTree_.getRootNode();
     if (root == nullptr) {
       std::cout << "TreeSearch::root cannot be null!" << std::endl;
       throw std::range_error("TreeSearch::root cannot be null!");
     }
 
-    // Pick the best solution.
-    MCTSResult result;
-    result.root_value = root->getValue();
-
     // MCTSResult result2;
     if (options_.pick_method == "strongest_prior") {
-      result.action_rank_method = MCTSResult::PRIOR;
-      result.addActions(root->getStateActions());
-      // result2 = StrongestPrior(root->getStateActions());
+      return root->chooseAction(MCTSResult::PRIOR);
     } else if (options_.pick_method == "most_visited") {
-      result.action_rank_method = MCTSResult::MOST_VISITED;
-      result.addActions(root->getStateActions());
+      return root->chooseAction(MCTSResult::MOST_VISITED);
       // result2 = MostVisited(root->getStateActions());
 
       // assert(result.max_score == result2.max_score);
       // assert(result.total_visits == result2.total_visits);
     } else if (options_.pick_method == "uniform_random") {
-      result.action_rank_method = MCTSResult::UNIFORM_RANDOM;
-      result.addActions(root->getStateActions());
+      return root->chooseAction(MCTSResult::UNIFORM_RANDOM);
       // result = UniformRandom(root->getStateActions());
     } else {
       throw std::range_error(
           "MCTS Pick method unknown! " + options_.pick_method);
     }
-
-    return result;
-    // return result2;
   }
 };
 

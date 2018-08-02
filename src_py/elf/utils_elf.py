@@ -10,19 +10,25 @@ from collections import defaultdict
 import numpy as np
 import torch
 
+import _elf as elf
+
 
 class Allocator(object):
     ''' A wrapper class for batch data'''
     torch_types = {
         "int32_t": torch.IntTensor,
+        "uint32_t": torch.IntTensor,
         "int64_t": torch.LongTensor,
+        "uint64_t": torch.LongTensor,
         "float": torch.FloatTensor,
         "unsigned char": torch.ByteTensor,
         "char": torch.ByteTensor
     }
     numpy_types = {
         "int32_t": 'i4',
+        "uint32_t": 'i4',
         'int64_t': 'i8',
+        'uint64_t': 'i8',
         'float': 'f4',
         'unsigned char': 'byte',
         'char': 'byte'
@@ -34,7 +40,7 @@ class Allocator(object):
         type_name = p.field().type_name()
         sz = p.field().sz().vec()
 
-        print(name, type_name, sz)
+        #print(name, type_name, sz)
 
         if not use_numpy:
             v = Allocator.torch_types[type_name](*sz)
@@ -48,22 +54,19 @@ class Allocator(object):
         else:
             v = np.zeros(sz, dtype=Allocator.numpy_types[type_name])
             v[:] = 1
-
-            import pdb
-            pdb.set_trace()
             # Return pointer, size and byte_size
             p.set(v.ctypes.data, v.strides)
 
         return name, v
 
     @staticmethod
-    def spec2batches(ctx, batchsize, spec, gpu, use_numpy=False, num_recv=1):
+    def spec2batches(ctx, batchsize, spec, default_gpu, use_numpy=False, num_recv=1):
         batch_spec = []
         name2idx = defaultdict(lambda: list())
         idx2name = dict()
 
         for name, v in spec.items():
-            print("%s: %s" % (name, v))
+            #print("%s: %s" % (name, v))
             # TODO this might not good since it changes the input.
             if "input" not in v or v["input"] is None:
                 v["input"] = []
@@ -72,17 +75,19 @@ class Allocator(object):
                 v["reply"] = []
 
             this_batchsize = v.get("batchsize", batchsize)
+            this_gpu = v.get("gpu", default_gpu)
 
             keys = list(set(v["input"] + v["reply"]))
-            print("SharedMem: \"%s\", keys: %s" % (name, str(keys)))
+            #print("SharedMem: \"%s\", keys: %s" % (name, str(keys)))
 
-            smem_opts = ctx.createSharedMemOptions(name, this_batchsize)
+            smem_opts = elf.SharedMemOptions(name, this_batchsize)
             smem_opts.setTimeout(v.get("timeout_usec", 0))
 
             for _ in range(num_recv):
                 smem = ctx.allocateSharedMem(smem_opts, keys)
                 spec = dict((
-                    Allocator._alloc(smem[field], gpu, use_numpy=use_numpy)
+                    Allocator._alloc(
+                        smem[field], this_gpu, use_numpy=use_numpy)
                     for field in keys
                 ))
 
@@ -90,7 +95,8 @@ class Allocator(object):
                 spec_input = {key: spec[key] for key in v["input"]}
                 spec_reply = {key: spec[key] for key in v["reply"]}
 
-                batch_spec.append(dict(input=spec_input, reply=spec_reply))
+                batch_spec.append(
+                    dict(input=spec_input, reply=spec_reply, gpu=this_gpu))
 
                 idx = smem.getSharedMemOptions().idx()
                 name2idx[name].append(idx)
@@ -113,12 +119,13 @@ def tensor_slice(t, dim, b, e=None):
 
 
 class Batch:
-    def __init__(self, _GC=None, _batchdim=0, _histdim=None, **kwargs):
+    def __init__(self, _GC=None, _game_obj=None, _batchdim=0, _histdim=None, **kwargs):
         '''Initialize `Batch` class.
 
         Pass in a dict and wrap it into ``self.batch``
         '''
         self.GC = _GC
+        self.game_obj = _game_obj
         self.batchdim = _batchdim
         self.histdim = _histdim
         self.batch = kwargs
@@ -126,6 +133,7 @@ class Batch:
     def empty_copy(self):
         batch = Batch()
         batch.GC = self.GC
+        batch.game_obj = self.game_obj
         batch.batchdim = self.batchdim
         batch.histdim = self.histdim
         return batch
@@ -208,6 +216,7 @@ class Batch:
                 try:
                     bk[:] = v.squeeze_()
                 except BaseException:
+                    print("Exception")
                     import pdb
                     pdb.set_trace()
 
@@ -292,12 +301,13 @@ class GCWrapper:
     def __init__(
             self,
             GC,
+            game_obj,
             batchsize,
             spec,
             batchdim=0,
             histdim=None,
             use_numpy=False,
-            gpu=None,
+            default_gpu=None,
             params=dict(),
             verbose=True,
             num_recv=1):
@@ -318,13 +328,13 @@ class GCWrapper:
 
         # TODO Make a unified argument server and remove ``params``
         self.batches, self.name2idx, self.idx2name = Allocator.spec2batches(
-            GC.ctx(), batchsize, spec,
-            use_numpy=use_numpy, gpu=gpu, num_recv=num_recv)
+            GC, batchsize, spec,
+            use_numpy=use_numpy, default_gpu=default_gpu, num_recv=num_recv)
         self.batchdim = batchdim
         self.histdim = histdim
-        self.gpu = gpu
         self.params = params
         self.GC = GC
+        self.game_obj = game_obj
         self._cb = {}
 
     def reg_has_callback(self, key):
@@ -361,6 +371,7 @@ class GCWrapper:
     def _makebatch(self, key_array):
         return Batch(
             _GC=self.GC,
+            _game_obj=self.game_obj,
             _batchdim=self.batchdim,
             _histdim=self.histdim,
             **key_array)
@@ -379,14 +390,16 @@ class GCWrapper:
         assert batchsize > 0
 
         picked = self._makebatch(self.batches[idx]["input"]).first_k(batchsize)
-        if self.gpu is not None:
-            picked = picked.cpu2gpu(self.gpu)
+        gpu = self.batches[idx]["gpu"]
+        if gpu is not None:
+            picked = picked.cpu2gpu(gpu)
 
         # Save the infos structure, if people want to have access to state
         # directly, they can use infos.s[i], which is a state pointer.
         picked.smem = smem
         picked.batchsize = batchsize
         picked.max_batchsize = smem.getSharedMemOptions().batchsize()
+        picked.gpu = gpu
 
         # Get the reply array
         if self.batches[idx]["reply"] is not None:
@@ -398,8 +411,8 @@ class GCWrapper:
         reply = self._cb[idx](picked, *args, **kwargs)
         # If reply is meaningful, send them back.
         if isinstance(reply, dict) and sel_reply is not None:
-            if self.gpu is not None:
-                with torch.cuda.device(self.gpu):
+            if gpu is not None:
+                with torch.cuda.device(gpu):
                     keys_extra, keys_missing = sel_reply.copy_from(reply)
             else:
                 keys_extra, keys_missing = sel_reply.copy_from(reply)
@@ -429,17 +442,21 @@ class GCWrapper:
         Samples in a returned batch are always from the same group,
         but the group key of the batch may be arbitrary.
         '''
+
         # print("before wait")
-        smem = self.GC.ctx().wait()
+        smem = self.GC.wait()
+        # smem = self.GC.ctx().wait()
+
         # print("before calling")
         self._call(smem, *args, **kwargs)
+
         # print("before_step")
-        self.GC.ctx().step()
+        self.GC.step()
 
     def start(self):
         '''Start all game environments'''
         self._check_callbacks()
-        self.GC.ctx().start()
+        self.GC.start()
 
     def stop(self):
         '''Stop all game environments.
@@ -447,7 +464,7 @@ class GCWrapper:
         :func:`start()` cannot be called again after :func:`stop()`
         has been called.
         '''
-        self.GC.ctx().stop()
+        self.GC.stop()
 
     def reg_sig_int(self):
         import signal

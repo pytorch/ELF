@@ -61,6 +61,10 @@ class ConcurrentQueueMoodyCamel {
 
   void pop(T* value) {
     _check_consumer();
+    pop_no_thread_check(value);
+  }
+
+  void pop_no_thread_check(T* value) {
     if (_prefetch(value))
       return;
     q_.wait_dequeue(*value);

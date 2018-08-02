@@ -32,11 +32,10 @@ enum FinishReason {
 
 struct GoStateExt {
  public:
-  GoStateExt(int game_idx, const GameOptions& options)
+  GoStateExt(int game_idx, const GameOptionsSelfPlay& options)
       : _game_idx(game_idx),
         _last_move_for_the_game(M_INVALID),
         _last_value(0.0),
-        _resign_check(options.resign_thres, options.resign_prob_never),
         _options(options) {
     restart();
   }
@@ -56,8 +55,7 @@ struct GoStateExt {
 
     const auto& ctrl = request.client_ctrl;
 
-    _resign_check.resign_thres =
-        (ctrl.black_resign_thres + ctrl.white_resign_thres) / 2.0;
+    _resign_check.resign_thres = ctrl.resign_thres;
     _resign_check.never_resign_ratio = ctrl.never_resign_prob;
   }
 
@@ -94,7 +92,7 @@ struct GoStateExt {
         curr_request_.vers.is_selfplay()) {
       final_value = ((*rng)() % 2 == 0 ? 1.0 : -1.0);
     } else {
-      final_value = _state.evaluate(_options.komi);
+      final_value = _state.evaluate(_options.common.komi);
     }
     _state.setFinalValue(final_value);
     return final_value;
@@ -131,8 +129,7 @@ struct GoStateExt {
 
     r.result.reward = _state.getFinalValue();
     r.result.content = coords2sgfstr(_state.getAllMoves());
-    r.result.black_never_resign = _resign_check.never_resign;
-    r.result.white_never_resign = _resign_check.never_resign;
+    r.result.never_resign = _resign_check.never_resign;
     r.result.using_models =
         std::vector<int64_t>(using_models_.begin(), using_models_.end());
     r.result.policies = _mcts_policies;
@@ -223,11 +220,11 @@ struct GoStateExt {
   }
 
   bool finished() const {
-    return _options.num_games_per_thread > 0 &&
-        _seq >= _options.num_games_per_thread;
+    return _options.num_game_per_thread > 0 &&
+        _seq >= _options.num_game_per_thread;
   }
 
-  const GameOptions& options() const {
+  const GameOptionsSelfPlay& options() const {
     return _options;
   }
 
@@ -244,7 +241,7 @@ struct GoStateExt {
   float _last_value;
 
   ResignCheck _resign_check;
-  GameOptions _options;
+  GameOptionsSelfPlay _options;
 
   std::vector<CoordRecord> _mcts_policies;
   std::vector<float> _predicted_values;
@@ -254,7 +251,7 @@ class GoStateExtOffline {
  public:
   friend class GoFeature;
 
-  GoStateExtOffline(int game_idx, const GameOptions& options)
+  GoStateExtOffline(int game_idx, const GameOptionsTrain& options)
       : _game_idx(game_idx), _bf(_state), _options(options) {}
 
   void fromRecord(const Record& r) {
@@ -309,7 +306,7 @@ class GoStateExtOffline {
   const int _game_idx;
   GoState _state;
   BoardFeature _bf;
-  GameOptions _options;
+  GameOptionsTrain _options;
 
   int _seq;
   MsgRequest curr_request_;

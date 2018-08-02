@@ -79,3 +79,9 @@ add_subdirectory(
 add_subdirectory(
     src_cpp/elfgames/go
     ${CMAKE_CURRENT_BINARY_DIR}/elfgames/go)
+
+# Tutorials
+
+add_subdirectory(
+    src_cpp/elfgames/tutorial
+    ${CMAKE_CURRENT_BINARY_DIR}/elfgames/tutorial)

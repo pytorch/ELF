@@ -15,25 +15,41 @@
 #include <stdint.h>
 
 #include <spdlog/spdlog.h>
+#include <iostream>
 
 #include "elf/ai/tree_search/tree_search_options.h"
 #include "elf/base/context.h"
+#include "elf/base/game_context.h"
+#include "elf/base/game_interface.h"
+#include "elf/base/remote_context.h"
 #include "elf/comm/comm.h"
 #include "elf/logging/Pybind.h"
 #include "elf/options/Pybind.h"
 
 namespace {
 
+inline std::string version() {
+#ifdef GIT_COMMIT_HASH
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+  return TOSTRING(GIT_COMMIT_HASH) "_" TOSTRING(GIT_STAGED);
+#else
+  return "";
+#endif
+#undef STRINGIFY
+#undef TOSTRING
+}
+
 void register_common_func(pybind11::module& m) {
   namespace py = pybind11;
 
   using comm::ReplyStatus;
   using elf::AnyP;
-  using elf::Context;
   using elf::FuncMapBase;
-  using elf::SharedMem;
+  using elf::SharedMemData;
   using elf::SharedMemOptions;
   using elf::Size;
+  using elf::Waiter;
 
   auto ref = py::return_value_policy::reference_internal;
 
@@ -43,37 +59,20 @@ void register_common_func(pybind11::module& m) {
       .value("UNKNOWN", ReplyStatus::UNKNOWN)
       .export_values();
 
-  py::class_<Context>(m, "Context")
-      .def(
-          "wait",
-          &Context::wait,
-          py::arg("timeout_usec") = 0,
-          ref,
-          py::call_guard<py::gil_scoped_release>())
-      .def(
-          "step",
-          &Context::step,
-          py::arg("success") = comm::SUCCESS,
-          py::call_guard<py::gil_scoped_release>())
-      .def("start", &Context::start)
-      .def("stop", &Context::stop)
-      .def("version", &Context::version)
-      .def("allocateSharedMem", &Context::allocateSharedMem, ref)
-      .def("createSharedMemOptions", &Context::createSharedMemOptions);
-
   py::class_<Size>(m, "Size").def("vec", &Size::vec, ref);
 
   py::class_<SharedMemOptions>(m, "SharedMemOptions")
+      .def(py::init<const std::string&, int>())
       .def("idx", &SharedMemOptions::getIdx)
       .def("batchsize", &SharedMemOptions::getBatchSize)
       .def("label", &SharedMemOptions::getLabel, ref)
       .def("setTimeout", &SharedMemOptions::setTimeout);
 
-  py::class_<SharedMem>(m, "SharedMem")
-      .def("__getitem__", &SharedMem::get, ref)
-      .def("getSharedMemOptions", &SharedMem::getSharedMemOptions, ref)
-      .def("effective_batchsize", &SharedMem::getEffectiveBatchSize)
-      .def("info", &SharedMem::info);
+  py::class_<SharedMemData>(m, "SharedMemData")
+      .def("__getitem__", &SharedMemData::get, ref)
+      .def("effective_batchsize", &SharedMemData::getEffectiveBatchSize)
+      .def("getSharedMemOptions", &SharedMemData::getSharedMemOptionsC)
+      .def("info", &SharedMemData::info);
 
   py::class_<AnyP>(m, "AnyP")
       .def("info", &AnyP::info)
@@ -86,16 +85,51 @@ void register_common_func(pybind11::module& m) {
       .def("sz", &FuncMapBase::getSize, ref)
       .def("type_name", &FuncMapBase::getTypeName)
       .def("type_size", &FuncMapBase::getSizeOfType);
+
+  m.def("version", &version);
 }
 
-void register_tree_search(pybind11::module& m) {
+void register_game(pybind11::module& m) {
   namespace py = pybind11;
 
-  using elf::ai::tree_search::SearchAlgoOptions;
-  using elf::ai::tree_search::TSOptions;
+  using elf::GameContext;
+  using elf::Options;
+  using MsgOptions = elf::msg::Options;
+  using elf::BatchReceiver;
+  using elf::BatchSender;
+  using elf::GCInterface;
 
-  PYCLASS_WITH_FIELDS(m, SearchAlgoOptions).def(py::init<>());
-  PYCLASS_WITH_FIELDS(m, TSOptions).def(py::init<>());
+  auto ref = py::return_value_policy::reference_internal;
+
+  py::class_<Options>(m, "Options").def(py::init<>());
+
+  py::class_<MsgOptions>(m, "MsgOptions").def(py::init<>());
+
+  py::class_<GCInterface>(m, "GCInterface")
+      .def("start", &GCInterface::start)
+      .def("stop", &GCInterface::stop)
+      .def(
+          "wait",
+          &GCInterface::wait,
+          py::arg("timeout_usec") = 0,
+          ref,
+          py::call_guard<py::gil_scoped_release>())
+      .def(
+          "step",
+          &GCInterface::step,
+          py::arg("success") = comm::SUCCESS,
+          py::call_guard<py::gil_scoped_release>())
+      .def("allocateSharedMem", &GCInterface::allocateSharedMem, ref);
+
+  py::class_<GameContext, GCInterface>(m, "GameContext")
+      .def(py::init<const Options&>());
+
+  py::class_<BatchSender, GameContext>(m, "BatchSender")
+      .def(py::init<const Options&, const MsgOptions&>())
+      .def("setRemoteLabels", &BatchSender::setRemoteLabels);
+
+  py::class_<BatchReceiver, GCInterface>(m, "BatchReceiver")
+      .def(py::init<const Options&, const MsgOptions&>());
 }
 
 } // namespace
@@ -111,7 +145,7 @@ void registerPy(pybind11::module& m) {
   auto m_options = m.def_submodule("_options");
   elf::options::registerPy(m_options);
 
-  register_tree_search(m);
+  register_game(m);
 }
 
 } // namespace elf

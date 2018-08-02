@@ -10,30 +10,28 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
+#include "elf/base/game_context.h"
 #include "game_context.h"
 
 namespace elfgames {
 namespace go {
 
+elf::Options get_elf_options(const GameOptions& game_options) {
+  return game_options.base;
+}
+
 void registerPy(pybind11::module& m) {
   namespace py = pybind11;
   auto ref = py::return_value_policy::reference_internal;
 
-  py::class_<GameContext>(m, "GameContext")
-      .def(py::init<const ContextOptions&, const GameOptions&>())
-      .def("ctx", &GameContext::ctx, ref)
-      .def("getParams", &GameContext::getParams)
-      .def("getGame", &GameContext::getGame, ref)
-      .def("setRequest", &GameContext::setRequest);
+  m.def("get_elf_options", get_elf_options);
 
-  // Also register other objects.
-  PYCLASS_WITH_FIELDS(m, ContextOptions)
-      .def(py::init<>())
-      .def("print", &ContextOptions::print);
-
-  PYCLASS_WITH_FIELDS(m, GameOptions)
-      .def(py::init<>())
-      .def("info", &GameOptions::info);
+  py::class_<Client>(m, "Client")
+      .def(py::init<const GameOptionsSelfPlay&>())
+      .def("setGameContext", &Client::setGameContext)
+      .def("getParams", &Client::getParams)
+      .def("setRequest", &Client::setRequest)
+      .def("getGame", &Client::getGameC, ref);
 
   py::class_<GoGameSelfPlay>(m, "GoGameSelfPlay")
       .def("showBoard", &GoGameSelfPlay::showBoard)

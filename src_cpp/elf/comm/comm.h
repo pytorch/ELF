@@ -86,6 +86,7 @@ namespace comm {
 ///      is `moodycamel::BlockingConcurrentQueue`
 
 enum ReplyStatus { DONE_ONE_JOB = 0, SUCCESS, FAILED, UNKNOWN };
+using SuccessCallback = std::function<void ()>;
 
 template <
     typename Id,
@@ -96,10 +97,10 @@ template <
 class CommInternalT {
  public:
   using ReplyFunction = std::function<ReplyStatus()>;
-  using ClientNode = NodeT<Data, ReplyFunction, ClientQueue, ServerQueue>;
-  using ServerNode = NodeT<ReplyFunction, Data, ServerQueue, ClientQueue>;
-  using ClientToServerMsg = MsgT<Data, ReplyFunction, ClientQueue, ServerQueue>;
-  using ServerToClientMsg = MsgT<ReplyFunction, Data, ServerQueue, ClientQueue>;
+  using ClientNode = NodeT<Data, int, ReplyFunction, ClientQueue, ServerQueue>;
+  using ServerNode = NodeT<ReplyFunction, int, Data, ServerQueue, ClientQueue>;
+  using ClientToServerMsg = MsgT<Data, int, ReplyFunction, ClientQueue, ServerQueue>;
+  using ServerToClientMsg = MsgT<ReplyFunction, int, Data, ServerQueue, ClientQueue>;
   using CommInternal =
       CommInternalT<Id, Data, kExpectReply, ClientQueue, ServerQueue>;
 
@@ -109,46 +110,80 @@ class CommInternalT {
     explicit Client(CommInternal* p) : p_(p) {}
 
    protected:
+    struct _DataPair {
+      int source_idx = -1;
+      std::vector<Id> server_ids;
+      std::vector<Data> data;
+      SuccessCallback success_cb = nullptr;
+
+      void send(CommInternal* p, ClientNode *node, std::vector<ClientToServerMsg> &messages) const {
+        assert(!data.empty());
+        for (Id server_id : server_ids) {
+          ServerNode* server = p->server(server_id);
+          // LOG(INFO) <<  "Send to server " << hex
+          //           << server << dec << std::endl;
+          messages.push_back(ClientToServerMsg(node, server, data, source_idx));
+        }
+      }
+
+      void onSuccess() const {
+        if (success_cb != nullptr) success_cb();
+      }
+    };
+
     // If Comm does not see this thread id before, it will create a new record
     // for it.
     // data and reply can point to an identical object, since the previous reply
     // can be resent
     // (e.g., the action returned from the reply will be sent for training).
     ReplyStatus sendWait(Id id, const std::vector<Id>& server_ids, Data data) {
-      return sendBatchWait(id, server_ids, std::vector<Data>{data});
+      _DataPair d;
+      d.source_idx = 0;
+      d.server_ids = server_ids;
+      d.data.push_back(data);
+
+      return sendBatchesWait(id, std::vector<_DataPair>{d});
     }
 
-    ReplyStatus sendBatchWait(
-        Id id,
-        const std::vector<Id>& server_ids,
-        const std::vector<Data>& data) {
-      assert(!data.empty());
-      // Find server that could accept this task.
-      std::vector<ClientToServerMsg> messages;
-      ClientNode* node = p_->client(id);
-      for (Id server_id : server_ids) {
-        ServerNode* server = p_->server(server_id);
-        // LOG(INFO) <<  "Send to server " << hex
-        //           << server << dec << std::endl;
-        messages.push_back(ClientToServerMsg(node, server, data));
-      }
-      node->startSession(messages);
+    ReplyStatus sendBatchWait(Id id, const std::vector<Id>& server_ids, const std::vector<Data> &data) {
+      _DataPair d;
+      d.source_idx = 0;
+      d.server_ids = server_ids;
+      d.data = data;
 
+      return sendBatchesWait(id, std::vector<_DataPair>{d});
+    }
+
+    ReplyStatus sendBatchesWait(
+        Id id,
+        const std::vector<_DataPair>& chunk) {
+      // Find server that could accept this task.
+      (void)id;
+      assert(!chunk.empty());
+      std::vector<ClientToServerMsg> messages;
+      ClientNode node;
+
+      for (const auto &c : chunk) {
+        c.send(p_, &node, messages);
+      }
+
+      node.startSession(messages);
       int n = (int)messages.size();
-      // LOG(INFO) << "sendWait, n = " << std::endl;
+      // std::cout << "sendWait, n = " << n << ", expectReply: " << kExpectReply << std::endl;
 
       // Wait batchsize 1, indefinitely.
-      ReplyStatus final_status = UNKNOWN;
+      ReplyStatus final_status = SUCCESS;
       if (kExpectReply) {
-        final_status = SUCCESS;
-
         WaitOptions opt(1);
         std::vector<ServerToClientMsg> server_to_client_msgs;
 
-        while (n > 0 && node->waitSessionInvite(opt, &server_to_client_msgs)) {
+        while (n > 0 && node.waitSessionInvite(opt, &server_to_client_msgs)) {
           assert(server_to_client_msgs.size() == 1);
           assert(server_to_client_msgs[0].data.size() == 1);
           ReplyStatus res = server_to_client_msgs[0].data[0]();
+          int source_idx = server_to_client_msgs[0].info;
+          assert(source_idx >= 0 && source_idx < (int)chunk.size());
+
           switch (res) {
             case DONE_ONE_JOB:
               break;
@@ -159,13 +194,14 @@ class CommInternalT {
               break;
             case SUCCESS:
               n--;
+              chunk[source_idx].onSuccess();
               break;
           }
           server_to_client_msgs[0].from->notifySessionInvite();
         }
       }
 
-      node->waitSessionEnd();
+      node.waitSessionEnd();
       return final_status;
     }
 
@@ -204,7 +240,7 @@ class CommInternalT {
       std::vector<ServerToClientMsg> server_to_client_msgs;
       for (size_t i = 0; i < messages.size(); ++i) {
         server_to_client_msgs.push_back(
-            ServerToClientMsg(node, messages[i].from, functions[i]));
+            ServerToClientMsg(node, messages[i].from, functions[i], messages[i].info));
       }
       node->startSession(server_to_client_msgs);
       node->waitSessionEnd();
@@ -234,15 +270,6 @@ class CommInternalT {
   };
 
  private:
-  ClientNode* client(Id id) {
-    typename ClientMap::accessor elem;
-    bool uninitialized = clients_.insert(elem, id);
-    if (uninitialized) {
-      elem->second.reset(new ClientNode());
-    }
-    return elem->second.get();
-  }
-
   ServerNode* server(Id id) {
     typename ServerMap::accessor elem;
     bool uninitialized = servers_.insert(elem, id);
@@ -252,10 +279,7 @@ class CommInternalT {
     return elem->second.get();
   }
 
-  using ClientMap = tbb::concurrent_hash_map<Id, std::unique_ptr<ClientNode>>;
   using ServerMap = tbb::concurrent_hash_map<Id, std::unique_ptr<ServerNode>>;
-
-  ClientMap clients_;
   ServerMap servers_;
 };
 
@@ -337,6 +361,21 @@ class CommT : public CommInternalT<
           std::this_thread::get_id(), label2server(labels), data);
     }
 
+    ReplyStatus sendBatchesWait(
+        const std::vector<std::vector<Data>>& data,
+        const std::vector<std::string>& labels,
+        const std::vector<SuccessCallback>& callbacks) {
+      std::vector<typename CommInternal::Client::_DataPair> ds(data.size());
+      for (size_t i = 0; i < data.size(); ++i) {
+        ds[i].source_idx = (int)i;
+        ds[i].data = data[i];
+        ds[i].server_ids = label2server(labels);
+        ds[i].success_cb = callbacks[i];
+      }
+
+      return CommInternal::Client::sendBatchesWait(std::this_thread::get_id(), ds);
+    }
+
    private:
     Comm* pp_;
     std::mt19937 rng_;
@@ -347,11 +386,12 @@ class CommT : public CommInternalT<
 
       for (const auto& label : labels) {
         // [TODO] Will this one work in multithreading case?
+        // std::cout << "Request label: " << label << std::endl;
         typename ServerLabelMap::const_accessor elem;
         bool found = pp_->serverLabels_.find(elem, label);
         if (!found) {
-          std::cout << "WARNING! no servers has the label: " << label
-                    << std::endl;
+          // std::cout << "WARNING! no servers has the label: " << label
+          //          << std::endl;
         } else {
           const std::vector<Id>& ids = *(elem->second);
           // Randomly pick one of the label.

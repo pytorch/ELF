@@ -13,27 +13,34 @@
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <list>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
-#include "tree_search_base.h"
+#include "elf/concurrency/ConcurrentQueue.h"
 #include "tree_search_options.h"
 
 namespace elf {
 namespace ai {
 namespace tree_search {
 
-template <typename State, typename Action>
-class SearchTreeT;
+template <typename State, typename Action, typename Info>
+class SearchTreeStorageT;
 
 template <typename State>
 class NodeBaseT {
  public:
   enum StateType { NODE_STATE_NULL = 0, NODE_STATE_INVALID, NODE_STATE_SET };
 
-  NodeBaseT() : stateType_(NODE_STATE_NULL) {}
+  NodeBaseT() {}
+
+  // It will be called in a single thread after it is moved out of active trees. 
+  void Init() {
+    stateType_ = NODE_STATE_NULL;
+    state_.reset();
+  }
 
   const State* getStatePtr() const {
     return state_.get();
@@ -75,19 +82,24 @@ class NodeBaseT {
     }
   }
 
+  virtual ~NodeBaseT() = default;
+
  protected:
-  std::mutex lockState_;
+  mutable std::mutex lockState_;
   std::unique_ptr<State> state_;
   // TODO Poor choice of variable name - think later (ssengupta@fb)
   StateType stateType_;
 };
 
 // Tree node.
-template <typename State, typename Action>
+template <typename State, typename Action, typename Info>
 class NodeT : public NodeBaseT<State> {
  public:
-  using Node = NodeT<State, Action>;
-  using SearchTree = SearchTreeT<State, Action>;
+  using NodeBase = NodeBaseT<State>;
+  using Node = NodeT<State, Action, Info>;
+  using NodeResponse = NodeResponseT<Action, Info>;
+  using SearchTreeStorage = SearchTreeStorageT<State, Action, Info>;
+  using MCTSRes = MCTSResultT<Action>;
 
   enum VisitType {
     NOT_VISITED = 0,
@@ -95,18 +107,45 @@ class NodeT : public NodeBaseT<State> {
     VISITED,
   };
 
-  NodeT(float unsigned_parent_q)
-      : status_(NOT_VISITED),
-        numVisits_(0),
-        unsignedParentQ_(unsigned_parent_q) {
-    unsignedMeanQ_ = unsignedParentQ_;
-  }
-
+  NodeT() {}
   NodeT(const Node&) = delete;
   Node& operator=(const Node&) = delete;
 
-  const std::unordered_map<Action, EdgeInfo>& getStateActions() const {
+  void setId(NodeId id) { id_ = id; }
+
+  // It will be called in a single thread after it is moved out of active trees. 
+  // Once it is called, all the nodeIds will be returned (they are the next batch of free nodes). 
+  std::list<NodeId> Init(NodeId parent, const Action& parent_a, float unsigned_parent_q) {
+    NodeBase::Init();
+    status_ = NOT_VISITED;
+    numVisits_ = 0,
+    unsignedParentQ_ = unsigned_parent_q;
+    unsignedMeanQ_ = unsignedParentQ_;
+
+    parent_ = parent;
+    parent_a_ = parent_a;
+
+    std::list<NodeId> nodes;
+    for (const auto &p : stateActions_.pi) {
+      if (p.second.child_node != InvalidNodeId) 
+        nodes.push_back(p.second.child_node);
+    }
+    stateActions_.clear();
+
+    return nodes;
+  }
+
+  const NodeResponse& getStateActions() const {
     return stateActions_;
+  }
+
+  NodeResponse& getStateActionsMutable() {
+    return stateActions_;
+  }
+
+  MCTSRes chooseAction(typename MCTSRes::RankCriterion rc) const {
+    std::lock_guard<std::mutex> lock(lockNode_);
+    return MCTSRes(rc, stateActions_);
   }
 
   int getNumVisits() const {
@@ -114,7 +153,7 @@ class NodeT : public NodeBaseT<State> {
   }
 
   float getValue() const {
-    return V_;
+    return stateActions_.value;
   }
 
   float getMeanUnsignedQ() const {
@@ -129,31 +168,6 @@ class NodeT : public NodeBaseT<State> {
     return status_ == VISITED;
   }
 
-  void enhanceExploration(float epsilon, float alpha, std::mt19937* rng) {
-    // Note that this is not thread-safe.
-    // It should be called once and only once for each node.
-    if (epsilon == 0.0) {
-      return;
-    }
-
-    std::gamma_distribution<> dis(alpha);
-
-    // Draw distribution.
-    std::vector<float> etas(stateActions_.size());
-    float Z = 1e-10;
-    for (size_t i = 0; i < stateActions_.size(); ++i) {
-      etas[i] = dis(*rng);
-      Z += etas[i];
-    }
-
-    int i = 0;
-    for (auto& p : stateActions_) {
-      p.second.prior_probability =
-          (1 - epsilon) * p.second.prior_probability + epsilon * etas[i] / Z;
-      i++;
-    }
-  }
-
   bool requestEvaluation() {
     if (status_ != NOT_VISITED)
       return false;
@@ -166,14 +180,16 @@ class NodeT : public NodeBaseT<State> {
     return true;
   }
 
-  void waitEvaluation() {
+  uint64_t waitEvaluation() {
     // Simple busy wait here.
+    auto start = elf_utils::usec_since_epoch_from_now();
     while (status_ != VISITED) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      std::this_thread::sleep_for(std::chrono::microseconds(10));
     }
+    return elf_utils::usec_since_epoch_from_now() - start;
   }
 
-  bool setEvaluation(const NodeResponseT<Action>& resp) {
+  bool setEvaluation(NodeResponse&& resp) {
     if (status_ == VISITED)
       return false;
 
@@ -183,19 +199,7 @@ class NodeT : public NodeBaseT<State> {
       return false;
 
     // Then we need to allocate sa_val_
-    for (const std::pair<Action, float>& action_pair : resp.pi) {
-      stateActions_.insert(
-          std::make_pair(action_pair.first, EdgeInfo(action_pair.second)));
-      lockStateActions_[action_pair.first].reset(new std::mutex());
-
-      // Compute v here.
-      // Node *child = alloc[res.first->second.next];
-      // child->V_ = V_ + log(action_pair.second + 1e-6);
-    }
-
-    // value
-    V_ = resp.value;
-    flipQSign_ = resp.q_flip;
+    stateActions_ = std::move(resp);
 
     // Once sa_ is allocated, its structure won't change.
     status_ = VISITED;
@@ -213,7 +217,7 @@ class NodeT : public NodeBaseT<State> {
 
     std::lock_guard<std::mutex> lock(lockNode_);
 
-    if (stateActions_.empty()) {
+    if (stateActions_.pi.empty()) {
       return false;
     }
 
@@ -234,17 +238,13 @@ class NodeT : public NodeBaseT<State> {
     if (status_ != VISITED)
       return false;
 
-    auto it = stateActions_.find(action);
-
-    if (it == stateActions_.end()) {
+    auto it = stateActions_.pi.find(action);
+    if (it == stateActions_.pi.end()) {
       return false;
     }
 
     EdgeInfo& info = it->second;
-
-    auto lock_it = lockStateActions_.find(action);
-    assert(lock_it != lockStateActions_.end());
-    std::lock_guard<std::mutex> lock(*(lock_it->second.get()));
+    std::lock_guard<std::mutex> lockNode(lockNode_);
 
     info.virtual_loss += virtual_loss;
     return true;
@@ -254,22 +254,19 @@ class NodeT : public NodeBaseT<State> {
     if (status_ != VISITED)
       return false;
 
-    auto it = stateActions_.find(action);
-    if (it == stateActions_.end()) {
+    auto it = stateActions_.pi.find(action);
+    if (it == stateActions_.pi.end()) {
       return false;
     }
 
     EdgeInfo& edge = it->second;
+    std::lock_guard<std::mutex> lockNode(lockNode_);
 
     numVisits_++;
 
     // Async modification (we probably need to add a locker in the future, or
     // not for speed).
-
-    auto lock_it = lockStateActions_.find(action);
-    assert(lock_it != lockStateActions_.end());
-    std::lock_guard<std::mutex> lock(*(lock_it->second.get()));
-
+    //
     edge.reward += reward;
     edge.num_visits++;
     // Reduce virtual loss.
@@ -277,28 +274,36 @@ class NodeT : public NodeBaseT<State> {
     return true;
   }
 
-  NodeId followEdge(const Action& action, SearchTree& tree) {
+  NodeId followEdgeCreateIfNull(const Action& action, SearchTreeStorage& tree) {
     if (status_ != VISITED)
       return InvalidNodeId;
 
-    auto it = stateActions_.find(action);
-    if (it == stateActions_.end()) {
+    auto it = stateActions_.pi.find(action);
+    if (it == stateActions_.pi.end()) {
       return InvalidNodeId;
     }
 
     EdgeInfo& edge = it->second;
 
     if (edge.child_node == InvalidNodeId) {
-      auto lock_it = lockStateActions_.find(action);
-      assert(lock_it != lockStateActions_.end());
-      std::lock_guard<std::mutex> lock(*(lock_it->second.get()));
-
+      std::lock_guard<std::mutex> lockNode(lockNode_);
       // Need to check twice.
       if (edge.child_node == InvalidNodeId) {
-        edge.child_node = tree.addNode(unsignedMeanQ_);
+        edge.child_node = tree.allocateNode(id_, action, unsignedMeanQ_);
       }
     }
     return edge.child_node;
+  }
+
+  void detachFromParent(SearchTreeStorage& tree) {
+    // Only call if no mcts thread has used the parent anymore. 
+    if (parent_ == InvalidNodeId) return;
+    Node *r = tree[parent_];
+    
+    auto &pi = r->stateActions_.pi;
+    auto it = pi.find(parent_a_);
+    assert(it != pi.end());
+    it->second.child_node = InvalidNodeId;
   }
 
  private:
@@ -306,17 +311,19 @@ class NodeT : public NodeBaseT<State> {
   friend class NodeTest;
 
   std::atomic<VisitType> status_;
-  std::mutex lockNode_;
-  std::unordered_map<Action, EdgeInfo> stateActions_;
-  std::unordered_map<Action, std::unique_ptr<std::mutex>> lockStateActions_;
+  mutable std::mutex lockNode_;
+  NodeResponse stateActions_;
 
   std::atomic<int> numVisits_;
-  float V_ = 0.0;
   float unsignedMeanQ_ = 0.0;
 
   // TODO Poor choice of variable name - fix later (ssengupta@fb)
-  const float unsignedParentQ_;
-  bool flipQSign_ = false;
+  float unsignedParentQ_;
+
+  NodeId id_;
+
+  NodeId parent_ = InvalidNodeId;
+  Action parent_a_;
 
   struct BestAction {
     Action action_with_max_score;
@@ -363,20 +370,20 @@ class NodeT : public NodeBaseT<State> {
     BestAction best_action;
 
     if (oo) {
-      *oo << "uct prior = " << std::string(alg_opt.use_prior ? "True" : "False")
-          << ", parent_cnt: " << (numVisits_.load() + 1) << std::endl;
+      *oo << "parent_cnt: " << (numVisits_.load() + 1) << std::endl;
     }
 
-    for (const auto& action_pair : stateActions_) {
+    for (const auto& action_pair : stateActions_.pi) {
       const Action& action = action_pair.first;
       const EdgeInfo& edge = action_pair.second;
 
       // num_visits_ + 1 is sum of all visits to all other actions from
       // this node
       const int all_visits = numVisits_.load() + 1;
-      auto prior_score = edge.getScore(flipQSign_, all_visits, unsignedMeanQ_);
+      auto prior_score =
+          edge.getScore(stateActions_.q_flip, all_visits, unsignedMeanQ_);
 
-      float score = alg_opt.use_prior
+      float score = alg_opt.c_puct > 0
           ? (prior_score.prior_probability * alg_opt.c_puct + prior_score.q)
           : prior_score.q;
 
@@ -389,96 +396,62 @@ class NodeT : public NodeBaseT<State> {
       }
     }
     if (oo) {
-      *oo << "Get best action. uct prior = "
-          << std::string(alg_opt.use_prior ? "True" : "False")
-          << best_action.info() << std::endl;
+      *oo << "Get best action. " << best_action.info() << std::endl;
     }
     return best_action;
   };
 };
 
-template <typename State, typename Action>
-class SearchTreeT {
+template <typename State, typename Action, typename Info>
+class SearchTreeStorageT {
  public:
-  using Node = NodeT<State, Action>;
-  using SearchTree = SearchTreeT<State, Action>;
+  using Node = NodeT<State, Action, Info>;
+  using SearchTreeStorage = SearchTreeStorageT<State, Action, Info>;
 
-  SearchTreeT() {
-    clear();
+  SearchTreeStorageT(size_t max_num_node) 
+    : numAllocated_(0), storage_(max_num_node)  {
+     for (size_t i = 0; i < max_num_node; ++i) {
+       storage_[i].setId(i);
+       freeTreeRoots_.push_back(i);
+     }
   }
 
-  SearchTreeT(const SearchTree&) = delete;
-  SearchTree& operator=(const SearchTree&) = delete;
-
-  void clear() {
-    allocatedNodes_.clear();
-    allocatedNodeCount_ = 0;
-    rootId_ = InvalidNodeId;
-    allocateRoot();
-  }
-
-  void treeAdvance(const Action& action) {
-    NodeId next_root = InvalidNodeId;
-    Node* r = getRootNode();
-
-    for (const auto& p : r->getStateActions()) {
-      if (p.first == action) {
-        next_root = p.second.child_node;
-      } else {
-        recursiveFree(p.second.child_node);
-      }
-    }
-
-    // Free root.
-    freeNode(rootId_);
-    rootId_ = next_root;
-    allocateRoot();
-  }
-
-  Node* getRootNode() {
-    return (*this)[rootId_];
-  }
-
-  const Node* getRootNode() const {
-    return (*this)[rootId_];
-  }
+  SearchTreeStorageT(const SearchTreeStorage&) = delete;
+  SearchTreeStorage& operator=(const SearchTreeStorage&) = delete;
 
   // Low level functions.
-  NodeId addNode(float unsigned_parent_q) {
-    std::lock_guard<std::mutex> lock(allocMutex_);
-    allocatedNodes_[allocatedNodeCount_].reset(new Node(unsigned_parent_q));
-    return allocatedNodeCount_++;
+  NodeId allocateNode(NodeId parent, const Action &parent_a, float unsigned_parent_q) {
+    NodeId i = _alloc();
+
+    Node *node = getNode(i);
+    
+    _free(node->Init(parent, parent_a, unsigned_parent_q));
+    return i;
   }
 
-  void freeNode(NodeId id) {
-    allocatedNodes_.erase(id);
-  }
-
-  void recursiveFree(NodeId id) {
-    if (id == InvalidNodeId) {
+  void releaseSubTree(NodeId id, NodeId except_node_id) {
+    if (id == InvalidNodeId || id == except_node_id) {
       return;
     }
-    Node* root = (*this)[id];
-    for (const auto& p : root->getStateActions()) {
-      p.second.checkValid();
-      recursiveFree(p.second.child_node);
-    }
-    freeNode(id);
+
+    (*this)[except_node_id]->detachFromParent(*this);
+
+    std::lock_guard<std::mutex> lock(allocMutex_);
+    freeTreeRoots_.push_back(id);
+  }
+
+  std::string info() const {
+    std::stringstream ss;
+    ss << "#Allocated: " << numAllocated_ << ", #Freed: " << numFreed_;
+    return ss.str();
   }
 
   Node* operator[](NodeId i) {
-    std::lock_guard<std::mutex> lock(allocMutex_);
     return getNode(i);
   }
 
   const Node* operator[](NodeId i) const {
-    std::lock_guard<std::mutex> lock(allocMutex_);
     return getNode(i);
-  }
-
-  std::string printTree() const {
-    // [TODO]: Only called when no search is performed!
-    return printTree(0, getRootNode());
   }
 
   std::string printTree(int indent, const Node* node) const {
@@ -490,7 +463,7 @@ class SearchTreeT {
 
     int total_n = 0;
 
-    for (const auto& p : node->getStateActions()) {
+    for (const auto& p : node->getStateActions().pi) {
       if (p.second.num_visits > 0) {
         const Node* n = getNode(p.second.child_node);
         if (n->isVisited()) {
@@ -518,7 +491,7 @@ class SearchTreeT {
       ss << indent_str << "- Total visit: " << total_n << std::endl;
       // Also print out entropy
       float entropy = 0.0;
-      for (const auto& p : node->getStateActions()) {
+      for (const auto& p : node->getStateActions().pi) {
         entropy -= p.second.prior_probability *
             log(p.second.prior_probability + 1e-10);
       }
@@ -528,37 +501,129 @@ class SearchTreeT {
   }
 
  private:
-  // TODO: We might just allocate one chunk at a time.
-  std::unordered_map<NodeId, std::unique_ptr<Node>> allocatedNodes_;
-  NodeId allocatedNodeCount_;
-  NodeId rootId_;
+  std::atomic<int> numAllocated_;
+  std::atomic<int> numFreed_;
+
   mutable std::mutex allocMutex_;
 
+  // Preallocated storage. 
+  std::vector<Node> storage_;
+
+  // Free tree roots.
+  std::list<NodeId> freeTreeRoots_;
+
   const Node* getNode(NodeId i) const {
-    auto it = allocatedNodes_.find(i);
-    if (it == allocatedNodes_.end()) {
-      return nullptr;
-    } else {
-      return it->second.get();
-    }
+    if (i == InvalidNodeId) return nullptr;
+    else return &storage_[i];
   }
 
   Node* getNode(NodeId i) {
-    auto it = allocatedNodes_.find(i);
-    if (it == allocatedNodes_.end()) {
-      return nullptr;
-    } else {
-      return it->second.get();
-    }
+    if (i == InvalidNodeId) return nullptr;
+    else return &storage_[i];
   }
 
-  bool allocateRoot() {
-    if (rootId_ == InvalidNodeId) {
-      rootId_ = addNode(0.0);
-      return true;
+  NodeId _alloc() {
+    std::lock_guard<std::mutex> lock(allocMutex_);
+    if (freeTreeRoots_.empty()) {
+      throw std::runtime_error("Out of memory!!");
     }
-    return false;
+
+    NodeId i = freeTreeRoots_.back();
+    freeTreeRoots_.pop_back();
+    return i;
   }
+
+  void _free(std::list<NodeId> &&ids) {
+    std::lock_guard<std::mutex> lock(allocMutex_);
+    freeTreeRoots_.splice(freeTreeRoots_.end(), std::move(ids));
+  }
+};
+
+template <typename State, typename Action, typename Info>
+class SearchTreeT {
+ public:
+  using Node = NodeT<State, Action, Info>;
+  using SearchTree = SearchTreeT<State, Action, Info>;
+  using SearchTreeStorage = SearchTreeStorageT<State, Action, Info>;
+
+  SearchTreeT() : 
+    tree_(10000000),
+    oldRootId_(InvalidNodeId), 
+    rootId_(InvalidNodeId) {
+  }
+
+  SearchTreeT(const SearchTree&) = delete;
+  SearchTree& operator=(const SearchTree&) = delete;
+
+  SearchTreeStorage& getStorage() {
+    return tree_;
+  }
+
+  void resetTree(const State& s) {
+    NodeId root = tree_.allocateNode(InvalidNodeId, Action(), 0.0);
+    tree_[root]->setStateIfUnset([&]() { return new State(s); });
+    setNewRoot(root);
+  }
+
+  void treeAdvance(const std::vector<Action>& actions, const State& s) {
+    // Here we assume that only one thread can change rootId_ (e.g., calling
+    // setNewRoot).
+    NodeId next_root = rootId_;
+
+    Node* r = tree_[rootId_];
+    assert(r != nullptr);
+
+    for (const Action& action : actions) {
+      // It will allocate new node if that node is null.
+      // std::cout << "applying action " <<
+      // ActionTrait<Action>::to_string(action) << std::endl;
+      next_root = r->followEdgeCreateIfNull(action, tree_);
+      r = tree_[next_root];
+    }
+
+    r->setStateIfUnset([&]() { return new State(s); });
+
+    // Check.
+    if (!StateTrait<State, Action>::equals(s, *r->getStatePtr())) {
+      std::cout << "TreeSearch::Root state is not the same as the input state"
+                << std::endl;
+      throw std::range_error(
+          "TreeSearch::Root state is not the same as the input state");
+    }
+
+    setNewRoot(next_root);
+  }
+
+  Node* getRootNode() {
+    std::lock_guard<std::mutex> lock(rootMutex_);
+    return tree_[rootId_];
+  }
+
+  void setNewRoot(NodeId next_root) {
+    std::lock_guard<std::mutex> lock(rootMutex_);
+    // std::cout << "Setting new root proposal " << std::endl;
+    if (oldRootId_ == InvalidNodeId) oldRootId_ = rootId_;
+    rootId_ = next_root;
+    // std::cout << "Setting new root proposal done " << std::endl;
+  }
+
+  void deleteOldRoot() {
+    std::lock_guard<std::mutex> lock(rootMutex_);
+    tree_.releaseSubTree(oldRootId_, rootId_);
+    oldRootId_ = InvalidNodeId;
+  }
+
+  std::string printTree() const {
+    // [TODO]: Only called when no search is performed!
+    return tree_.printTree(0, tree_[rootId_]);
+  }
+
+ private:
+  SearchTreeStorage tree_;
+
+  mutable std::mutex rootMutex_;
+  NodeId oldRootId_;
+  NodeId rootId_;
 };
 
 } // namespace tree_search

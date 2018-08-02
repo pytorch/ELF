@@ -10,7 +10,7 @@
 
 #include "../common/record.h"
 #include "elf/distributed/shared_reader.h"
-#include "elf/distributed/shared_rw_buffer2.h"
+#include "elf/distributed/shared_rw_buffer3.h"
 
 struct Stats {
   std::atomic<int> client_size;
@@ -59,20 +59,14 @@ class DataOnlineLoader {
  public:
   DataOnlineLoader(const elf::shared::Options& net_options)
       : logger_(elf::logging::getLogger("DataOnlineLoader-", "")) {
-    auto curr_timestamp = time(NULL);
-    const std::string database_name =
-        "data-" + std::to_string(curr_timestamp) + ".db";
-    reader_.reset(new elf::shared::Reader(database_name, net_options));
-    std::cout << reader_->info() << std::endl;
+    server_.reset(new elf::msg::Server(net_options));
+    std::cout << server_->info() << std::endl;
   }
 
   void start(DataInterface* interface) {
     auto proc_func = [&, interface](
-                         elf::shared::Reader* reader,
                          const std::string& identity,
                          const std::string& msg) -> bool {
-      (void)reader;
-
       try {
         auto info = interface->OnReceive(identity, msg);
         stats_.feed(info);
@@ -94,12 +88,8 @@ class DataOnlineLoader {
       }
     };
 
-    auto replier_func = [&, interface](
-                            elf::shared::Reader* reader,
-                            const std::string& identity,
-                            std::string* msg) -> bool {
-      (void)reader;
-
+    auto replier_func =
+        [&, interface](const std::string& identity, std::string* msg) -> bool {
       interface->OnReply(identity, msg);
 
       if (logger_->should_log(spdlog::level::level_enum::debug)) {
@@ -107,19 +97,19 @@ class DataOnlineLoader {
             "Replier: about to send: recipient {}; msg {}; reader {}",
             identity,
             *msg,
-            reader_->info());
+            server_->info());
       }
       return true;
     };
 
-    reader_->startReceiving(
-        proc_func, replier_func, [interface]() { interface->OnStart(); });
+    server_->setCallbacks(proc_func, replier_func);
+    server_->start([interface]() { interface->OnStart(); });
   }
 
   ~DataOnlineLoader() {}
 
  private:
-  std::unique_ptr<elf::shared::Reader> reader_;
+  std::unique_ptr<elf::msg::Server> server_;
   Stats stats_;
 
   std::shared_ptr<spdlog::logger> logger_;

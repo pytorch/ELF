@@ -43,15 +43,14 @@ class ThreadedCtrl : public ThreadedCtrlBase {
       Ctrl& ctrl,
       elf::GameClient* client,
       ReplayBuffer* replay_buffer,
-      const GameOptions& options,
-      const elf::ai::tree_search::TSOptions& mcts_opt)
+      const GameOptionsTrain& options)
       : ThreadedCtrlBase(ctrl, 10000),
         replay_buffer_(replay_buffer),
         options_(options),
         client_(client),
         rng_(time(NULL)) {
-    selfplay_.reset(new SelfPlaySubCtrl(options, mcts_opt));
-    eval_.reset(new EvalSubCtrl(options, mcts_opt));
+    selfplay_.reset(new SelfPlaySubCtrl(options));
+    eval_.reset(new EvalSubCtrl(options));
     // std::cout << "Thread id: " << std::this_thread::get_id() << std::endl;
 
     ctrl_.reg();
@@ -122,7 +121,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     } else {
       eval_->addNewModelForEvaluation(selfplay_ver, new_version);
       // For offline training, we don't need to wait..
-      if (options_.mode != "offline_train") {
+      if (options_.common.mode != "offline_train") {
         waitForSufficientSelfplay(selfplay_ver);
       }
     }
@@ -190,7 +189,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
 
   bool eval_mode_ = false;
 
-  const GameOptions options_;
+  const GameOptionsTrain options_;
   elf::GameClient* client_ = nullptr;
   std::mt19937 rng_;
 
@@ -236,8 +235,7 @@ class TrainCtrl : public DataInterface {
       Ctrl& ctrl,
       int num_games,
       elf::GameClient* client,
-      const GameOptions& options,
-      const elf::ai::tree_search::TSOptions& mcts_opt)
+      const GameOptionsTrain& options)
       : ctrl_(ctrl),
         rng_(time(NULL)),
         selfplay_record_("tc_selfplay"),
@@ -251,8 +249,8 @@ class TrainCtrl : public DataInterface {
     replay_buffer_.reset(new ReplayBuffer(rq_ctrl));
     logger_->info(
         "Finished initializing replay_buffer {}", replay_buffer_->info());
-    threaded_ctrl_.reset(new ThreadedCtrl(
-        ctrl_, client, replay_buffer_.get(), options, mcts_opt));
+    threaded_ctrl_.reset(
+        new ThreadedCtrl(ctrl_, client, replay_buffer_.get(), options));
     client_mgr_.reset(new ClientManager(
         num_games,
         options.client_max_delay_sec,
@@ -275,8 +273,8 @@ class TrainCtrl : public DataInterface {
   }
 
   bool setEvalMode(int64_t new_ver, int64_t old_ver) {
-    std::cout << "Setting eval mode: new: " << new_ver << ", old: " << old_ver
-              << std::endl;
+    //std::cout << "Setting eval mode: new: " << new_ver << ", old: " << old_ver
+    //          << std::endl;
     client_mgr_->setSelfplayOnlyRatio(0.0);
     threaded_ctrl_->setEvalMode(new_ver, old_ver);
     return true;
@@ -338,8 +336,8 @@ class TrainCtrl : public DataInterface {
     ClientInfo& info = client_mgr_->getClient(identity);
 
     if (info.justAllocated()) {
-      std::cout << "New allocated: " << identity << ", " << client_mgr_->info()
-                << std::endl;
+      //std::cout << "New allocated: " << identity << ", " << client_mgr_->info()
+      //          << std::endl;
     }
 
     MsgRequestSeq request;

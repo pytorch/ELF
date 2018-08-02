@@ -9,6 +9,7 @@
 #pragma once
 
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -285,8 +286,18 @@ class AnyP {
     int res = 0;
     int i = 0;
     for (int idx : l) {
-      assert(i < (int)f_.getSize().size());
-      assert(idx >= 0 && idx < f_.getSize()[i]);
+      if (i >= (int)f_.getSize().size()) {
+        std::cout << "i >= #dim: " << i << ">= " 
+          << f_.getSize().size() << std::endl;
+        assert(false);
+      }
+      if (idx < 0 || idx >= f_.getSize()[i]) {
+        std::cout << "idx >= size() at dim " << i << ": " 
+          << idx << " not in [0," 
+          << f_.getSize()[i] << ")" << std::endl;
+        assert(false);
+      }
+
       res += idx * stride_[i];
       i++;
     }
@@ -295,6 +306,11 @@ class AnyP {
 
   const FuncMapBase& field() const {
     return f_;
+  }
+
+  size_t getByteSize() const {
+    assert(!stride_.vec().empty());
+    return stride_[0] * f_.getBatchSize();
   }
 
   void setAddress(uint64_t p, const std::vector<int>& stride) {
@@ -336,6 +352,16 @@ class AnyP {
     return ss.str();
   }
 
+  const Size& getStride() const {
+    return stride_;
+  }
+  unsigned char* getPtr() {
+    return p_;
+  }
+  const unsigned char* getPtr() const {
+    return p_;
+  }
+
  private:
   const FuncMapBase& f_;
   Size stride_;
@@ -358,7 +384,7 @@ class AnyP {
   }
 };
 
-class SharedMem;
+class SharedMemData;
 
 template <bool use_const>
 class FuncsWithStateT {
@@ -371,8 +397,8 @@ class FuncsWithStateT {
 
   using AnyP_t = typename std::conditional<use_const, AnyP, const AnyP>::type&;
   using Func = std::function<void(AnyP_t, int batch_idx)>;
-  using SharedMem_t =
-      typename std::conditional<use_const, SharedMem, const SharedMem>::type&;
+  using SharedMemData_t = typename std::
+      conditional<use_const, SharedMemData, const SharedMemData>::type&;
 
   FuncsWithStateT() {}
 
@@ -398,7 +424,7 @@ class FuncsWithStateT {
     }
 #endif
 
-  void transfer(int batch_idx, SharedMem_t smem) const;
+  void transfer(int batch_idx, SharedMemData_t smem) const;
 
 #if 0
     Func getFunction(const std::string &key) const {
@@ -555,7 +581,7 @@ class Extractor {
       auto it = fields_.find(k);
       if (it == fields_.end()) {
         // TODO: This should be Google log (ssengupta@fb)
-        std::cout << "Warning! key[" << k << "] is missing!" << std::endl;
+        //std::cout << "Warning! key[" << k << "] is missing!" << std::endl;
       } else {
         pointers.emplace(k, AnyP(*it->second));
       }

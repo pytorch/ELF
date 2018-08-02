@@ -106,10 +106,14 @@ class Evaluator(object):
             self.stats.feed_batch(batch)
 
         if "rv" in self.keys_in_reply:
-            reply_msg["rv"] = self.mi[self.actor_name].step
+            step = self.mi[self.actor_name].step
+            reply_msg["rv"] = [step] * batch.batchsize
 
         if "V" in self.keys_in_reply:
             reply_msg["V"] = state_curr["V"].data
+
+        if "hash" in self.keys_in_reply and "hash" in batch:
+            reply_msg["rhash"] = batch["hash"].data
 
         self.actor_count += 1
         return reply_msg

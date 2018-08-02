@@ -36,6 +36,9 @@ struct Options {
   int port = 5556;
   bool use_ipv6 = true;
   bool verbose = false;
+  int64_t usec_resend_when_no_msg = -1;
+  // 10s
+  int64_t usec_sleep_when_no_msg = 10000000;
   std::string identity;
 
   std::string info() const {
@@ -46,7 +49,9 @@ struct Options {
     } else {
       ss << "Connect to " << addr << ":" << port;
     }
-    ss << ", ipv6: " << elf_utils::print_bool(use_ipv6)
+    ss << "usec_sleep_when_no_msg: " << usec_sleep_when_no_msg
+       << " usec, usec_resend_when_no_msg: " << usec_resend_when_no_msg
+       << ", ipv6: " << elf_utils::print_bool(use_ipv6)
        << ", verbose: " << elf_utils::print_bool(verbose);
     return ss.str();
   }
@@ -129,105 +134,6 @@ class Writer {
     }
     delete[] hostname;
     return ss.str();
-  }
-};
-
-class Reader {
- public:
-  using ProcessFunc = std::function<
-      bool(Reader*, const std::string& identity, const std::string& recv_msg)>;
-
-  using ReplyFunc = std::function<
-      bool(Reader*, const std::string& identity, std::string* reply_msg)>;
-
-  using StartFunc = std::function<void()>;
-
-  Reader(const std::string& filename, const Options& opt)
-      : receiver_(opt.port, opt.use_ipv6),
-        options_(opt),
-        db_name_(filename),
-        rng_(time(NULL)),
-        done_(false) {}
-
-  void startReceiving(
-      ProcessFunc proc_func,
-      ReplyFunc replier = nullptr,
-      StartFunc start_func = nullptr) {
-    receiver_thread_.reset(new std::thread(
-        [=](Reader* reader) {
-          if (start_func != nullptr)
-            start_func();
-          reader->threaded_receive_msg(proc_func, replier);
-        },
-        this));
-  }
-
-  std::string info() const {
-    std::stringstream ss;
-    ss << "ZMQVer: " << elf::distri::s_version() << " Reader[db=" << db_name_
-       << "] " << options_.info();
-    return ss.str();
-  }
-
-  ~Reader() {
-    std::cout << "Destroying Reader ... " << std::endl;
-    done_ = true;
-    receiver_thread_->join();
-
-    std::cout << "Reader destroyed... " << std::endl;
-  }
-
- private:
-  elf::distri::ZMQReceiver receiver_;
-  std::unique_ptr<std::thread> receiver_thread_;
-  Options options_;
-  std::string db_name_;
-  std::mt19937 rng_;
-
-  std::atomic_bool done_;
-  int client_size_ = 0;
-  int num_package_ = 0, num_failed_ = 0, num_skipped_ = 0;
-
-  void threaded_receive_msg(
-      ProcessFunc proc_func,
-      ReplyFunc replier = nullptr) {
-    std::string identity, title, msg;
-    while (!done_.load()) {
-      if (!receiver_.recv_noblock(&identity, &title, &msg)) {
-        std::cout << elf_utils::now()
-                  << ", Reader: no message, Stats: " << num_package_ << "/"
-                  << num_failed_ << "/" << num_skipped_
-                  << ", wait for 10 sec ... " << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(10));
-        continue;
-      }
-
-      if (title == "ctrl") {
-        client_size_++;
-        std::cout << elf_utils::now() << " Ctrl from " << identity << "["
-                  << client_size_ << "]: " << msg << std::endl;
-        // receiver_.send(identity, "ctrl", "");
-      } else if (title == "content") {
-        if (!proc_func(this, identity, msg)) {
-          std::cout << "Msg processing error! from " << identity << std::endl;
-          num_failed_++;
-        } else {
-          num_package_++;
-        }
-      } else {
-        std::cout << elf_utils::now() << " Skipping unknown title: \"" << title
-                  << "\", identity: \"" << identity << "\"" << std::endl;
-        num_skipped_++;
-      }
-
-      // Send reply if there is any.
-      if (replier != nullptr) {
-        std::string reply;
-        if (replier(this, identity, &reply)) {
-          receiver_.send(identity, "reply", reply);
-        }
-      }
-    }
   }
 };
 

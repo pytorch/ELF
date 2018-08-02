@@ -14,15 +14,13 @@
 ////////////////// GoGame /////////////////////
 GoGameSelfPlay::GoGameSelfPlay(
     int game_idx,
-    elf::GameClient* client,
-    const ContextOptions& context_options,
-    const GameOptions& options,
+    const GameOptionsSelfPlay& options,
     ThreadedDispatcher* dispatcher,
-    GameNotifierBase* notifier)
-    : GoGameBase(game_idx, client, context_options, options),
-      dispatcher_(dispatcher),
+    GameNotifier* notifier)
+    : dispatcher_(dispatcher),
       notifier_(notifier),
       _state_ext(game_idx, options),
+      options_(options),
       logger_(elf::logging::getLogger(
           "elfgames::go::GoGameSelfPlay-" + std::to_string(game_idx) + "-",
           "")) {}
@@ -34,20 +32,29 @@ MCTSGoAI* GoGameSelfPlay::init_ai(
     int mcts_rollout_per_batch_override,
     int mcts_rollout_per_thread_override,
     int64_t model_ver) {
-  logger_->info(
-      "Initializing actor {}; puct_override: {}; batch_override: {}; "
-      "per_thread_override: {}",
-      actor_name,
-      puct_override,
-      mcts_rollout_per_batch_override,
-      mcts_rollout_per_thread_override);
+  //logger_->info(
+  //    "Initializing actor {}; puct_override: {}; batch_override: {}; "
+  //    "per_thread_override: {}",
+  //    actor_name,
+  //    puct_override,
+  //    mcts_rollout_per_batch_override,
+  //    mcts_rollout_per_thread_override);
 
   MCTSActorParams params;
   params.actor_name = actor_name;
-  params.seed = _rng();
-  params.ply_pass_enabled = _options.ply_pass_enabled;
-  params.komi = _options.komi;
+  params.seed = base_->rng()();
+  params.ply_pass_enabled = options_.ply_pass_enabled;
+  params.komi = options_.common.komi;
   params.required_version = model_ver;
+
+  size_t batchsize = options_.common.base.batchsize;
+
+  assert((size_t)mcts_options.num_rollout_per_batch % batchsize == 0);
+  params.sub_batchsize = batchsize; 
+  if (batchsize < (size_t)mcts_options.num_rollout_per_batch) {
+    logger_->warn(
+        "Use sub_batchsize: {} / {}", batchsize, mcts_options.num_rollout_per_batch);
+  }
 
   elf::ai::tree_search::TSOptions opt = mcts_options;
   if (puct_override > 0.0) {
@@ -58,33 +65,35 @@ MCTSGoAI* GoGameSelfPlay::init_ai(
   if (mcts_rollout_per_batch_override > 0) {
     logger_->warn(
         "Batch size overridden: {} -> {}",
-        opt.num_rollouts_per_batch,
+        opt.num_rollout_per_batch,
         mcts_rollout_per_batch_override);
-    opt.num_rollouts_per_batch = mcts_rollout_per_batch_override;
+    opt.num_rollout_per_batch = mcts_rollout_per_batch_override;
   }
   if (mcts_rollout_per_thread_override > 0) {
     logger_->warn(
         "Rollouts per thread overridden: {} -> {}",
-        opt.num_rollouts_per_thread,
+        opt.num_rollout_per_thread,
         mcts_rollout_per_thread_override);
-    opt.num_rollouts_per_thread = mcts_rollout_per_thread_override;
+    opt.num_rollout_per_thread = mcts_rollout_per_thread_override;
   }
   if (opt.verbose) {
-    opt.log_prefix = "ts-game" + std::to_string(_game_idx) + "-mcts";
+    opt.log_prefix =
+        "ts-game" + std::to_string(base_->options().game_idx) + "-mcts";
     logger_->warn("Log prefix {}", opt.log_prefix);
   }
 
-  return new MCTSGoAI(opt, [&](int) { return new MCTSActor(client_, params); });
+  return new MCTSGoAI(
+      opt, [&](int) { return new MCTSActor(base_->ctx().client, params); });
 }
 
 Coord GoGameSelfPlay::mcts_make_diverse_move(MCTSGoAI* mcts_go_ai, Coord c) {
   auto policy = mcts_go_ai->getMCTSPolicy();
 
   bool diverse_policy =
-      _state_ext.state().getPly() <= _options.policy_distri_cutoff;
+      _state_ext.state().getPly() <= options_.policy_distri_cutoff;
   if (diverse_policy) {
     // Sample from the policy.
-    c = policy.sampleAction(&_rng);
+    c = policy.sampleAction(&base_->rng());
     /*
     if (show_board) {
         cout << "Move changed to [" << c << "][" << coord2str(c) << "][" <<
@@ -92,7 +101,7 @@ Coord GoGameSelfPlay::mcts_make_diverse_move(MCTSGoAI* mcts_go_ai, Coord c) {
     }
     */
   }
-  if (_options.policy_distri_training_for_all || diverse_policy) {
+  if (options_.policy_distri_training_for_all || diverse_policy) {
     // [TODO]: Warning: MCTS Policy might not correspond to move idx.
     _state_ext.addMCTSPolicy(policy);
   }
@@ -105,7 +114,7 @@ Coord GoGameSelfPlay::mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c) {
 
   _state_ext.addPredictedValue(predicted_value);
 
-  if (!_options.dump_record_prefix.empty()) {
+  if (!options_.dump_record_prefix.empty()) {
     _state_ext.saveCurrentTree(mcts_go_ai->getCurrentTree());
   }
 
@@ -114,7 +123,7 @@ Coord GoGameSelfPlay::mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c) {
       : ((getScore() < 0) && (predicted_value < -0.9));
   // If the opponent wants pass, and we are in good, we follow.
   if (_human_player != nullptr && we_are_good &&
-      _state_ext.state().lastMove() == M_PASS && _options.following_pass)
+      _state_ext.state().lastMove() == M_PASS && options_.following_pass)
     c = M_PASS;
 
   // Check the ranking of selected move.
@@ -126,27 +135,27 @@ Coord GoGameSelfPlay::mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c) {
 
 void GoGameSelfPlay::finish_game(FinishReason reason) {
   if (!_state_ext.currRequest().vers.is_selfplay() &&
-      _options.cheat_eval_new_model_wins_half) {
+      options_.cheat_eval_new_model_wins_half) {
     reason = FR_CHEAT_NEWER_WINS_HALF;
   }
   if (_state_ext.currRequest().vers.is_selfplay() &&
-      _options.cheat_selfplay_random_result) {
+      options_.cheat_selfplay_random_result) {
     reason = FR_CHEAT_SELFPLAY_RANDOM_RESULT;
   }
 
-  _state_ext.setFinalValue(reason, &_rng);
-  _state_ext.showFinishInfo(reason);
+  _state_ext.setFinalValue(reason, &base_->rng());
+  //_state_ext.showFinishInfo(reason);
 
-  if (!_options.dump_record_prefix.empty()) {
+  if (!options_.dump_record_prefix.empty()) {
     _state_ext.dumpSgf();
   }
 
-  if (_options.print_result) {
-    // lock_guard<mutex> lock(_mutex);
-    // cout << endl << (final_value > 0 ? "Black" : "White") << " win. Ply: " <<
-    // _state.getPly() << ", Value: " << final_value << ", Predicted: " <<
-    // predicted_value << endl;
-  }
+  // if (options_.print_result) {
+  // lock_guard<mutex> lock(_mutex);
+  // cout << endl << (final_value > 0 ? "Black" : "White") << " win. Ply: " <<
+  // _state.getPly() << ", Value: " << final_value << ", Predicted: " <<
+  // predicted_value << endl;
+  // }
 
   // reset tree if MCTS_AI, otherwise just do nothing
   _ai->endGame(_state_ext.state());
@@ -157,6 +166,7 @@ void GoGameSelfPlay::finish_game(FinishReason reason) {
   if (notifier_ != nullptr) {
     notifier_->OnGameEnd(_state_ext);
   }
+
   // clear state, MCTS polices et.al.
   _state_ext.restart();
 }
@@ -175,7 +185,7 @@ void GoGameSelfPlay::restart() {
 
   _ai.reset(nullptr);
   _ai2.reset(nullptr);
-  if (_options.mode == "selfplay") {
+  if (options_.common.mode == "selfplay") {
     _ai.reset(init_ai(
         "actor_black",
         request.vers.mcts_opt,
@@ -196,7 +206,7 @@ void GoGameSelfPlay::restart() {
       // Swap the two pointer.
       swap(_ai, _ai2);
     }
-  } else if (_options.mode == "online") {
+  } else if (options_.common.mode == "online") {
     _ai.reset(init_ai(
         "actor_black",
         request.vers.mcts_opt,
@@ -204,20 +214,20 @@ void GoGameSelfPlay::restart() {
         -1,
         -1,
         request.vers.black_ver));
-    _human_player.reset(new AI(client_, {"human_actor"}));
+    _human_player.reset(new HumanPlayer(base_->ctx().client, {"human_actor"}));
   } else {
-    logger_->critical("Unknown mode! {}", _options.mode);
+    logger_->critical("Unknown mode! {}", options_.common.mode);
     throw std::range_error("Unknown mode");
   }
 
   _state_ext.restart();
 
-  if (!_options.preload_sgf.empty()) {
+  if (!options_.preload_sgf.empty()) {
     // Load an SGF file and follow this sgf while playing.
-    _preload_sgf.load(_options.preload_sgf);
+    _preload_sgf.load(options_.preload_sgf);
     _sgf_iter = _preload_sgf.begin();
     int i = 0;
-    while (!_sgf_iter.done() && i < _options.preload_sgf_move_to) {
+    while (!_sgf_iter.done() && i < options_.preload_sgf_move_to) {
       auto curr = _sgf_iter.getCurrMove();
       if (!_state_ext.forward(curr.move)) {
         logger_->critical(
@@ -239,7 +249,7 @@ bool GoGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* reply) {
   bool is_waiting = request.vers.wait();
   bool is_prev_waiting = _state_ext.currRequest().vers.wait();
 
-  if (_options.verbose && !(is_waiting && is_prev_waiting)) {
+  if (options_.common.base.verbose && !(is_waiting && is_prev_waiting)) {
     logger_->debug(
         "Receive request: {}, old: {}",
         (!is_waiting ? request.info() : "[wait]"),
@@ -282,7 +292,10 @@ bool GoGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* reply) {
   }
 }
 
-void GoGameSelfPlay::act() {
+void GoGameSelfPlay::OnAct(elf::game::Base* base) {
+  elf::GameClient* client = base->ctx().client;
+  base_ = base;
+
   if (_online_counter % 5 == 0) {
     using std::placeholders::_1;
     using std::placeholders::_2;
@@ -294,18 +307,23 @@ void GoGameSelfPlay::act() {
 
     // Check request every 5 times.
     // Update current state.
+    // std::cout << "Thread[" << _game_idx << ",ply:" <<
+    // _state_ext.state().getPly()
+    // << "] state updating: " << _state_ext.getThreadState().info() <<
+    // std::endl;
     if (notifier_ != nullptr) {
-      // std::cout << "Thread[" << _game_idx << ",ply:" <<
-      // _state_ext.state().getPly()
-      // << "] state updating: " << _state_ext.getThreadState().info() <<
-      // std::endl;
       notifier_->OnStateUpdate(_state_ext.getThreadState());
     }
   }
   _online_counter++;
 
-  bool show_board = (_options.verbose && _context_options.num_games == 1);
+  bool show_board =
+      (options_.common.base.verbose &&
+       options_.common.base.num_game_thread == 1);
   const GoState& s = _state_ext.state();
+  Stone player = s.nextPlayer();
+  MCTSGoAI* curr_ai =
+      ((_ai2 != nullptr && player == S_WHITE) ? _ai2.get() : _ai.get());
 
   if (_human_player != nullptr) {
     do {
@@ -314,9 +332,12 @@ void GoGameSelfPlay::act() {
         return;
       }
 
-      BoardFeature bf(s);
-      GoReply reply(bf);
-      _human_player->act(bf, &reply);
+      GoHumanInfo info;
+      GoHumanReply reply;
+      curr_ai->align_state(s);
+      _human_player->act(info, &reply);
+      curr_ai->setTimeLimit(reply.msec_ts_recv_cmd, reply.msec_time_left, reply.byoyomi);
+
       // skip the current move, and ask the ai to move.
       if (reply.c == M_SKIP)
         break;
@@ -344,29 +365,29 @@ void GoGameSelfPlay::act() {
           X(reply.c),
           Y(reply.c),
           coord2str(reply.c));
-    } while (!client_->checkPrepareToStop());
+    } while (!client->checkPrepareToStop());
   } else {
     // If re receive this, then we should not send games anymore
     // (otherwise the process never stops)
-    if (client_->checkPrepareToStop()) {
+    if (client->checkPrepareToStop()) {
       // [TODO] A lot of hack here. We need to fix it later.
-      AI ai(client_, {"actor_black"});
+      AI ai(client, {"actor_black"});
       BoardFeature bf(s);
       GoReply reply(bf);
       ai.act(bf, &reply);
 
-      if (client_->DoStopGames())
+      if (client->DoStopGames())
         return;
 
-      AI ai_white(client_, {"actor_white"});
+      AI ai_white(client, {"actor_white"});
       ai_white.act(bf, &reply);
 
-      elf::FuncsWithState funcs = client_->BindStateToFunctions(
+      elf::FuncsWithState funcs = client->BindStateToFunctions(
           {"game_start"}, &_state_ext.currRequest().vers);
-      client_->sendWait({"game_start"}, &funcs);
+      client->sendWait({"game_start"}, &funcs);
 
-      funcs = client_->BindStateToFunctions({"game_end"}, &_state_ext.state());
-      client_->sendWait({"game_end"}, &funcs);
+      funcs = client->BindStateToFunctions({"game_end"}, &_state_ext.state());
+      client->sendWait({"game_end"}, &funcs);
 
       logger_->info("Received command to prepare to stop");
       std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -374,14 +395,11 @@ void GoGameSelfPlay::act() {
     }
   }
 
-  Stone player = s.nextPlayer();
   bool use_policy_network_only =
-      (player == S_WHITE && _options.white_use_policy_network_only) ||
-      (player == S_BLACK && _options.black_use_policy_network_only);
+      (player == S_WHITE && options_.white_use_policy_network_only) ||
+      (player == S_BLACK && options_.black_use_policy_network_only);
 
   Coord c = M_INVALID;
-  MCTSGoAI* curr_ai =
-      ((_ai2 != nullptr && player == S_WHITE) ? _ai2.get() : _ai.get());
 
   if (use_policy_network_only) {
     // Then we only use policy network to move.
@@ -394,14 +412,14 @@ void GoGameSelfPlay::act() {
   c = mcts_update_info(curr_ai, c);
 
   if (show_board) {
-    logger_->info(
-        "Current board:\n{}\n[{}] Propose move {}\n",
-        s.showBoard(),
-        s.getPly(),
-        elf::ai::tree_search::ActionTrait<Coord>::to_string(c));
+    //logger_->info(
+    //    "Current board:\n{}\n[{}] Propose move {}\n",
+    //    s.showBoard(),
+    //    s.getPly(),
+    //    elf::ai::tree_search::ActionTrait<Coord>::to_string(c));
   }
 
-  const bool shouldResign = _state_ext.shouldResign(&_rng);
+  const bool shouldResign = _state_ext.shouldResign(&base_->rng());
   if (shouldResign && s.getPly() >= 50) {
     finish_game(FR_RESIGN);
     return;
@@ -441,7 +459,7 @@ void GoGameSelfPlay::act() {
     finish_game(reason);
   }
 
-  if (_options.move_cutoff > 0 && s.getPly() >= _options.move_cutoff) {
+  if (options_.move_cutoff > 0 && s.getPly() >= options_.move_cutoff) {
     finish_game(FR_MAX_STEP);
   }
 }

@@ -6,46 +6,59 @@
 #include <memory>
 #include <vector>
 
-#include "distri_base.h"
-
+#include "../base/board_feature.h"
+#include "../common/game_feature.h"
 #include "../common/record.h"
 #include "data_loader.h"
-#include "elf/base/context.h"
-#include "elf/legacy/python_options_utils_cpp.h"
+#include "elf/base/game_context.h"
+#include "elf/distributed/addrs.h"
 #include "elf/logging/IndexedLoggerFactory.h"
 #include "game_ctrl.h"
+#include "game_train.h"
 
 #include <thread>
 
 class Server {
  public:
-  Server(
-      const ContextOptions& contextOptions,
-      const GameOptions& options,
-      elf::GameClient* client)
-      : contextOptions_(contextOptions),
-        options_(options),
-        logger_(elf::logging::getLogger("Server-", "")) {
-    auto netOptions = getNetOptions(contextOptions_, options_);
+  Server(const GameOptionsTrain& options)
+      : options_(options),
+        goFeature_(options.common.use_df_feature, options.num_future_actions),
+        logger_(elf::logging::getLogger("Server-", "")) {}
 
-    trainCtrl_.reset(new TrainCtrl(
-        ctrl_,
-        contextOptions_.num_games,
-        client,
-        options,
-        contextOptions_.mcts_options));
+  void setGameContext(elf::GameContext* ctx) {
+    goFeature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
 
-    if (options_.mode == "train") {
+    size_t num_games = ctx->options().num_game_thread;
+    trainCtrl_.reset(
+        new TrainCtrl(ctx->getCtrl(), num_games, ctx->getClient(), options_));
+
+    using std::placeholders::_1;
+
+    for (size_t i = 0; i < num_games; ++i) {
+      auto* g = ctx->getGame(i);
+      if (g != nullptr) {
+        games_.emplace_back(
+            new GoGameTrain(i, options_, trainCtrl_->getReplayBuffer()));
+        g->setCallbacks(std::bind(&GoGameTrain::OnAct, games_[i].get(), _1));
+      }
+    }
+
+    ctx->getCollectorContext()->setCBAfterGameStart(
+        [this]() { loadOfflineSelfplayData(); });
+
+    if (options_.common.mode == "train") {
+      auto netOptions =
+          elf::msg::getNetOptions(options_.common.base, options_.common.net);
+      // 10s
+      netOptions.usec_sleep_when_no_msg = 10000000;
+      netOptions.usec_resend_when_no_msg = -1;
       onlineLoader_.reset(new DataOnlineLoader(netOptions));
       onlineLoader_->start(trainCtrl_.get());
-    } else if (options_.mode == "offline_train") {
+    } else if (options_.common.mode == "offline_train") {
     } else {
-      throw std::range_error("options.mode not recognized! " + options_.mode);
+      throw std::range_error(
+          "options.mode not recognized! " + options_.common.mode);
     }
-  }
-
-  ReplayBuffer* getReplayBuffer() {
-    return trainCtrl_->getReplayBuffer();
   }
 
   void waitForSufficientSelfplay(int64_t selfplay_ver) {
@@ -66,22 +79,38 @@ class Server {
     trainCtrl_->setEvalMode(new_ver, old_ver);
   }
 
+  std::map<std::string, int> getParams() const {
+    return goFeature_.getParams();
+  }
+
   ~Server() {
     trainCtrl_.reset(nullptr);
     onlineLoader_.reset(nullptr);
   }
 
+ private:
+  std::vector<std::unique_ptr<GoGameTrain>> games_;
+  std::unique_ptr<TrainCtrl> trainCtrl_;
+  std::unique_ptr<DataOnlineLoader> onlineLoader_;
+
+  const GameOptionsTrain options_;
+
+  GoFeature goFeature_;
+
+  std::shared_ptr<spdlog::logger> logger_;
+
   void loadOfflineSelfplayData() {
-    if (options_.list_files.empty())
+    const auto& list_files = options_.list_files;
+
+    if (list_files.empty())
       return;
 
     std::atomic<int> count(0);
     const size_t numThreads = 16;
 
-    auto thread_main = [this, &count](size_t idx) {
-      for (size_t k = 0; k * numThreads + idx < options_.list_files.size();
-           ++k) {
-        const std::string& f = options_.list_files[k * numThreads + idx];
+    auto thread_main = [this, &count, &list_files](size_t idx) {
+      for (size_t k = 0; k * numThreads + idx < list_files.size(); ++k) {
+        const std::string& f = list_files[k * numThreads + idx];
         logger_->info("Loading offline data, reading file {}", f);
 
         std::string content;
@@ -89,7 +118,8 @@ class Server {
           logger_->error("Offline data loader: error reading {}", f);
           return;
         }
-        trainCtrl_->OnReceive("", content);
+        elf::shared::InsertInfo info = trainCtrl_->OnReceive("", content);
+        count += info.n;
       }
     };
 
@@ -106,18 +136,7 @@ class Server {
         "All offline data is loaded. Read {} records from {} files. Reader "
         "info {}",
         count,
-        options_.list_files.size(),
+        list_files.size(),
         trainCtrl_->getReplayBuffer()->info());
   }
-
- private:
-  Ctrl ctrl_;
-
-  std::unique_ptr<TrainCtrl> trainCtrl_;
-  std::unique_ptr<DataOnlineLoader> onlineLoader_;
-
-  const ContextOptions contextOptions_;
-  const GameOptions options_;
-
-  std::shared_ptr<spdlog::logger> logger_;
 };

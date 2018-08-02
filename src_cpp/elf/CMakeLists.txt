@@ -32,6 +32,7 @@ target_link_libraries(elf PUBLIC
     concurrentqueue
     nlohmann_json
     pybind11
+    cppzmq
     $<BUILD_INTERFACE:${PYTHON_LIBRARIES}>
     spdlog
     ${TBB_IMPORTED_TARGETS}

@@ -13,29 +13,30 @@
 #include <string>
 
 #include "elf/base/dispatcher.h"
-#include "elf/legacy/python_options_utils_cpp.h"
+#include "elf/base/game_base.h"
 #include "elf/logging/IndexedLoggerFactory.h"
 
 #include "../mcts/mcts.h"
 #include "../sgf/sgf.h"
-#include "game_base.h"
 #include "game_feature.h"
 #include "game_stats.h"
 #include "notifier.h"
 
 // Game interface for Go.
-class GoGameSelfPlay : public GoGameBase {
+class GoGameSelfPlay {
  public:
   using ThreadedDispatcher = elf::ThreadedDispatcherT<MsgRequest, RestartReply>;
   GoGameSelfPlay(
       int game_idx,
-      elf::GameClient* client,
-      const ContextOptions& context_options,
-      const GameOptions& options,
+      const GameOptionsSelfPlay& options,
       ThreadedDispatcher* dispatcher,
-      GameNotifierBase* notifier = nullptr);
+      GameNotifier* notifier = nullptr);
 
-  void act() override;
+  void OnAct(elf::game::Base* base);
+  void OnEnd(elf::game::Base*) {
+    _ai.reset(nullptr);
+    _ai2.reset(nullptr);
+  }
   bool OnReceive(const MsgRequest& request, RestartReply* reply);
 
   std::string showBoard() const {
@@ -48,7 +49,7 @@ class GoGameSelfPlay : public GoGameBase {
     return coord2str2(_state_ext.lastMove());
   }
   float getScore() {
-    return _state_ext.state().evaluate(_options.komi);
+    return _state_ext.state().evaluate(options_.common.komi);
   }
 
   float getLastScore() const {
@@ -72,18 +73,22 @@ class GoGameSelfPlay : public GoGameBase {
 
  private:
   ThreadedDispatcher* dispatcher_ = nullptr;
-  GameNotifierBase* notifier_ = nullptr;
+  GameNotifier* notifier_ = nullptr;
   GoStateExt _state_ext;
-
   Sgf _preload_sgf;
   Sgf::iterator _sgf_iter;
 
   int _online_counter = 0;
 
+  // used to communicate info.
+  elf::game::Base* base_ = nullptr;
+
+  const GameOptionsSelfPlay options_;
+
   std::unique_ptr<MCTSGoAI> _ai;
   // Opponent ai (used for selfplay evaluation)
   std::unique_ptr<MCTSGoAI> _ai2;
-  std::unique_ptr<AI> _human_player;
+  std::unique_ptr<HumanPlayer> _human_player;
 
   std::shared_ptr<spdlog::logger> logger_;
 };

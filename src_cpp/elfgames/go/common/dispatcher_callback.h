@@ -12,8 +12,12 @@ class DispatcherCallback {
  public:
   DispatcherCallback(ThreadedDispatcher* dispatcher, elf::GameClient* client)
       : client_(client) {
+    assert(client_ != nullptr);
+
     using std::placeholders::_1;
     using std::placeholders::_2;
+
+    //std::cout << "About to start Dispatcher" << std::endl;
 
     dispatcher->Start(
         std::bind(&DispatcherCallback::OnReply, this, _1, _2),
@@ -21,12 +25,14 @@ class DispatcherCallback {
   }
 
   void OnFirstSend(const Addr& addr, MsgRequest* request) {
+    assert(request != nullptr);
+
     const size_t thread_idx = stoi(addr.label.substr(5));
     if (thread_idx == 0) {
       // Actionable request
-      std::cout << elf_utils::now()
-                << ", EvalCtrl get new request: " << request->info()
-                << std::endl;
+      //std::cout << elf_utils::now()
+      //          << ", EvalCtrl get new request: " << request->info()
+      //          << std::endl;
     }
 
     int thread_used = request->client_ctrl.num_game_thread_used;
@@ -41,6 +47,7 @@ class DispatcherCallback {
   std::vector<bool> OnReply(
       const std::vector<MsgRequest>& requests,
       std::vector<RestartReply>* p_replies) {
+    assert(p_replies != nullptr);
     auto& replies = *p_replies;
 
     const MsgRequest* request = nullptr;
@@ -71,10 +78,10 @@ class DispatcherCallback {
 
     if (request != nullptr) {
       // Once it is done, send to Python side.
-      std::cout << elf_utils::now() << " Get actionable request: black_ver = "
-                << request->vers.black_ver
-                << ", white_ver = " << request->vers.white_ver
-                << ", #addrs_to_reply: " << n << std::endl;
+      //std::cout << elf_utils::now() << " Get actionable request: black_ver = "
+      //          << request->vers.black_ver
+      //          << ", white_ver = " << request->vers.white_ver
+      //          << ", #addrs_to_reply: " << n << std::endl;
       elf::FuncsWithState funcs =
           client_->BindStateToFunctions({start_target_}, &request->vers);
       client_->sendWait({start_target_}, &funcs);

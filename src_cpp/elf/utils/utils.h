@@ -47,6 +47,20 @@ inline uint64_t sec_since_epoch_from_now() {
       .count();
 }
 
+inline uint64_t msec_since_epoch_from_now() {
+  auto now = std::chrono::system_clock::now();
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             now.time_since_epoch())
+      .count();
+}
+
+inline uint64_t usec_since_epoch_from_now() {
+  auto now = std::chrono::system_clock::now();
+  return std::chrono::duration_cast<std::chrono::microseconds>(
+             now.time_since_epoch())
+      .count();
+}
+
 inline uint64_t get_seed(int game_idx) {
   // [TODO] Definitely not the right way, but working.
   auto now = std::chrono::system_clock::now();

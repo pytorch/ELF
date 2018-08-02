@@ -1,5 +1,5 @@
 .PHONY: all
-all: elf elfgames/go
+all: elf elfgames/go elfgames/tutorial
 
 .PHONY: clean
 clean:
@@ -13,6 +13,8 @@ test_cpp: test_cpp_elf test_cpp_elfgames_go
 
 build/Makefile: CMakeLists.txt */CMakeLists.txt
 	mkdir -p build
+	#(cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_FLAGS=-fsanitize=address ..)
+	#(cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=-fsanitize=address ..)
 	(cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..)
 
 .PHONY: elf
@@ -30,3 +32,7 @@ test_cpp_elfgames_go:
 .PHONY: elfgames/go
 elfgames/go: build/Makefile
 	(cd build && cmake --build elfgames/go -- -j)
+
+.PHONY: elfgames/tutorial
+elfgames/tutorial: build/Makefile
+	(cd build && cmake --build elfgames/tutorial -- -j)

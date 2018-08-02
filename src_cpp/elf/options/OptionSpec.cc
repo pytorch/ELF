@@ -17,6 +17,7 @@ namespace options {
 void OptionSpec::registerPy(pybind11::module& m) {
   /* clang-format off */
   namespace py = pybind11;
+  auto ref = py::return_value_policy::reference_internal;
 
   /**
    * This macro defines four Add*Option methods for OptionSpec in Pythonland.
@@ -65,6 +66,10 @@ void OptionSpec::registerPy(pybind11::module& m) {
       ._ELF_PYBIND_DECLARE_ADD_OPTION(std::string, Str)
       .def(py::init<>())
       .def(py::init<const OptionSpec&>())
+      .def(
+          "getSelf",
+          [](const OptionSpec& spec) -> const OptionSpec& { return spec; },
+          ref)
       .def("getOptionNames", &OptionSpec::getOptionNames)
       .def(
           "getPythonArgparseOptionsAsJSONString",

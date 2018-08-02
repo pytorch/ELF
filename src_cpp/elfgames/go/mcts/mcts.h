@@ -25,12 +25,15 @@ struct MCTSActorParams {
   bool rotation_flip = true;
   float komi = 7.5;
 
+  size_t sub_batchsize = 0;
+
   std::string info() const {
     std::stringstream ss;
     ss << "[name=" << actor_name << "][ply_pass_enabled=" << ply_pass_enabled
        << "][seed=" << seed << "][requred_ver=" << required_version
        << "][remove_pass_if_dangerous=" << remove_pass_if_dangerous
-       << "][rotation_flip=" << rotation_flip << "][komi=" << komi << "]";
+       << "][rotation_flip=" << rotation_flip << "][komi=" << komi
+       << "][sub_batchsize=" << sub_batchsize << "]";
     return ss.str();
   }
 };
@@ -39,9 +42,9 @@ class MCTSActor {
  public:
   using Action = Coord;
   using State = GoState;
-  using NodeResponse = elf::ai::tree_search::NodeResponseT<Coord>;
-
-  enum PreEvalResult { EVAL_DONE, EVAL_NEED_NN };
+  using Info = void;
+  using NodeResponse = elf::ai::tree_search::NodeResponseT<Coord, void>;
+  using EdgeInfo = elf::ai::tree_search::EdgeInfo;
 
   MCTSActor(elf::GameClient* client, const MCTSActorParams& params)
       : params_(params), rng_(params.seed) {
@@ -67,26 +70,32 @@ class MCTSActor {
   // batch evaluate.
   void evaluate(
       const std::vector<const GoState*>& states,
-      std::vector<NodeResponse>* p_resps) {
+      std::function<void (size_t, NodeResponse &&)> callback) {
+    // std::cout << "In evaluation! states.size() = " << states.size() << std::endl;
     if (states.empty())
       return;
 
     if (oo_ != nullptr)
       *oo_ << "Evaluating batch state. #states: " << states.size() << std::endl;
 
-    auto& resps = *p_resps;
-
-    resps.resize(states.size());
     std::vector<BoardFeature> sel_bfs;
     std::vector<size_t> sel_indices;
 
+    // Make sure for each state, the callback is invoked once and only once.
+    std::vector<bool> visited(states.size(), false);
+
     for (size_t i = 0; i < states.size(); i++) {
       assert(states[i] != nullptr);
-      PreEvalResult res = pre_evaluate(*states[i], &resps[i]);
-      if (res == EVAL_NEED_NN) {
+      if (states[i]->terminated()) {
+        NodeResponse resp;
+        setTerminalValue(*states[i], &resp);
+        callback(i, std::move(resp));
+        assert(!visited[i]);
+        visited[i] = true;
+      } else {
         sel_bfs.push_back(get_extractor(*states[i]));
         sel_indices.push_back(i);
-      }
+      } 
     }
 
     if (sel_bfs.empty())
@@ -95,6 +104,7 @@ class MCTSActor {
     std::vector<GoReply> replies;
     for (size_t i = 0; i < sel_bfs.size(); ++i) {
       replies.emplace_back(sel_bfs[i]);
+      replies.back().idx = i;
     }
 
     // Get all pointers.
@@ -106,15 +116,32 @@ class MCTSActor {
       p_replies.push_back(&replies[i]);
     }
 
+    typename AI::BatchCtrl batch_ctrl;
+    batch_ctrl.sub_batchsize = params_.sub_batchsize;
+    batch_ctrl.action_cb = [&](size_t i, const GoReply &reply) {
+      size_t idx = sel_indices[i];
+      NodeResponse resp;
+      post_nn_result(reply, &resp);
+      if (reply.idx != i) {
+        std::cout << "reply idx " << reply.idx << " is not the same as i " << i << ", which has global idx: " << idx << std::endl;
+        assert(false);
+      }
+      // std::cout << "assign node: " << idx << ", #pi: " << resp.pi.size() << std::endl;
+      callback(idx, std::move(resp));
+      assert(!visited[idx]);
+      visited[idx] = true;
+    };
+
     // cout << "About to send situation to " << params_.actor_name << endl;
     // cout << s.showBoard() << endl;
-    if (!ai_->act_batch(p_bfs, p_replies)) {
+
+    if (!ai_->act_batch(p_bfs, p_replies, batch_ctrl)) {
       std::cout << "act unsuccessful! " << std::endl;
     } else {
-      for (size_t i = 0; i < sel_indices.size(); i++) {
-        post_nn_result(replies[i], &resps[sel_indices[i]]);
-      }
+      // std::cout << "act successful! " << std::endl;
     }
+
+    for (const bool &b : visited) assert(b);
   }
 
   void evaluate(const GoState& s, NodeResponse* resp) {
@@ -123,9 +150,7 @@ class MCTSActor {
 
     // if terminated(), get results, res = done
     // else res = EVAL_NEED_NN
-    PreEvalResult res = pre_evaluate(s, resp);
-
-    if (res == EVAL_NEED_NN) {
+    if (!s.terminated()) {
       BoardFeature bf = get_extractor(s);
       // GoReply struct initialization
       // members containing:
@@ -143,6 +168,8 @@ class MCTSActor {
         // action will be inv-transformed
         post_nn_result(reply, resp);
       }
+    } else {
+      setTerminalValue(s, resp);
     }
 
     if (oo_ != nullptr)
@@ -178,28 +205,22 @@ class MCTSActor {
       return BoardFeature(s);
   }
 
-  PreEvalResult pre_evaluate(const GoState& s, NodeResponse* resp) {
-    resp->q_flip = s.nextPlayer() == S_WHITE;
-
-    if (s.terminated()) {
-      if (oo_ != nullptr) {
-        *oo_ << "Terminal state at " << s.getPly() << " Use TT evaluator"
-             << std::endl;
-        *oo_ << "Moves[" << s.getAllMoves().size()
-             << "]: " << s.getAllMovesString() << std::endl;
-        *oo_ << s.showBoard() << std::endl;
-      }
-      float final_value = s.evaluate(params_.komi);
-      if (oo_ != nullptr)
-        *oo_ << "Terminal state. Get raw score (no komi): " << final_value
-             << std::endl;
-      resp->value = final_value > 0 ? 1.0 : -1.0;
-      // No further action.
-      resp->pi.clear();
-      return EVAL_DONE;
-    } else {
-      return EVAL_NEED_NN;
+  void setTerminalValue(const GoState &s, NodeResponse* resp) {
+    if (oo_ != nullptr) {
+      *oo_ << "Terminal state at " << s.getPly() << " Use TT evaluator"
+        << std::endl;
+      *oo_ << "Moves[" << s.getAllMoves().size()
+        << "]: " << s.getAllMovesString() << std::endl;
+      *oo_ << s.showBoard() << std::endl;
     }
+    float final_value = s.evaluate(params_.komi);
+    if (oo_ != nullptr)
+      *oo_ << "Terminal state. Get raw score (no komi): " << final_value
+        << std::endl;
+    resp->q_flip = s.nextPlayer() == S_WHITE;
+    resp->value = final_value > 0 ? 1.0 : -1.0;
+    // No further action.
+    resp->pi.clear();
   }
 
   void post_nn_result(const GoReply& reply, NodeResponse* resp) {
@@ -209,20 +230,30 @@ class MCTSActor {
           " and required version " + std::to_string(params_.required_version) +
           " are not consistent";
       std::cout << msg << std::endl;
+      std::cout << "Reply: " << reply.info() << std::endl;
       throw std::runtime_error(msg);
     }
 
     if (oo_ != nullptr)
       *oo_ << "Got information from neural network" << std::endl;
-    resp->value = reply.value;
 
     const GoState& s = reply.bf.state();
+    if (! reply.compareHash(s.getHashCode())) {
+      std::stringstream ss;
+      ss << "Error! Send hash " << s.getHashCode() << " is different from reply hash " 
+        << reply.reply_board_hash << ", Reply: " << reply.info() << std::endl;
+      throw std::runtime_error(ss.str());
+    }
+
+    resp->q_flip = s.nextPlayer() == S_WHITE;
+    resp->value = reply.value;
 
     bool pass_enabled = s.getPly() >= params_.ply_pass_enabled;
     if (params_.remove_pass_if_dangerous) {
       remove_pass_if_dangerous(s, &pass_enabled);
     }
     pi2response(reply.bf, reply.pi, pass_enabled, &resp->pi, oo_);
+    resp->normalize();
   }
 
   void remove_pass_if_dangerous(const GoState& s, bool* pass_enabled) {
@@ -237,23 +268,11 @@ class MCTSActor {
     }
   }
 
-  static void normalize(std::vector<std::pair<Coord, float>>* output_pi) {
-    assert(output_pi != nullptr);
-    float total_prob = 1e-10;
-    for (const auto& p : *output_pi) {
-      total_prob += p.second;
-    }
-
-    for (auto& p : *output_pi) {
-      p.second /= total_prob;
-    }
-  }
-
   static void pi2response(
       const BoardFeature& bf,
       const std::vector<float>& pi,
       bool pass_enabled,
-      std::vector<std::pair<Coord, float>>* output_pi,
+      std::unordered_map<Coord, EdgeInfo>* p_output_pi,
       std::ostream* oo = nullptr) {
     const GoState& s = bf.state();
 
@@ -262,7 +281,8 @@ class MCTSActor {
       *oo << s.showBoard() << std::endl << std::endl;
     }
 
-    output_pi->clear();
+    auto& output_pi = *p_output_pi;
+    output_pi.clear();
 
     // No action for terminated state.
     if (s.terminated()) {
@@ -278,53 +298,36 @@ class MCTSActor {
         *oo << "  Action " << i << " to Coord "
             << elf::ai::tree_search::ActionTrait<Coord>::to_string(m)
             << std::endl;
-      output_pi->push_back(std::make_pair(m, pi[i]));
+      output_pi.emplace(m, EdgeInfo(pi[i]));
     }
     // sorting..
-    using data_type = std::pair<Coord, float>;
+    std::unordered_map<Coord, EdgeInfo> tmp;
 
-    if (oo != nullptr)
-      *oo << "Before sorting" << std::endl;
-    std::sort(
-        output_pi->begin(),
-        output_pi->end(),
-        [](const data_type& d1, const data_type& d2) {
-          return d1.second > d2.second;
-        });
-    if (oo != nullptr)
-      *oo << "After sorting" << std::endl;
-
-    std::vector<data_type> tmp;
-    int i = 0;
-    while (true) {
-      if (i >= (int)output_pi->size())
-        break;
-      const data_type& v = output_pi->at(i);
+    for (const auto& v : output_pi) {
       // Check whether this move is right.
       bool valid = (v.first == M_PASS && pass_enabled) ||
           (v.first != M_PASS && s.checkMove(v.first));
       if (valid) {
-        tmp.push_back(v);
+        tmp.insert(v);
       }
 
       if (oo != nullptr) {
-        *oo << "Predict [" << i << "][" << coord2str(v.first) << "]["
-            << coord2str2(v.first) << "][" << v.first << "] " << v.second;
+        *oo << "Predict [" << coord2str(v.first) << "][" << coord2str2(v.first)
+            << "][" << v.first << "] " << v.second.prior_probability;
         if (valid)
           *oo << " added" << std::endl;
         else
           *oo << " invalid" << std::endl;
       }
-      i++;
     }
+
     if (tmp.empty() && !pass_enabled) {
       // Add pass if there is no valid move.
-      tmp.push_back(std::make_pair(M_PASS, 1.0));
+      tmp.emplace(M_PASS, EdgeInfo(1.0));
     }
-    *output_pi = tmp;
-    normalize(output_pi);
+    output_pi = tmp;
     if (oo != nullptr)
-      *oo << "#Valid move: " << output_pi->size() << std::endl;
+      *oo << "#Valid move: " << output_pi.size() << std::endl;
   }
 };
 

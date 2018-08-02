@@ -13,7 +13,10 @@
 
 #include "elfgames/go/base/go_state.h"
 
+struct GoHumanInfo {};
+
 using AI = elf::ai::AIClientT<BoardFeature, GoReply>;
+using HumanPlayer = elf::ai::AIClientT<GoHumanInfo, GoHumanReply>;
 
 namespace elf {
 namespace ai {
@@ -43,9 +46,9 @@ struct StateTrait<GoState, Coord> {
 
   static bool moves_since(
       const GoState& s,
-      size_t* next_move_number,
+      const GoState& s_ref,
       std::vector<Coord>* moves) {
-    return s.moves_since(next_move_number, moves);
+    return s.moves_since(s_ref, moves);
   }
 };
 

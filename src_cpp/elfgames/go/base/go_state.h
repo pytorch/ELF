@@ -156,16 +156,16 @@ class GoState {
     return _board._next_player;
   }
 
-  bool moves_since(size_t* next_move_number, std::vector<Coord>* moves) const {
-    if (*next_move_number > _moves.size()) {
+  bool moves_since(const GoState& ref, std::vector<Coord>* moves) const {
+    if (ref._moves.size() > _moves.size()) {
       // The move number is not right.
       return false;
     }
     moves->clear();
-    for (size_t i = *next_move_number; i < _moves.size(); ++i) {
+    // TODO: More rigid check?
+    for (size_t i = ref._moves.size(); i < _moves.size(); ++i) {
       moves->push_back(_moves[i]);
     }
-    *next_move_number = _moves.size();
     return true;
   }
 
@@ -238,5 +238,38 @@ struct GoReply {
   // Model version.
   int64_t version = -1;
 
+  bool reply_has_hash = false;
+  uint64_t reply_board_hash = 0;
+
+  size_t idx = 0;
+
   GoReply(const BoardFeature& bf) : bf(bf), pi(BOARD_NUM_ACTION, 0.0) {}
+
+  bool compareHash(uint64_t h) const {
+    return ! (reply_has_hash && h != reply_board_hash);
+  }
+
+  std::string info() const {
+    std::stringstream ss;
+    ss << "c=" << coord2str2(c) << ", value=" << value
+       << ", version=" << version << ", policies:";
+    for (const auto& v : pi) {
+      ss << v << ",";
+    }
+    return ss.str();
+  }
+};
+
+struct GoHumanReply {
+  Coord c;
+  int64_t msec_ts_recv_cmd = -1;
+  int64_t msec_time_left = -1;
+  int64_t byoyomi = -1;
+
+  std::string info() const {
+    std::stringstream ss;
+    ss << "c=" << coord2str2(c) << ", ts_recv_cmd = " << msec_ts_recv_cmd
+       << " msec, time_left = " << msec_time_left << " msec, byoyomi = " << byoyomi;
+    return ss.str();
+  }
 };

@@ -11,7 +11,7 @@ import time
 import torch
 import warnings
 
-from elf.options import import_options, PyOptionSpec
+from elf.options import import_options, PyOptionMap, PyOptionSpec
 from elf import logging
 from .model_interface import ModelInterface
 from .sampler import Sampler
@@ -25,7 +25,7 @@ _logger_factory = logging.IndexedLoggerFactory(
 def load_module(mod):
     """Load a python module."""
     module = importlib.import_module(mod)
-    print(module, mod)
+    #print(module, mod)
     return module
 
 
@@ -98,7 +98,6 @@ class ModelLoader(object):
                 'rlpytorch.model_loader.ModelLoader-',
                 f'-model_index{model_idx}')
 
-        self.option_map_for_model = option_map.clone()
         self.model_class = model_class
         self.model_idx = model_idx
         self._on_get_args = lambda *args, **kwargs: None
@@ -107,21 +106,25 @@ class ModelLoader(object):
         option_names = set(option_spec.getOptionNames())
         model_option_spec = model_class.get_option_spec()
         model_option_names = set(model_option_spec.getOptionNames())
+        self.option_map_for_model = PyOptionMap(model_option_spec)
 
         # Here, the names in option_names are still possibly suffixed with
         # the model_idx. If so, we need to remove this suffix.
         model_options_to_load = {}
         for option_name in option_names:
+            value = getattr(self.options, option_name)
             if model_idx is not None and option_name.endswith(str(model_idx)):
                 # This is the name without the model_idx suffix
                 orig_option_name = option_name[:-len(str(model_idx))]
-                value = getattr(self.options, option_name)
 
                 setattr(self.options, orig_option_name, value)
                 delattr(self.options, option_name)
 
                 if orig_option_name in model_option_names:
                     model_options_to_load[orig_option_name] = value
+
+            elif option_name in model_option_names:
+                model_options_to_load[option_name] = value
 
         if model_options_to_load:
             self.option_map_for_model.loadOptionDict(
@@ -137,24 +140,24 @@ class ModelLoader(object):
         """
         if self.options.load_model_sleep_interval > 1e-7:
             interval = random.random() * self.options.load_model_sleep_interval
-            self.logger.info(f'Sleeping for {interval} seconds')
+            #self.logger.info(f'Sleeping for {interval} seconds')
             time.sleep(interval + 1e-7)
 
         # Initialize models.
         model = self.model_class(self.option_map_for_model, params)
 
         if self.options.load:
-            self.logger.info(f'Loading model from {self.options.load}')
-            if self.options.omit_keys:
-                self.logger.info(f'Omitting keys {self.options.omit_keys}')
+            #self.logger.info(f'Loading model from {self.options.load}')
+            #if self.options.omit_keys:
+               #self.logger.info(f'Omitting keys {self.options.omit_keys}')
 
             if self.options.replace_prefix:
                 replace_prefix = [
                     item.split(",")
                     for item in self.options.replace_prefix
                 ]
-                self.logger.info(
-                    f'replace_prefix for state dict: {replace_prefix}')
+                #self.logger.info(
+                #    f'replace_prefix for state dict: {replace_prefix}')
             else:
                 replace_prefix = []
 
@@ -164,8 +167,8 @@ class ModelLoader(object):
                 replace_prefix=replace_prefix,
                 check_loaded_options=self.options.check_loaded_options)
 
-            self.logger.info(
-                f'Finished loading model from {self.options.load}')
+            #self.logger.info(
+            #    f'Finished loading model from {self.options.load}')
 
         if self.options.onload:
             for func in self.options.onload:
@@ -223,7 +226,7 @@ def load_env(
             ``model_loaders``: loaders for model
     """
     logger = _load_env_logger
-    logger.info('Loading env')
+    #logger.info('Loading env')
 
     game_loader_class = load_module(envs["game"]).Loader
     model_file = load_module(envs["model_file"])
@@ -261,8 +264,8 @@ def load_env(
     global_logger_configurator = logging.GlobalLoggingConfigurator(option_map)
     global_logger_configurator.configure()
 
-    pretty_option_str = pprint.pformat(option_map.getOptionDict(), width=50)
-    logger.info(f'Parsed options: {pretty_option_str}')
+    #pretty_option_str = pprint.pformat(option_map.getOptionDict(), width=50)
+    #logger.info(f'Parsed options: {pretty_option_str}')
 
     game = game_loader_class(option_map)
     method = method_class(option_map)
@@ -287,6 +290,6 @@ def load_env(
         for name, (_, option_map_callable) in additional_to_load.items():
             env[name] = option_map_callable(option_map)
 
-    logger.info('Finished loading env')
+    #logger.info('Finished loading env')
 
     return env

@@ -34,6 +34,7 @@ class PyOptionMap(_options.OptionMap):
             option_spec = self.getPyOptionSpec()
 
         option_names = option_spec.getOptionNames()
+        #print(option_names)
         for name in option_names:
             setattr(namespace, name, self.get(name))
 

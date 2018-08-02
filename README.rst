@@ -10,6 +10,8 @@
 ELF
 ===
 
+**Note that this is on experimental branch. Code might crash and burn.**
+
 ELF is an Extensive, Lightweight, and Flexible platform for game research. We have used it to build our Go playing bot, ELF OpenGo, which achieved a 14-0 record versus four global top-30 players in April 2018. The final score is 20-0 (each professional Go players play 5 games).
 
 We have released our v0 models `here`__.

@@ -48,15 +48,16 @@ std::string GoStateExt::dumpSgf(const std::string& filename) const {
   if (_options.black_use_policy_network_only)
     black_name += "(policy only)";
 
-  bool white_mcts = _options.mode == "selfplay_eval" ? _options.use_mcts_ai2
-                                                     : _options.use_mcts;
+  bool white_mcts = _options.common.mode == "selfplay_eval"
+      ? _options.use_mcts_ai2
+      : _options.use_mcts;
 
   std::string white_name = white_mcts ? "MCTS" : "Policy";
   if (_options.white_use_policy_network_only)
     white_name += "(policy only)";
 
-  ss << "PB[" << black_name << "]PW[" << white_name << "]KM[" << _options.komi
-     << "]";
+  ss << "PB[" << black_name << "]PW[" << white_name << "]KM["
+     << _options.common.komi << "]";
 
   for (size_t i = 0; i < moves.size(); i++) {
     std::string color = (i % 2 == 0 ? "B" : "W");

@@ -136,6 +136,12 @@ class BoardFeature {
     return OFFSETXY(p.first, p.second);
   }
 
+  static Coord action2CoordNoTransform(int64_t action) {
+    if (action == -1 || action == BOARD_ACTION_PASS)
+      return M_PASS;
+    return OFFSETXY(EXPORT_X(action), EXPORT_Y(action));
+  }
+
   void extract(std::vector<float>* features) const;
   void extractAGZ(std::vector<float>* features) const;
   void extract(float* features) const;

@@ -40,6 +40,10 @@ class SharedMemOptions {
     idx_ = idx;
   }
 
+  void setLabelIdx(int label_idx) {
+    label_idx_ = label_idx;
+  }
+
   void setTimeout(int timeout_usec) {
     options_.wait_opt.timeout_usec = timeout_usec;
   }
@@ -56,7 +60,15 @@ class SharedMemOptions {
     return idx_;
   }
 
+  int getLabelIdx() const {
+    return label_idx_;
+  }
+
   const comm::RecvOptions& getRecvOptions() const {
+    return options_;
+  }
+
+  comm::RecvOptions& getRecvOptions() {
     return options_;
   }
 
@@ -83,6 +95,7 @@ class SharedMemOptions {
   std::string info() const {
     std::stringstream ss;
     ss << "SMem[" << options_.label << "], idx: " << idx_
+       << ", label_idx: " << label_idx_
        << ", batchsize: " << options_.wait_opt.batchsize;
 
     if (options_.wait_opt.timeout_usec > 0) {
@@ -98,104 +111,30 @@ class SharedMemOptions {
 
  private:
   int idx_ = -1;
+  int label_idx_ = -1;
   comm::RecvOptions options_;
   TransferType type_ = CLIENT;
 };
 
-class SharedMem;
-
-inline void state2mem(const Message& msg, SharedMem& mem) {
-  // LOG(INFO) << "BatchIdx: " << msg_idx << ", msg addr: "
-  //           << std::hex << &msg << std::dec << std::endl;
-  int idx = msg.base_idx;
-  for (const auto* datum : msg.data) {
-    assert(datum != nullptr);
-    datum->state_to_mem_funcs.transfer(idx, mem);
-    idx++;
-  }
-}
-
-inline void mem2state(const SharedMem& mem, Message& msg) {
-  int idx = msg.base_idx;
-  for (const auto* datum : msg.data) {
-    assert(datum != nullptr);
-    datum->mem_to_state_funcs.transfer(idx, mem);
-    idx++;
-  }
-}
-
-class SharedMem {
+class SharedMemData {
  public:
-  SharedMem(
-      int idx,
-      const SharedMemOptions& smem_opts,
+  SharedMemData(
+      const SharedMemOptions& opts,
       const std::unordered_map<std::string, AnyP>& mem)
-      : opts_(smem_opts), mem_(mem) {
-    opts_.setIdx(idx);
-  }
-
-  void waitBatchFillMem(Server* server) {
-    server->waitBatch(opts_.getRecvOptions(), &msgs_from_client_);
-    active_batch_size_ = 0;
-    for (const Message& m : msgs_from_client_) {
-      active_batch_size_ += m.data.size();
-    }
-
-    if ((int)active_batch_size_ > opts_.getBatchSize() ||
-        (int)active_batch_size_ < opts_.getMinBatchSize()) {
-      std::cout << "Error: active_batch_size =  " << active_batch_size_
-                << ", max_batch_size: " << opts_.getBatchSize()
-                << ", min_batch_size: " << opts_.getMinBatchSize()
-                << ", #msg count: " << msgs_from_client_.size() << std::endl;
-      assert(false);
-    }
-
-    // LOG(INFO) << "Receiver: Batch received. #batch = "
-    //           << active_batch_size_ << std::endl;
-
-    if (opts_.getTransferType() == SharedMemOptions::SERVER) {
-      local_state2mem();
-    } else {
-      client_state2mem(server);
-    }
-  }
-
-  void waitReplyReleaseBatch(Server* server, comm::ReplyStatus batch_status) {
-    if (opts_.getTransferType() == SharedMemOptions::SERVER) {
-      local_mem2state();
-    } else {
-      client_mem2state(server);
-    }
-
-    // LOG(INFO) << "Receiver: About to release batch: #batch = "
-    //           << active_batch_size_ << std::endl;
-    server->ReleaseBatch(msgs_from_client_, batch_status);
-    msgs_from_client_.clear();
-  }
-
-  const SharedMemOptions& getSharedMemOptions() const {
-    return opts_;
-  }
-
-  size_t getEffectiveBatchSize() const {
-    return active_batch_size_;
-  }
-
-  void setTimeout(int timeout_usec) {
-    opts_.setTimeout(timeout_usec);
-  }
-
-  void setMinBatchSize(int minbatchsize) {
-    opts_.setMinBatchSize(minbatchsize);
-  }
+      : opts_(opts), mem_(mem) {}
 
   std::string info() const {
     std::stringstream ss;
     ss << opts_.info() << std::endl;
+    ss << "Active batchsize: " << active_batch_size_ << std::endl;
     for (const auto& p : mem_) {
       ss << "[" << p.first << "]: " << p.second.info() << std::endl;
     }
     return ss.str();
+  }
+
+  size_t getEffectiveBatchSize() const {
+    return active_batch_size_;
   }
 
   AnyP* operator[](const std::string& key) {
@@ -222,24 +161,155 @@ class SharedMem {
     }
   }
 
+  // TODO maybe do something better here.
+  std::unordered_map<std::string, AnyP>& GetMem() {
+    return mem_;
+  }
+  const std::unordered_map<std::string, AnyP>& GetMem() const {
+    return mem_;
+  }
+  void setEffectiveBatchSize(size_t bs) {
+    active_batch_size_ = bs;
+  }
+
+  const SharedMemOptions& getSharedMemOptionsC() const {
+    return opts_;
+  }
+  SharedMemOptions& getSharedMemOptions() {
+    return opts_;
+  }
+
+  void setTimeout(int timeout_usec) {
+    opts_.setTimeout(timeout_usec);
+  }
+
+  void setMinBatchSize(int minbatchsize) {
+    opts_.setMinBatchSize(minbatchsize);
+  }
+
  private:
+  size_t active_batch_size_ = 0;
   SharedMemOptions opts_;
   std::unordered_map<std::string, AnyP> mem_;
+};
+
+inline void state2mem(const Message& msg, SharedMemData& mem) {
+  // std::cout << "State2Mem: base_idx: " << msg.base_idx << ", msg.data.size(): " << msg.data.size() 
+  //          << ", msg addr: " << std::hex << &msg << std::dec << mem.info() << std::endl;
+  int idx = msg.base_idx;
+  for (const auto* datum : msg.data) {
+    assert(datum != nullptr);
+    datum->state_to_mem_funcs.transfer(idx, mem);
+    idx++;
+  }
+}
+
+inline void mem2state(const SharedMemData& mem, Message& msg) {
+  // std::cout << "Mem2State: base_idx: " << msg.base_idx << ", msg.data.size(): " << msg.data.size() 
+  //           << ", msg addr: " << std::hex << &msg << std::dec << std::endl;
+  int idx = msg.base_idx;
+  for (const auto* datum : msg.data) {
+    assert(datum != nullptr);
+    datum->mem_to_state_funcs.transfer(idx, mem);
+    idx++;
+  }
+}
+
+class SharedMem {
+ public:
+  SharedMem(
+      const SharedMemOptions& opts,
+      const std::unordered_map<std::string, AnyP>& mem)
+      : smem_(opts, mem) {}
+
+  virtual void start() = 0;
+  virtual void waitBatchFillMem() = 0;
+  virtual void waitReplyReleaseBatch(comm::ReplyStatus batch_status) = 0;
+
+  SharedMemData& data() {
+    return smem_;
+  }
+
+  virtual ~SharedMem() = default;
+
+ protected:
+  SharedMemData smem_;
+};
+
+class SharedMemLocal : public SharedMem {
+ public:
+  SharedMemLocal(
+      Server* server,
+      const SharedMemOptions& smem_opts,
+      const std::unordered_map<std::string, AnyP>& mem)
+      : SharedMem(smem_opts, mem), server_(server) {}
+
+  const SharedMemOptions& options() const {
+    return smem_.getSharedMemOptionsC();
+  }
+
+  void start() override {
+    server_->RegServer(options().getRecvOptions().label);
+  }
+
+  void waitBatchFillMem() override {
+    const auto& opt = options();
+    server_->waitBatch(opt.getRecvOptions(), &msgs_from_client_);
+    size_t batchsize = 0;
+    for (const Message& m : msgs_from_client_) {
+      batchsize += m.data.size();
+    }
+    smem_.setEffectiveBatchSize(batchsize);
+
+    if ((int)batchsize > opt.getBatchSize() ||
+        (int)batchsize < opt.getMinBatchSize()) {
+      std::cout << "Error: active_batch_size =  " << batchsize
+                << ", max_batch_size: " << opt.getBatchSize()
+                << ", min_batch_size: " << opt.getMinBatchSize()
+                << ", #msg count: " << msgs_from_client_.size() << std::endl;
+      assert(false);
+    }
+
+    // LOG(INFO) << "Receiver: Batch received. #batch = "
+    //           << active_batch_size_ << std::endl;
+
+    if (opt.getTransferType() == SharedMemOptions::SERVER) {
+      local_state2mem();
+    } else {
+      client_state2mem();
+    }
+  }
+
+  void waitReplyReleaseBatch(comm::ReplyStatus batch_status) override {
+    if (options().getTransferType() == SharedMemOptions::SERVER) {
+      local_mem2state();
+    } else {
+      client_mem2state();
+    }
+
+    // LOG(INFO) << "Receiver: About to release batch: #batch = "
+    //           << active_batch_size_ << std::endl;
+    assert(server_ != nullptr);
+    server_->ReleaseBatch(msgs_from_client_, batch_status);
+    msgs_from_client_.clear();
+  }
+
+ private:
+  Server* server_ = nullptr;
 
   // We get a batch of messages from client
   // Note that msgs_from_client_.size() is no longer the batchsize, since one
   // Message could contain multiple states.
   std::vector<Message> msgs_from_client_;
-  size_t active_batch_size_ = 0;
 
   void local_state2mem() {
     // Send the state to shared memory.
     for (const Message& m : msgs_from_client_) {
-      state2mem(m, *this);
+      state2mem(m, smem_);
     }
   }
 
-  void client_state2mem(Server* server) {
+  void client_state2mem() {
     // Send the state to shared memory.
     std::vector<typename Comm::ReplyFunction> msgs;
     for (const Message& m : msgs_from_client_) {
@@ -247,39 +317,42 @@ class SharedMem {
       //           << msgs_from_client_[i].m << std::dec << ", msg address: "
       //           << std::hex << &msgs_from_client_[i] << dec << std::endl;
       msgs.push_back([&]() {
-        state2mem(m, *this);
+        state2mem(m, smem_);
         // Done one job.
         return comm::DONE_ONE_JOB;
       });
     }
-    server->sendClosuresWaitDone(msgs_from_client_, msgs);
+    assert(server_ != nullptr);
+    server_->sendClosuresWaitDone(msgs_from_client_, msgs);
   }
 
   void local_mem2state() {
     // Send the state to shared memory.
     for (Message& m : msgs_from_client_) {
-      mem2state(*this, m);
+      mem2state(smem_, m);
     }
   }
 
-  void client_mem2state(Server* server) {
+  void client_mem2state() {
     // Send the state to shared memory.
     std::vector<typename Comm::ReplyFunction> msgs;
     for (Message& m : msgs_from_client_) {
       // LOG(INFO) << "mem2state: Batch " << i << " ptr: " << std::hex
       //           << msgs_from_client_[i].m << dec << std::endl;
       msgs.push_back([&]() {
-        mem2state(*this, m);
+        mem2state(smem_, m);
         // Done one job.
         return comm::DONE_ONE_JOB;
       });
     }
-    server->sendClosuresWaitDone(msgs_from_client_, msgs);
+    assert(server_ != nullptr);
+    server_->sendClosuresWaitDone(msgs_from_client_, msgs);
   }
 };
 
 template <bool use_const>
-void FuncsWithStateT<use_const>::transfer(int msg_idx, SharedMem_t smem) const {
+void FuncsWithStateT<use_const>::transfer(int msg_idx, SharedMemData_t smem)
+    const {
   for (const auto& p : funcs_) {
     auto* anyp = smem[p.first];
     assert(anyp != nullptr);
@@ -288,7 +361,7 @@ void FuncsWithStateT<use_const>::transfer(int msg_idx, SharedMem_t smem) const {
 }
 
 using BatchComm = comm::CommT<
-    SharedMem*,
+    SharedMemData*,
     false,
     concurrency::ConcurrentQueue,
     concurrency::ConcurrentQueue>;

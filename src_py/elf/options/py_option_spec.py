@@ -28,6 +28,9 @@ class PyOptionSpec(_options.OptionSpec):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def getOptionSpec(self):
+        return self.getSelf()
+
     def getArgparseOptions(self):
         return json.loads(self.getPythonArgparseOptionsAsJSONString())
 

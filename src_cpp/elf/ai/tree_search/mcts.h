@@ -52,14 +52,31 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
     return ts_.get();
   }
 
+  void setTimeLimit(int64_t msec_start_ts, int64_t msec_time_left, int64_t byoyomi) {
+    if (msec_start_ts > 0) {
+      run_options_.msec_start_time = msec_start_ts;
+    } else {
+      run_options_.msec_start_time = elf_utils::msec_since_epoch_from_now();
+    }
+
+    run_options_.msec_time_left = msec_time_left;
+    run_options_.byoyomi = byoyomi;
+  }
+
   bool act(const State& s, Action* a) override {
+    //auto now = elf_utils::msec_since_epoch_from_now();
+    if (run_options_.msec_start_time > 0) {
+      //std::cout << "Before MCTS Overhead: "
+      //          << now - run_options_.msec_start_time << " ms" << std::endl;
+    }
+
     align_state(s);
 
     if (options_.verbose_time) {
       elf_utils::MyClock clock;
       clock.restart();
 
-      lastResult_ = ts_->run(s);
+      lastResult_ = ts_->run(run_options_);
 
       clock.record("MCTS");
       std::cout << "[" << this->getID()
@@ -67,23 +84,23 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
                 << " Action:" << lastResult_.best_action << std::endl;
       std::cout << clock.summary() << std::endl;
     } else {
-      lastResult_ = ts_->run(s);
+      lastResult_ = ts_->run(run_options_);
     }
 
     *a = lastResult_.best_action;
+    run_options_.reset();
     return true;
   }
 
   bool actPolicyOnly(const State& s, Action* a) {
     align_state(s);
-    lastResult_ = ts_->runPolicyOnly(s);
+    lastResult_ = ts_->runPolicyOnly();
 
     *a = lastResult_.best_action;
     return true;
   }
 
   bool endGame(const State&) override {
-    resetTree();
     return true;
   }
 
@@ -96,10 +113,37 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
     ss << options_.info(true) << std::endl;
     ss << elf::ai::tree_search::ActorTrait<Actor>::to_string(ts_->getActor(0))
        << std::endl;
-    ss << ts_->printTree() << std::endl;
+    ss << ts_->getSearchTree().printTree() << std::endl;
     ss << "Last choice: " << lastResult_.info() << std::endl;
     return ss.str();
   }
+
+  void align_state(const State& s) {
+      auto& st = ts_->getSearchTree();
+
+      if (!options_.persistent_tree) {
+          st.resetTree(s);
+      } else {
+          const auto* root = st.getRootNode();
+          if (root == nullptr) {
+              //std::cout << "root nullptr, reseting Tree" << std::endl;
+              st.resetTree(s);
+          } else {
+              std::vector<Action> recent_moves;
+              bool move_valid =
+              elf::ai::tree_search::StateTrait<State, Action>::moves_since(
+                  s, *root->getStatePtr(), &recent_moves);
+                  if (move_valid) {
+                      //std::cout << "Applying recent moves: #moves: " << recent_moves.size()
+                      //          << std::endl;
+                      st.treeAdvance(recent_moves, s);
+                  } else {
+                      //std::cout << "Recent move invalid, resetting" << std::endl;
+                      st.resetTree(s);
+                  }
+              }
+          }
+      }
 
   /*
   MEMBER_FUNC_CHECK(restart)
@@ -126,38 +170,7 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
   size_t nextMoveNumber_ = 0;
   MCTSResult lastResult_;
 
-  void resetTree() {
-    ts_->clear();
-    nextMoveNumber_ = 0;
-  }
-
-  void align_state(const State& s) {
-    if (!options_.persistent_tree) {
-      resetTree();
-    } else {
-      advanceMoves(s);
-    }
-  }
-
-  // Note that moves_since should have the following signature.
-  //   bool moves_since(size_t *nextMoveNumber, vector<Action> *recent_moves)
-  // It will compare the current nextMoveNumber to the move number in the
-  // state, and return moves since the last move number in recent_moves
-  // Once it is done, the move_number will be advanced to the most recent move
-  // number.
-  void advanceMoves(const State& s) {
-    std::vector<Action> recent_moves;
-    bool move_valid =
-        elf::ai::tree_search::StateTrait<State, Action>::moves_since(
-            s, &nextMoveNumber_, &recent_moves);
-    if (move_valid) {
-      for (const Action& prev_move : recent_moves) {
-        ts_->treeAdvance(prev_move);
-      }
-    } else {
-      resetTree();
-    }
-  }
+  MCTSRunOptions run_options_;
 };
 
 } // namespace tree_search

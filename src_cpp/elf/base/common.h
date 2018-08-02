@@ -17,12 +17,7 @@
 namespace elf {
 
 template <typename T>
-class TypeNameT {
- public:
-  static std::string name() {
-    return "unknown";
-  }
-};
+class TypeNameT;
 
 #define TYPE_NAME_CLASS(T)      \
   template <>                   \
@@ -37,6 +32,8 @@ TYPE_NAME_CLASS(float);
 TYPE_NAME_CLASS(double);
 TYPE_NAME_CLASS(int64_t);
 TYPE_NAME_CLASS(int32_t);
+TYPE_NAME_CLASS(uint64_t);
+TYPE_NAME_CLASS(uint32_t);
 
 struct Size {
  public:
@@ -47,6 +44,17 @@ struct Size {
     sz_.push_back(s);
   }
   Size() {}
+  friend bool operator==(const Size& s1, const Size& s2) {
+    if (s1.size() != s2.size())
+      return false;
+
+    for (size_t i = 0; i < s1.size(); ++i) {
+      if (s1[i] != s2[i])
+        return false;
+    }
+    return true;
+  }
+
   size_t nelement() const {
     int n = 1;
     for (const int& v : sz_)

@@ -19,6 +19,7 @@ namespace comm {
 
 template <
     typename Data,
+    typename Info,
     typename Reply,
     template <typename> class ClientQueue,
     template <typename> class ServerQueue>
@@ -26,22 +27,25 @@ class NodeT;
 
 template <
     typename Data,
+    typename Info,
     typename Reply,
     template <typename> class ClientQueue,
     template <typename> class ServerQueue>
 struct MsgT {
-  using ClientToServer = NodeT<Data, Reply, ClientQueue, ServerQueue>;
-  using ServerToClient = NodeT<Reply, Data, ServerQueue, ClientQueue>;
+  using ClientToServer = NodeT<Data, Info, Reply, ClientQueue, ServerQueue>;
+  using ServerToClient = NodeT<Reply, Info, Data, ServerQueue, ClientQueue>;
 
   ClientToServer* from = nullptr;
   ServerToClient* to = nullptr;
   std::vector<Data> data;
+  Info info;
   size_t base_idx = 0;
 
-  MsgT(ClientToServer* from, ServerToClient* to, const std::vector<Data>& in)
-      : from(from), to(to), data(in) {}
+  MsgT(ClientToServer* from, ServerToClient* to, const std::vector<Data>& in, const Info &info) 
+      : from(from), to(to), data(in), info(info) {}
 
-  MsgT(ClientToServer* from, ServerToClient* to, Data in) : from(from), to(to) {
+  MsgT(ClientToServer* from, ServerToClient* to, Data in, const Info &info) 
+    : from(from), to(to), info(info) {
     data.push_back(in);
   }
 
@@ -71,16 +75,17 @@ struct WaitOptions {
 
 template <
     typename Data,
+    typename Info,
     typename Reply,
     template <typename> class MyQueue,
     template <typename> class PartnerQueue>
 class NodeT {
  public:
-  using Node = NodeT<Data, Reply, MyQueue, PartnerQueue>;
+  using Node = NodeT<Data, Info, Reply, MyQueue, PartnerQueue>;
   // using DualNode = NodeT<R, S, CCQ_R, CCQ_S>;
 
-  using SendMsg = MsgT<Data, Reply, MyQueue, PartnerQueue>;
-  using RecvMsg = MsgT<Reply, Data, PartnerQueue, MyQueue>;
+  using SendMsg = MsgT<Data, Info, Reply, MyQueue, PartnerQueue>;
+  using RecvMsg = MsgT<Reply, Info, Data, PartnerQueue, MyQueue>;
 
   bool startSession(const std::vector<SendMsg>& targets) {
     if (n_ > 0) {
@@ -88,7 +93,7 @@ class NodeT {
     }
 
     for (const auto& pa : targets) {
-      pa.to->EnqueueMessage(SendMsg(this, pa.to, pa.data));
+      pa.to->EnqueueMessage(SendMsg(this, pa.to, pa.data, pa.info));
     }
 
     n_ = targets.size();

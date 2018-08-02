@@ -77,11 +77,10 @@ class OptionMap {
     setAsJSON(optionName, json::parse(dataString));
   }
 
-  template <typename T>
-  void set(const std::string& optionName, T value) {
-    const auto& optionInfo = spec_.getOptionInfo(optionName);
-    optionInfo.checkType<T>();
-    data_[optionName] = value;
+  void set(const std::string& optionName, const json& j) {
+    auto& optionInfo = spec_.getOptionInfo(optionName);
+    data_[optionName] = j;
+    optionInfo.setValueFromJSON(j);
   }
 
   const json& getAsJSON(const std::string& optionName) const;

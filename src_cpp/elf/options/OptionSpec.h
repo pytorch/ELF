@@ -96,13 +96,20 @@ struct PythonTypename<
 
 class OptionBase {
  public:
-  OptionBase(std::string name, const std::type_index& typeIndex)
-      : name_(std::move(name)), typeIndex_(typeIndex) {}
+  OptionBase(
+      std::string name,
+      const std::type_index& typeIndex,
+      const std::string& typeName)
+      : name_(std::move(name)), typeIndex_(typeIndex), typeName_(typeName) {}
 
   virtual ~OptionBase() {}
 
   const std::string& getName() const {
     return name_;
+  }
+
+  const std::string& getTypeName() const {
+    return typeName_;
   }
 
   void addPrefixSuffixToName(
@@ -127,24 +134,32 @@ class OptionBase {
   }
 
   virtual json getPythonArgparseOptionsAsJSON() const = 0;
+  virtual void setValueFromJSON(const json& j) = 0;
 
  protected:
   std::string name_;
 
   std::type_index typeIndex_;
+  std::string typeName_;
 };
 
 template <typename T>
 class OptionBaseTyped : public OptionBase {
  public:
   OptionBaseTyped(std::string name, std::string help)
-      : OptionBase(std::move(name), std::type_index(typeid(T))),
+      : OptionBase(
+            std::move(name),
+            std::type_index(typeid(T)),
+            typeid(T).name()),
         help_(std::move(help)),
         hasDefaultValue_(false),
         defaultValue_() {}
 
   OptionBaseTyped(std::string name, std::string help, T defaultValue)
-      : OptionBase(std::move(name), std::type_index(typeid(T))),
+      : OptionBase(
+            std::move(name),
+            std::type_index(typeid(T)),
+            typeid(T).name()),
         help_(std::move(help)),
         hasDefaultValue_(true),
         defaultValue_(std::move(defaultValue)) {}
@@ -159,6 +174,18 @@ class OptionBaseTyped : public OptionBase {
       kwargs["default"] = defaultValue_;
     }
     return {{"args", args}, {"kwargs", kwargs}};
+  }
+
+  void setValue(T v) {
+    defaultValue_ = v;
+  }
+
+  void setValueFromJSON(const json& j) override {
+    defaultValue_ = fromJSON<T>(j);
+  }
+
+  const T& value() const {
+    return defaultValue_;
   }
 
  protected:
@@ -240,6 +267,11 @@ class OptionSpec {
     std::shared_ptr<option_spec_detail::OptionBase> option(
         new option_spec_detail::Option<T>(
             optionName, std::move(help), std::move(defaultValue)));
+
+    // std::cout << "[" << std::hex << this << std::dec << "] Register " <<
+    // optionName
+    //   << ", type: " << typeid(T).name() << std::endl; // << " with " <<
+    //   defaultValue << std::endl;
     return optionSpecMap_.emplace(std::move(optionName), std::move(option))
         .second;
   }
@@ -280,7 +312,40 @@ class OptionSpec {
     optionSpecMap_ = std::move(newOptionSpecMap_);
   }
 
- private:
+  bool hasOption(const std::string& optionName) const {
+    auto it = optionSpecMap_.find(optionName);
+    return it != optionSpecMap_.end();
+  }
+
+  template <typename T>
+  const option_spec_detail::OptionBaseTyped<T>& getOptionInfoTyped(
+      const std::string& optionName) const {
+    auto it = optionSpecMap_.find(optionName);
+    if (it == optionSpecMap_.end()) {
+      throw std::runtime_error("No option with name " + optionName + "!");
+    }
+
+    const option_spec_detail::OptionBaseTyped<T>* typed =
+        dynamic_cast<const option_spec_detail::OptionBaseTyped<T>*>(
+            it->second.get());
+    if (typed == nullptr) {
+      throw std::runtime_error(
+          "The specified type is wrong." + optionName +
+          ", request type: " + std::string(typeid(T).name()) + "." +
+          ", stored type: " + it->second->getTypeName());
+    }
+
+    return *typed;
+  }
+
+  option_spec_detail::OptionBase& getOptionInfo(const std::string& optionName) {
+    auto it = optionSpecMap_.find(optionName);
+    if (it == optionSpecMap_.end()) {
+      throw std::runtime_error("No option with name " + optionName + "!");
+    }
+    return *(it->second);
+  }
+
   const option_spec_detail::OptionBase& getOptionInfo(
       const std::string& optionName) const {
     auto it = optionSpecMap_.find(optionName);
@@ -290,6 +355,7 @@ class OptionSpec {
     return *(it->second);
   }
 
+ private:
   std::unordered_map<
       std::string,
       std::shared_ptr<option_spec_detail::OptionBase>>

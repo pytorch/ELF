@@ -31,10 +31,10 @@ class ResignThresholdCalculator {
  public:
   ResignThresholdCalculator(
       size_t histSize,
-      double falsePositiveTarget,
-      double initialThreshold,
-      double minThreshold,
-      double maxThreshold)
+      float falsePositiveTarget,
+      float initialThreshold,
+      float minThreshold,
+      float maxThreshold)
       : histSize_(histSize),
         falsePositiveTarget_(falsePositiveTarget),
         curThreshold_(initialThreshold),
@@ -54,33 +54,18 @@ class ResignThresholdCalculator {
       numGamesFedBlackWin_++;
 
     // No never resign. skip.
-    if (!result.black_never_resign && !result.white_never_resign)
+    if (!result.never_resign)
       return;
 
-    numGamesNeverResign_++;
-    if (result.reward > 0.0)
-      numGamesNeverResignBlackWin_++;
-
-    // Resign calculator stuff
-    const bool didBlackWin = result.reward > 0;
-    if ((didBlackWin && result.black_never_resign) ||
-        (!didBlackWin && result.white_never_resign)) {
-      // False positive resignation.
-      double minValue = 2.0;
-      for (size_t i = (didBlackWin ? 0 : 1); i < result.values.size(); i += 2) {
-        const double value =
-            didBlackWin ? (1.0 + result.values[i]) : (1.0 - result.values[i]);
-        minValue = std::min(minValue, value);
-      }
-      feedWinnerMinvalue(minValue);
-    }
+    nr_stats_.feed(result.reward);
+    feedWinnerMinvalue(NRItem(r));
   }
 
-  double getThreshold() const {
+  float getThreshold() const {
     return curThreshold_;
   }
 
-  double updateThreshold(double maxDelta = 0.01) {
+  float updateThreshold(float maxDelta = 0.01) {
     const size_t position =
         static_cast<size_t>(falsePositiveTarget_ * winnerMinValues_.size());
 
@@ -89,7 +74,7 @@ class ResignThresholdCalculator {
       return curThreshold_;
     }
 
-    std::vector<double> winnerMinValues(
+    std::vector<NRItem> winnerMinValues(
         winnerMinValues_.begin(), winnerMinValues_.end());
     // Sort the first position element.
     std::nth_element(
@@ -98,8 +83,8 @@ class ResignThresholdCalculator {
         winnerMinValues.end());
 
     // Update current threshold.
-    const double oldThreshold = curThreshold_;
-    curThreshold_ = winnerMinValues[position];
+    const float oldThreshold = curThreshold_;
+    curThreshold_ = winnerMinValues[position].minValue;
 
     assert(
         curThreshold_ >
@@ -117,59 +102,102 @@ class ResignThresholdCalculator {
     ss << "Resign threshold: " << curThreshold_
        << ", FP Target: " << falsePositiveTarget_ << ", #game " << numGamesFed_
        << ", Black win: " << numGamesFedBlackWin_ << " ("
-       << static_cast<float>(numGamesFedBlackWin_) * 100 / numGamesFed_ << "%)"
-       << ", #game never resign: " << numGamesNeverResign_ << " ("
-       << static_cast<float>(numGamesNeverResign_) * 100 / numGamesFed_ << "%)"
-       << ", Black win: " << numGamesNeverResignBlackWin_ << " ("
-       << static_cast<float>(numGamesNeverResignBlackWin_) * 100 /
-            numGamesNeverResign_
-       << "%)"
-       << ", #game never resign for calc: "
-       << numGamesNeverResignUsedForThresCalc_ << " ("
-       << static_cast<float>(numGamesNeverResignUsedForThresCalc_) * 100 /
-            numGamesFed_
-       << "%)"
-       << ", #game fp in never resign: " << numGamesFalsePositiveInNeverResign_
-       << " ("
-       << static_cast<float>(numGamesFalsePositiveInNeverResign_) * 100 /
-            numGamesNeverResign_
-       << "%)";
+       << static_cast<float>(numGamesFedBlackWin_) * 100 / numGamesFed_ << "%)";
+    ss << nr_stats_.info(numGamesFed_);
+
     return ss.str();
   }
 
  private:
-  void feedWinnerMinvalue(float winnerMinValue) {
-    while (winnerMinValues_.size() >= histSize_) {
-      winnerMinValues_.pop_front();
-    }
-    winnerMinValues_.push_back(winnerMinValue);
-    if (winnerMinValue < curThreshold_) {
-      numGamesFalsePositiveInNeverResign_++;
+  struct NRStats {
+    size_t fp = 0;
+    size_t n = 0;
+    size_t blackWin = 0;
+
+    size_t total_n = 0;
+    size_t totalBlackWin = 0;
+
+    void feed(float value) {
+      total_n++;
+      if (value > 0)
+        totalBlackWin++;
     }
 
-    numGamesNeverResignUsedForThresCalc_++;
+    std::string info(int n_fed) const {
+      std::stringstream ss;
+      ss << ", #game never resign: " << total_n << " ("
+         << static_cast<float>(total_n) * 100 / n_fed << "%)"
+         << ", Black win: " << totalBlackWin << " ("
+         << static_cast<float>(totalBlackWin) * 100 / total_n << "%)"
+         << ", #game in buffer: " << n << ", #game fp in buffer: " << fp << " ("
+         << static_cast<float>(fp) * 100 / n << "%)";
+      return ss.str();
+    }
+  };
+
+  struct NRItem {
+    float minValue = 0.0;
+    bool fp = false;
+    bool blackWin = false;
+
+    NRItem(const Record& r) {
+      const MsgResult& result = r.result;
+
+      // Resign calculator stuff
+      blackWin = result.reward > 0;
+
+      minValue = 2.0;
+      // Only check the winner player's value.
+      for (size_t i = (blackWin ? 0 : 1); i < result.values.size(); i += 2) {
+        const float value =
+            blackWin ? (1.0 + result.values[i]) : (1.0 - result.values[i]);
+        minValue = std::min(minValue, value);
+      }
+
+      // The winning player would have resigned if never_resign was not set.
+      fp = r.request.client_ctrl.resign_thres > minValue;
+    }
+
+    void changeStat(NRStats& stats, int delta) const {
+      stats.n += delta;
+      if (fp)
+        stats.fp += delta;
+      if (blackWin)
+        stats.blackWin += delta;
+    }
+
+    friend bool operator<(const NRItem& v1, const NRItem& v2) {
+      return v1.minValue < v2.minValue;
+    }
+  };
+
+  void feedWinnerMinvalue(NRItem&& item) {
+    while (winnerMinValues_.size() >= histSize_) {
+      winnerMinValues_.front().changeStat(nr_stats_, -1);
+      winnerMinValues_.pop_front();
+    }
+    winnerMinValues_.push_back(std::move(item));
+    winnerMinValues_.back().changeStat(nr_stats_, 1);
   }
 
   size_t histSize_;
-  double falsePositiveTarget_;
-  double curThreshold_;
-  double minThreshold_;
-  double maxThreshold_;
+  float falsePositiveTarget_;
+  float curThreshold_;
+  float minThreshold_;
+  float maxThreshold_;
   size_t numGamesFed_ = 0;
   size_t numGamesFedBlackWin_ = 0;
-  size_t numGamesFalsePositiveInNeverResign_ = 0;
-  size_t numGamesNeverResign_ = 0;
-  size_t numGamesNeverResignBlackWin_ = 0;
-  size_t numGamesNeverResignUsedForThresCalc_ = 0;
-  std::deque<double> winnerMinValues_;
+
+  std::deque<NRItem> winnerMinValues_;
+  NRStats nr_stats_;
 };
 
 struct SelfPlayRecord {
  public:
-  SelfPlayRecord(int ver, const GameOptions& options)
+  SelfPlayRecord(int ver, const GameOptionsTrain& options)
       : ver_(ver), options_(options) {
-    std::string selfplay_prefix =
-        "selfplay-" + options_.server_id + "-" + options_.time_signature;
+    std::string selfplay_prefix = "selfplay-" + options_.common.net.server_id +
+        "-" + options_.common.base.time_signature;
     records_.resetPrefix(selfplay_prefix + "-" + std::to_string(ver_));
   }
 
@@ -253,8 +281,7 @@ struct SelfPlayRecord {
   }
 
   void fillInRequest(const ClientInfo&, MsgRequest* msg) const {
-    msg->client_ctrl.black_resign_thres = resign_threshold_;
-    msg->client_ctrl.white_resign_thres = resign_threshold_;
+    msg->client_ctrl.resign_thres = resign_threshold_;
     msg->client_ctrl.never_resign_prob = 0.1;
     msg->client_ctrl.async = options_.selfplay_async;
   }
@@ -288,14 +315,14 @@ struct SelfPlayRecord {
     return ss.str();
   }
 
-  void set_resign_threshold(double resign_threshold) {
+  void set_resign_threshold(float resign_threshold) {
     resign_threshold_ = resign_threshold;
   }
 
  private:
   // statistics.
   const int64_t ver_;
-  const GameOptions& options_;
+  const GameOptionsTrain& options_;
 
   RecordBuffer records_;
 
@@ -305,7 +332,7 @@ struct SelfPlayRecord {
   int counter_ = 0;
   int last_counter_shown_ = 0;
   int num_weight_update_ = 0;
-  double resign_threshold_ = 0.0;
+  float resign_threshold_ = 0.0;
 };
 
 class SelfPlaySubCtrl {
@@ -317,9 +344,8 @@ class SelfPlaySubCtrl {
     SUFFICIENT_SAMPLE
   };
 
-  SelfPlaySubCtrl(const GameOptions& options, const TSOptions& mcts_options)
+  SelfPlaySubCtrl(const GameOptionsTrain& options)
       : options_(options),
-        mcts_options_(mcts_options),
         curr_ver_(-1),
         resignThresholdCalculator_(
             options.resign_target_hist_size,
@@ -413,7 +439,7 @@ class SelfPlaySubCtrl {
       assert(perf != nullptr);
       msg->vers.black_ver = curr_ver_;
       msg->vers.white_ver = -1;
-      msg->vers.mcts_opt = mcts_options_;
+      msg->vers.mcts_opt = options_.common.mcts;
       perf->fillInRequest(info, msg);
       /*
          if (perf.n() % 10 == 0) {
@@ -427,8 +453,7 @@ class SelfPlaySubCtrl {
  private:
   mutable std::mutex mutex_;
 
-  GameOptions options_;
-  TSOptions mcts_options_;
+  GameOptionsTrain options_;
   int64_t curr_ver_;
   std::unordered_map<int64_t, std::unique_ptr<SelfPlayRecord>> perfs_;
   ResignThresholdCalculator resignThresholdCalculator_;

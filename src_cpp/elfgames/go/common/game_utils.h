@@ -10,7 +10,6 @@
 
 #include <map>
 #include <random>
-#include "elf/legacy/pybind_helper.h"
 
 struct ResignCheck {
   float resign_thres = 0.05;
@@ -19,8 +18,7 @@ struct ResignCheck {
   bool never_resign = false;
   bool has_calculated_never_resign = false;
 
-  ResignCheck(float thres, float never_resign_ratio)
-      : resign_thres(thres), never_resign_ratio(never_resign_ratio) {}
+  ResignCheck() {}
 
   bool check(float value, std::mt19937* rng) {
     if (!has_calculated_never_resign) {
@@ -103,5 +101,13 @@ struct WinRateStats {
     total_games = 0;
   }
 
-  REGISTER_PYBIND_FIELDS(black_wins, white_wins, sum_reward, total_games);
+  uint64_t getBlackWins() const {
+    return black_wins;
+  }
+  uint64_t getWhiteWins() const {
+    return white_wins;
+  }
+  uint64_t getTotalGames() const {
+    return total_games;
+  }
 };

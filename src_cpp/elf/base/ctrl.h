@@ -17,9 +17,9 @@
 #include <thread>
 #include <typeindex>
 #include <unordered_map>
-
 #include <tbb/concurrent_hash_map.h>
 
+#include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
 #include "elf/concurrency/TBBHashers.h"
 
@@ -253,7 +253,6 @@ class ThreadInfosT {
     assert(res != nullptr);
     return res;
   }
-
   std::thread::id _th_label2id(const std::string& label) const {
     typename ThreadStrMap::accessor elem;
     // std::cout << "looking for label: " << label << std::endl;
@@ -416,6 +415,8 @@ class ThreadedCtrlBaseT {
     startedSwitch_.reset();
   }
 };
+
+using Ctrl = CtrlT<elf::concurrency::ConcurrentQueue>;
 
 } // namespace elf
 

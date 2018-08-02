@@ -8,7 +8,6 @@
 from _elf import *
 
 # Other imports
-from .context_utils import ContextArgs
 from .more_labels import MoreLabels
 from .utils_elf import GCWrapper, Batch
 from .zmq_util import ZMQSender, ZMQReceiver

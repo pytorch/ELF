@@ -33,7 +33,8 @@ void OptionMap::registerPy(pybind11::module& m) {
 
 void OptionMap::loadJSON(const json& data) {
   for (auto it = data.begin(); it != data.end(); ++it) {
-    data_[it.key()] = it.value();
+    // std::cout << "Key: " << it.key() << std::endl;
+    set(it.key(), it.value());
   }
 }
 

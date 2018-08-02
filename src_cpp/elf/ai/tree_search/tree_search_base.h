@@ -21,6 +21,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "elf/ai/tree_search/tree_search_edgeinfo.h"
 #include "elf/utils/utils.h"
 
 using json = nlohmann::json;
@@ -30,14 +31,71 @@ namespace ai {
 namespace tree_search {
 
 template <typename Action>
-struct NodeResponseT {
-  std::vector<std::pair<Action, float>> pi;
-  float value;
+struct _NodeResponseT {
+  std::unordered_map<Action, EdgeInfo> pi;
+  float value = 0.0;
   bool q_flip = false;
+
+  void normalize() {
+    float total_prob = 1e-10;
+    for (const auto& p : pi) {
+      total_prob += p.second.prior_probability;
+    }
+
+    for (auto& p : pi) {
+      p.second.prior_probability /= total_prob;
+    }
+  }
+
+  std::string info() const {
+    std::stringstream ss;
+    ss << "value=" << value << ", q_flip=" << q_flip;
+    return ss.str();
+  }
+
+  void enhanceExploration(float epsilon, float alpha, std::mt19937* rng) {
+    // Note that this is not thread-safe.
+    // It should be called once and only once for each node.
+    if (epsilon == 0.0) {
+      return;
+    }
+
+    std::gamma_distribution<> dis(alpha);
+
+    // Draw distribution.
+    std::vector<float> etas(pi.size());
+    float Z = 1e-10;
+    for (size_t i = 0; i < pi.size(); ++i) {
+      etas[i] = dis(*rng);
+      Z += etas[i];
+    }
+
+    int i = 0;
+    for (auto& p : pi) {
+      p.second.prior_probability =
+          (1 - epsilon) * p.second.prior_probability + epsilon * etas[i] / Z;
+      i++;
+    }
+  }
+
+  virtual void clear() {
+    pi.clear();
+    value = 0.0;
+    q_flip = 0.0;
+  }
 };
 
-using NodeId = int;
-const NodeId InvalidNodeId = -1;
+template <typename Action, typename Info>
+struct NodeResponseT : public _NodeResponseT<Action> {
+  std::unique_ptr<Info> info;
+  void clear() override { 
+    _NodeResponseT<Action>::clear(); 
+    info.reset(); 
+  }
+};
+
+template <typename Action>
+struct NodeResponseT<Action, void> : public _NodeResponseT<Action> {};
 
 template <typename S, typename A>
 using ForwardFuncT = std::function<bool(const S& s, const A& a, S* next)>;
@@ -61,10 +119,8 @@ struct StateTrait {
     return s1 == s2;
   }
 
-  static bool moves_since(
-      const S& /*s*/,
-      size_t* /*next_move_number*/,
-      std::vector<A>* /*moves*/) {
+  static bool
+  moves_since(const S& /*s*/, const S& /*s_ref*/, std::vector<A>* /*moves*/) {
     // By default it is not provided.
     return false;
   }
@@ -88,87 +144,6 @@ struct ActorTrait {
  public:
   static std::string to_string(const Actor&) {
     return "";
-  }
-};
-
-struct Score {
-  float q;
-  float unsigned_q;
-  float prior_probability;
-  bool first_visit;
-};
-
-struct EdgeInfo {
-  // From state.
-  float prior_probability;
-  NodeId child_node;
-
-  // Accumulated reward and #trial.
-  float reward;
-  int num_visits;
-  float virtual_loss;
-
-  EdgeInfo(float probability)
-      : prior_probability(probability),
-        child_node(InvalidNodeId),
-        reward(0),
-        num_visits(0),
-        virtual_loss(0) {}
-
-  float getQSA() const {
-    return reward / num_visits;
-  }
-
-  // TODO: What is this function doing (ssengupta@fb.com)
-  void checkValid() const {
-    if (virtual_loss != 0) {
-      // TODO: This should be a Google log (ssengupta@fb)
-      std::cout << "Virtual loss is not zero[" << virtual_loss << "]"
-                << std::endl;
-      std::cout << info(true) << std::endl;
-      assert(virtual_loss == 0);
-    }
-  }
-
-  Score getScore(
-      bool flip_q_sign,
-      int total_parent_visits,
-      float unsigned_default_q) const {
-    float r = reward;
-    if (flip_q_sign) {
-      r = -r;
-    }
-
-    // Virtual loss.
-    // After flipping, r is the win count (-1 for loss, and +1 for win).
-    r -= virtual_loss;
-    const int num_visits_with_loss = num_visits + virtual_loss;
-
-    Score s;
-    s.q =
-        (num_visits_with_loss > 0
-             ? r / num_visits_with_loss
-             : (flip_q_sign ? -unsigned_default_q : unsigned_default_q));
-    s.unsigned_q = (num_visits > 0 ? reward / num_visits : unsigned_default_q);
-    s.prior_probability =
-        prior_probability / (1 + num_visits) * std::sqrt(total_parent_visits);
-    s.first_visit = (num_visits_with_loss == 0);
-
-    return s;
-  }
-
-  std::string info(bool verbose = false) const {
-    std::stringstream ss;
-
-    if (verbose == false) {
-      ss << reward << "/" << num_visits << " (" << getQSA()
-         << "), Pr: " << prior_probability << ", child node: " << child_node;
-    } else {
-      ss << "[" << reward << "/" << num_visits << "]["
-         << "vl: " << virtual_loss << "][prob:" << prior_probability
-         << "][num_visits:" << num_visits << "]";
-    }
-    return ss.str();
   }
 };
 
@@ -214,39 +189,33 @@ template <typename Action>
 struct MCTSResultT {
   enum RankCriterion { MOST_VISITED = 0, PRIOR = 1, UNIFORM_RANDOM };
 
-  Action best_action;
-  float root_value;
-  float max_score;
+  Action best_action = ActionTrait<Action>::default_value();
+  float root_value = 0.0;
+  float max_score = std::numeric_limits<float>::lowest();
   EdgeInfo best_edge_info;
   MCTSPolicy<Action> mcts_policy;
   std::vector<std::pair<Action, EdgeInfo>> action_edge_pairs;
-  int total_visits;
-  RankCriterion action_rank_method;
+  int total_visits = 0;
+  RankCriterion action_rank_method = MOST_VISITED;
 
-  // TODO: Constructor should set action_rank_methhohd and
-  //       action_edges ssengupta@fb.com
-  MCTSResultT()
-      : best_action(ActionTrait<Action>::default_value()),
-        root_value(0.0),
-        max_score(std::numeric_limits<float>::lowest()),
-        best_edge_info(0),
-        total_visits(0),
-        action_rank_method(MOST_VISITED) {}
+  MCTSResultT() : best_edge_info(0) {}
 
   // TODO: This function should be private and called from the constructor
   //       ssengupta@fb.com
-  void addActions(const std::unordered_map<Action, EdgeInfo>& action_edges) {
+  MCTSResultT(RankCriterion rc, const _NodeResponseT<Action>& resp)
+      : best_edge_info(0) {
+    action_rank_method = rc;
     static std::mt19937 rng(time(NULL));
     int random_idx = 0;
 
-    assert(action_edges.size() > 0);
+    assert(resp.pi.size() > 0);
 
     if (action_rank_method == UNIFORM_RANDOM) {
-      random_idx = rng() % action_edges.size();
+      random_idx = rng() % resp.pi.size();
     }
 
     int index = 0;
-    for (const std::pair<Action, EdgeInfo>& action_edge : action_edges) {
+    for (const std::pair<Action, EdgeInfo>& action_edge : resp.pi) {
       // float score = 0;
 
       float score = (action_rank_method == MOST_VISITED)
@@ -292,6 +261,7 @@ struct MCTSResultT {
 
       index++;
     }
+    root_value = resp.value;
   }
 
 #if 0

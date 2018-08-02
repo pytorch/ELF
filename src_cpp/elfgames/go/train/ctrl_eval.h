@@ -9,6 +9,7 @@
 #pragma once
 
 #include <fstream>
+#include "../common/go_game_specific.h"
 #include "client_manager.h"
 #include "ctrl_utils.h"
 #include "elf/ai/tree_search/tree_search_options.h"
@@ -27,7 +28,7 @@ class ModelPerf {
   };
 
   ModelPerf(
-      const GameOptions& options,
+      const GameOptionsTrain& options,
       const ClientManager& mgr,
       const ModelPair& p)
       : options_(options), curr_pair_(p) {
@@ -130,8 +131,7 @@ class ModelPerf {
       msg->vers = curr_pair_;
       // Now treat player_swap as same as other quantities.
       msg->client_ctrl.player_swap = g.second;
-      msg->client_ctrl.black_resign_thres = options_.resign_thres;
-      msg->client_ctrl.white_resign_thres = options_.resign_thres;
+      msg->client_ctrl.resign_thres = options_.resign_thres;
       msg->client_ctrl.num_game_thread_used = options_.eval_num_threads;
       break;
     }
@@ -146,7 +146,7 @@ class ModelPerf {
   }
 
  private:
-  const GameOptions& options_;
+  const GameOptionsTrain& options_;
   const ModelPair curr_pair_;
 
   // For each machine + game_id, the list of rewards.
@@ -171,7 +171,8 @@ class ModelPerf {
   }
 
   std::string eval_prefix() const {
-    return "eval-" + options_.server_id + "-" + options_.time_signature;
+    return "eval-" + options_.common.net.server_id + "-" +
+        options_.common.base.time_signature;
   }
 
   EvalResult eval_check() const {
@@ -214,14 +215,12 @@ class ModelPerf {
 
 class EvalSubCtrl {
  public:
-  EvalSubCtrl(const GameOptions& options, const TSOptions& mcts_options)
-      : options_(options) {
+  EvalSubCtrl(const GameOptionsTrain& options) : options_(options) {
     // [TODO]: A bit hacky, we need to have a better way for this.
-    mcts_opt_ = mcts_options;
-    mcts_opt_.alg_opt.unexplored_q_zero = false;
-    mcts_opt_.alg_opt.root_unexplored_q_zero = false;
-    mcts_opt_.root_epsilon = 0.0;
-    mcts_opt_.root_alpha = 0.0;
+    options_.common.mcts.alg_opt.unexplored_q_zero = false;
+    options_.common.mcts.alg_opt.root_unexplored_q_zero = false;
+    options_.common.mcts.root_epsilon = 0.0;
+    options_.common.mcts.root_alpha = 0.0;
   }
 
   int64_t updateState(const ClientManager& mgr) {
@@ -306,14 +305,14 @@ class EvalSubCtrl {
       if (selfplay_ver < new_version) {
         std::cout << "Add new version: " << new_version
                   << ", selfplay_ver: " << selfplay_ver
-                  << ", baseline: " << best_baseline_model_ << mcts_opt_.info()
-                  << std::endl;
+                  << ", baseline: " << best_baseline_model_
+                  << options_.common.mcts.info() << std::endl;
         add_candidate_model(new_version);
       } else {
         std::cout << "New version: " << new_version
                   << " is the same or earlier tha "
-                  << ", baseline: " << best_baseline_model_ << mcts_opt_.info()
-                  << std::endl;
+                  << ", baseline: " << best_baseline_model_
+                  << options_.common.mcts.info() << std::endl;
       }
     } else {
       std::cout << "New version " << new_version << " is not registered. "
@@ -325,8 +324,7 @@ class EvalSubCtrl {
  private:
   mutable std::mutex mutex_;
 
-  GameOptions options_;
-  TSOptions mcts_opt_;
+  GameOptionsTrain options_;
 
   int64_t best_baseline_model_ = -1;
   std::vector<int64_t> models_to_eval_;
@@ -337,7 +335,7 @@ class EvalSubCtrl {
     ModelPair p;
     p.black_ver = ver;
     p.white_ver = best_baseline_model_;
-    p.mcts_opt = mcts_opt_;
+    p.mcts_opt = options_.common.mcts;
     return p;
   }
 

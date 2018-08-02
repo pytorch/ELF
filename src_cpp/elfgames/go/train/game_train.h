@@ -6,19 +6,20 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "../common/game_base.h"
+#include "../common/go_game_specific.h"
+#include "../common/go_state_ext.h"
+#include "../common/record.h"
+#include "elf/base/game_base.h"
 #include "elf/distributed/shared_reader.h"
 
-class GoGameTrain : public GoGameBase {
+class GoGameTrain {
  public:
   GoGameTrain(
       int game_idx,
-      elf::GameClient* client,
-      const ContextOptions& context_options,
-      const GameOptions& options,
+      const GameOptionsTrain& options,
       elf::shared::ReaderQueuesT<Record>* reader);
 
-  void act() override;
+  void OnAct(elf::game::Base* base);
 
  private:
   elf::shared::ReaderQueuesT<Record>* reader_ = nullptr;
