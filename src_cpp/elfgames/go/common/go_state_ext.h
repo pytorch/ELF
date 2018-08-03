@@ -38,10 +38,11 @@ struct GoStateExt {
         _last_move_for_the_game(M_INVALID),
         _last_value(0.0),
         _resign_check(options.resign_thres, options.resign_prob_never),
-        _options(options) {
+        _options(options),
+        _logger(elf::logging::getLogger("elfgames::go::GoStateExt-", "")) {
     restart();
-  },
-        _logger(elf::logging::getLogger("elfgames::go::GoStateExt-", ""))
+  }
+
 
   std::string dumpSgf(const std::string& filename) const;
   void dumpSgf() const {
@@ -262,10 +263,8 @@ class GoStateExtOffline {
       : _game_idx(game_idx), _bf(_state), _options(options) {}
 
   void fromRecord(const Record& r) {
-    // std::cout << "Convert to moves: " << r.content << std::endl;
     _offline_all_moves = sgfstr2coords(r.result.content);
     _offline_winner = r.result.reward > 0 ? 1.0 : -1.0;
-    // std::cout << "Convert complete, #move = " << moves.size() << std::endl;
 
     _mcts_policies = r.result.policies;
     curr_request_ = r.request;
@@ -277,9 +276,10 @@ class GoStateExtOffline {
   bool switchRandomMove(std::mt19937* rng) {
     // Random sample one move
     if ((int)_offline_all_moves.size() <= _options.num_future_actions - 1) {
-      std::cout << "[" << _game_idx << "] #moves " << _offline_all_moves.size()
-                << " smaller than " << _options.num_future_actions << " - 1"
-                << std::endl;
+      _logger->info("[{}] #moves {} smaller than {} - 1\n",
+        _game_idx,
+        _offline_all_moves.size(),
+        _options.num_future_actions);
       return false;
     }
     size_t move_to = (*rng)() %
