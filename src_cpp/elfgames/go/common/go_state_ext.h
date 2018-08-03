@@ -260,7 +260,10 @@ class GoStateExtOffline {
   friend class GoFeature;
 
   GoStateExtOffline(int game_idx, const GameOptions& options)
-      : _game_idx(game_idx), _bf(_state), _options(options) {}
+      : _game_idx(game_idx),
+        _bf(_state),
+        _options(options),
+        _logger(elf::logging::getLogger("elfgames::go::GoStateExt-", "")) {}
 
   void fromRecord(const Record& r) {
     _offline_all_moves = sgfstr2coords(r.result.content);
@@ -323,4 +326,6 @@ class GoStateExtOffline {
 
   std::vector<CoordRecord> _mcts_policies;
   std::vector<float> _predicted_values;
+
+  std::shared_ptr<spdlog::logger> _logger;
 };
