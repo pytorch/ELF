@@ -19,6 +19,7 @@
 #include "record.h"
 
 #include "elf/ai/tree_search/tree_search_base.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 
 enum FinishReason {
   FR_RESIGN = 0,
@@ -39,7 +40,8 @@ struct GoStateExt {
         _resign_check(options.resign_thres, options.resign_prob_never),
         _options(options) {
     restart();
-  }
+  },
+        _logger(elf::logging::getLogger("elfgames::go::GoStateExt-", ""))
 
   std::string dumpSgf(const std::string& filename) const;
   void dumpSgf() const {
@@ -248,6 +250,8 @@ struct GoStateExt {
 
   std::vector<CoordRecord> _mcts_policies;
   std::vector<float> _predicted_values;
+
+  std::shared_ptr<spdlog::logger> _logger;
 };
 
 class GoStateExtOffline {

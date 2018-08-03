@@ -82,7 +82,7 @@ std::string GoStateExt::dumpSgf(const std::string& filename) const {
 
 void GoStateExt::showFinishInfo(FinishReason reason) const {
   Stone player = _state.nextPlayer();
-  std::cout << _state.showBoard() << std::endl;
+  _logger.info("{}\n", _state.showBoard());
   std::string sgf_record = dumpSgf("");
   std::cout << sgf_record << std::endl;
 
