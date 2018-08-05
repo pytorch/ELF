@@ -17,7 +17,7 @@
 #include <thread>
 #include <vector>
 
-#include "data_loader.h"
+#include "elf/distributed/data_loader.h"
 
 #include "ctrl_eval.h"
 #include "ctrl_selfplay.h"
@@ -229,7 +229,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
   }
 };
 
-class TrainCtrl : public DataInterface {
+class TrainCtrl : public elf::msg::DataInterface {
  public:
   TrainCtrl(
       Ctrl& ctrl,

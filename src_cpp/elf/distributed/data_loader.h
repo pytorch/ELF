@@ -8,9 +8,11 @@
 
 #pragma once
 
-#include "../common/record.h"
-#include "elf/distributed/shared_reader.h"
-#include "elf/distributed/shared_rw_buffer3.h"
+#include "shared_reader.h"
+#include "shared_rw_buffer3.h"
+
+namespace elf {
+namespace msg { 
 
 struct Stats {
   std::atomic<int> client_size;
@@ -114,3 +116,6 @@ class DataOnlineLoader {
 
   std::shared_ptr<spdlog::logger> logger_;
 };
+
+} // namespace msg
+} // namespace elf
