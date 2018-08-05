@@ -63,6 +63,11 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
     run_options_.byoyomi = byoyomi;
   }
 
+  std::vector<std::pair<Action, EdgeInfo>> peekMCTS() {
+    auto results = ts_->chooseAction();
+    return results.getSorted();
+  }
+
   bool act(const State& s, Action* a) override {
     //auto now = elf_utils::msec_since_epoch_from_now();
     if (run_options_.msec_start_time > 0) {

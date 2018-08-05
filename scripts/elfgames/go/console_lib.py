@@ -242,6 +242,11 @@ class GoConsoleGTP:
             reply["a"] = self.actions["skip"]
             return True, reply
 
+    def on_peek(self, batch, items, reply):
+        topn = int(items[1])
+        print(batch.game_obj.getGame(0).peekMCTS(topn))
+        return True, ""
+
     def on_play(self, batch, items, reply):
         ret, msg = self.check_player(batch, items[1][0])
         if ret:
@@ -251,7 +256,7 @@ class GoConsoleGTP:
             return False, msg
 
     def on_showboard(self, batch, items, reply):
-        #self.showboard(batch)
+        self.showboard(batch)
         return True, None
 
     def on_final_score(self, batch, items, reply):

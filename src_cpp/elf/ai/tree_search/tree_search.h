@@ -567,32 +567,29 @@ class TreeSearchT {
     return chooseAction();
   }
 
-  MCTSTimeCtrl timeCtrl(uint64_t time_msec, uint64_t overhead, const MCTSRunOptions& run_options) {
-    if (options_.time_sec_allowed_per_move < 0)
-      return MCTS_ONTIME;
-    uint64_t allowed_time = 0;
-    uint64_t time_msec_per_move = (uint64_t)options_.time_sec_allowed_per_move * 1000;
-    if (run_options.byoyomi == 1) {
-      // respect last byoyomi
-      allowed_time =  time_msec_per_move;
-    } else {
-      if (overhead * 3 > time_msec_per_move) {
-        // too much overhead, willing to spend more time
-        if (run_options.byoyomi == 0) {
-          // add back overhead
-          allowed_time = time_msec_per_move + overhead;
-        } else {
-          // use one byoyomi period
-          allowed_time = time_msec_per_move * 2;
-        }
-      } else {
-        allowed_time = time_msec_per_move;
-      }
+  MCTSResult chooseAction() {
+    const Node* root = searchTree_.getRootNode();
+    if (root == nullptr) {
+      std::cout << "TreeSearch::root cannot be null!" << std::endl;
+      throw std::range_error("TreeSearch::root cannot be null!");
     }
-    if (time_msec >= allowed_time)
-      return MCTS_TIMEOUT;
-    else
-      return MCTS_ONTIME;
+
+    // MCTSResult result2;
+    if (options_.pick_method == "strongest_prior") {
+      return root->chooseAction(MCTSResult::PRIOR);
+    } else if (options_.pick_method == "most_visited") {
+      return root->chooseAction(MCTSResult::MOST_VISITED);
+      // result2 = MostVisited(root->getStateActions());
+
+      // assert(result.max_score == result2.max_score);
+      // assert(result.total_visits == result2.total_visits);
+    } else if (options_.pick_method == "uniform_random") {
+      return root->chooseAction(MCTSResult::UNIFORM_RANDOM);
+      // result = UniformRandom(root->getStateActions());
+    } else {
+      throw std::range_error(
+          "MCTS Pick method unknown! " + options_.pick_method);
+    }
   }
 
   void stop() {
@@ -632,29 +629,32 @@ class TreeSearchT {
     // std::cout << "Finish sending signal: " << signal << std::endl;
   }
 
-  MCTSResult chooseAction() {
-    const Node* root = searchTree_.getRootNode();
-    if (root == nullptr) {
-      std::cout << "TreeSearch::root cannot be null!" << std::endl;
-      throw std::range_error("TreeSearch::root cannot be null!");
-    }
-
-    // MCTSResult result2;
-    if (options_.pick_method == "strongest_prior") {
-      return root->chooseAction(MCTSResult::PRIOR);
-    } else if (options_.pick_method == "most_visited") {
-      return root->chooseAction(MCTSResult::MOST_VISITED);
-      // result2 = MostVisited(root->getStateActions());
-
-      // assert(result.max_score == result2.max_score);
-      // assert(result.total_visits == result2.total_visits);
-    } else if (options_.pick_method == "uniform_random") {
-      return root->chooseAction(MCTSResult::UNIFORM_RANDOM);
-      // result = UniformRandom(root->getStateActions());
+  MCTSTimeCtrl timeCtrl(uint64_t time_msec, uint64_t overhead, const MCTSRunOptions& run_options) {
+    if (options_.time_sec_allowed_per_move < 0)
+      return MCTS_ONTIME;
+    uint64_t allowed_time = 0;
+    uint64_t time_msec_per_move = (uint64_t)options_.time_sec_allowed_per_move * 1000;
+    if (run_options.byoyomi == 1) {
+      // respect last byoyomi
+      allowed_time =  time_msec_per_move;
     } else {
-      throw std::range_error(
-          "MCTS Pick method unknown! " + options_.pick_method);
+      if (overhead * 3 > time_msec_per_move) {
+        // too much overhead, willing to spend more time
+        if (run_options.byoyomi == 0) {
+          // add back overhead
+          allowed_time = time_msec_per_move + overhead;
+        } else {
+          // use one byoyomi period
+          allowed_time = time_msec_per_move * 2;
+        }
+      } else {
+        allowed_time = time_msec_per_move;
+      }
     }
+    if (time_msec >= allowed_time)
+      return MCTS_TIMEOUT;
+    else
+      return MCTS_ONTIME;
   }
 };
 

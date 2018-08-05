@@ -39,6 +39,18 @@ class GoGameSelfPlay {
   }
   bool OnReceive(const MsgRequest& request, RestartReply* reply);
 
+  std::string peekMCTS(int topn) {
+    auto sorted = _ai->peekMCTS();
+
+    std::stringstream ss;
+    for (int i = 0; i < topn; ++i) {
+      ss << "[" << i + 1 << "] " 
+         << elf::ai::tree_search::ActionTrait<Coord>::to_string(sorted[i].first) 
+         << ", info: " << sorted[i].second.info() << std::endl;
+    }
+    return ss.str();
+  }
+
   std::string showBoard() const {
     return _state_ext.state().showBoard();
   }

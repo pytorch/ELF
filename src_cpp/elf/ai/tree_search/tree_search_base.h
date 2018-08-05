@@ -280,9 +280,11 @@ struct MCTSResultT {
   }
 #endif
 
-  std::pair<int, EdgeInfo> getRank(const Action& action, RankCriterion rc)
-      const {
-    // [TODO] not efficient if you want to get rank for multiple actions.
+  std::vector<std::pair<Action, EdgeInfo>> getSorted() const {
+    return getSorted(action_rank_method);
+  }
+
+  std::vector<std::pair<Action, EdgeInfo>> getSorted(RankCriterion rc) const {
     // TODO: This assignment is a bit odd (ssengupta@fb.com)
     auto ae_pairs = action_edge_pairs;
 
@@ -307,6 +309,13 @@ struct MCTSResultT {
       default:
         break;
     }
+    return ae_pairs;
+  }
+
+  std::pair<int, EdgeInfo> getRank(const Action& action, RankCriterion rc)
+      const {
+    // [TODO] not efficient if you want to get rank for multiple actions.
+    auto ae_pairs = getSorted(rc);
 
     for (int i = 0; i < (int)ae_pairs.size(); ++i) {
       if (ae_pairs[i].first == action) {
