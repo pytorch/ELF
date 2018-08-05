@@ -237,8 +237,8 @@ DEF_STRUCT(CtrlOptions)
     ss << "MCTSCtrlOptions: msec_start_time: " << msec_start_time; 
     if (msec_time_left > 0) ss << ", time_left = " << msec_time_left << " msec"; 
     if (byoyomi > 0) ss << ", byoyomi = " << byoyomi;
-    if (rollout_per_thread > 0) ss << "rollout_per_thread = " << rollout_per_thread;
-    if (msec_per_move > 0) ss << "msec_per_move = " << msec_per_move << " msec";
+    if (rollout_per_thread > 0) ss << ", rollout_per_thread = " << rollout_per_thread;
+    if (msec_per_move > 0) ss << ", msec_per_move = " << msec_per_move << " msec";
     return ss.str();
   }
 

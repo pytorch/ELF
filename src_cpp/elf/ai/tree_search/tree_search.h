@@ -623,6 +623,11 @@ class TreeSearchT {
       return MCTS_ONTIME;
     uint64_t allowed_time = 0;
     uint64_t time_msec_per_move = (uint64_t)options_.time_sec_allowed_per_move * 1000;
+    if (options.msec_per_move > 0) {
+      // std::cout << "set specified msec_per_move: " << options.msec_per_move << std::endl;
+      time_msec_per_move = std::min(time_msec_per_move, (uint64_t)options.msec_per_move); 
+    }
+
     if (options.byoyomi == 1) {
       // respect last byoyomi
       allowed_time =  time_msec_per_move;
@@ -632,7 +637,7 @@ class TreeSearchT {
         if (options.byoyomi == 0) {
           // add back overhead
           allowed_time = time_msec_per_move + overhead;
-        } else {
+        } else if (options.byoyomi > 0) {
           // use one byoyomi period
           allowed_time = time_msec_per_move * 2;
         }
