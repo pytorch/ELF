@@ -8,9 +8,12 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
+import sys
 import time
 import re
 from datetime import datetime
+
+import torch
 
 from rlpytorch import \
     Evaluator, load_env, ModelInterface
@@ -23,17 +26,19 @@ class Stats(object):
         self.actor_count = 0
 
     def feed(self, batch):
-        # print("batchsize: %d" % batch.batchsize)
         self.total_sel_batchsize += batch.batchsize
         self.total_batchsize += batch.max_batchsize
         self.actor_count += 1
 
         if self.total_sel_batchsize >= 500000:
             print(datetime.now())
-            print("Batch usage: %d/%d (%.2f%%)" %
-                  (self.total_sel_batchsize, self.total_batchsize,
-                      100.0 * self.total_sel_batchsize / self.total_batchsize))
-            wr = batch.GC.getGameStats().getWinRateStats()
+
+            batch_usage = self.total_sel_batchsize / self.total_batchsize
+            print(f'Batch usage: '
+                  f'{self.total_sel_batchsize}/{self.total_batchsize} '
+                  f'({100.0 * batch_usage:.2f}%)')
+
+            wr = batch.GC.getClient().getGameStats().getWinRateStats()
             win_rate = (100.0 * wr.black_wins / wr.total_games
                         if wr.total_games > 0
                         else 0.0)
@@ -42,7 +47,7 @@ class Stats(object):
 
             self.total_sel_batchsize = 0
             self.total_batchsize = 0
-            print("Actor Count: %d" % self.actor_count)
+            print('Actor count:', self.actor_count)
 
 
 name_matcher = re.compile(r"save-(\d+)")
@@ -60,15 +65,13 @@ def reload_model(model_loader, params, mi, actor_name, args):
     if actor_name not in mi:
         mi.add_model(actor_name, model, cuda=(args.gpu >= 0), gpu_id=args.gpu)
     else:
-        # mi["actor"].load(
-        #     real_path, replace_prefix = [("resnet.module", "resnet")])
         mi.update_model(actor_name, model)
     mi[actor_name].eval()
 
 
 def reload(mi, model_loader, params, args, root, ver, actor_name):
     if model_loader.options.load is None or model_loader.options.load == "":
-        print("No previous model loaded, loading form " + root)
+        print('No previous model loaded, loading from', root)
         real_path = os.path.join(root, "save-" + str(ver) + ".bin")
     else:
         this_root = os.path.dirname(model_loader.options.load)
@@ -78,10 +81,15 @@ def reload(mi, model_loader, params, args, root, ver, actor_name):
         model_loader.options.load = real_path
         reload_model(model_loader, params, mi, actor_name, args)
     else:
-        print("Warning! Same model, skip loading " + real_path)
+        print('Warning! Same model, skip loading', real_path)
 
 
 def main():
+    print('Python version:', sys.version)
+    print('PyTorch version:', torch.__version__)
+    print('CUDA version', torch.version.cuda)
+    print('Conda env:', os.environ.get("CONDA_DEFAULT_ENV", ""))
+
     # Set game to online model.
     actors = ["actor_black", "actor_white"]
     additional_to_load = {
@@ -99,36 +107,32 @@ def main():
     })
 
     env = load_env(
-        os.environ, num_models=2, overrides=dict(actor_only=True),
+        os.environ, num_models=2, overrides={'actor_only': True},
         additional_to_load=additional_to_load)
 
     GC = env["game"].initialize()
 
     stats = [Stats(), Stats()]
 
-    # for actor_name, stat, model_loader, e in \
-    #         zip(actors, stats, env["model_loaders"], evaluators):
     for i in range(len(actors)):
         actor_name = actors[i]
         stat = stats[i]
         e = env["eval_" + actor_name]
 
-        print("register " + actor_name + " for e = " + str(e))
+        print(f'register {actor_name} for e = {e!s}')
         e.setup(sampler=env["sampler"], mi=env["mi_" + actor_name])
 
         def actor(batch, e, stat):
             reply = e.actor(batch)
             stat.feed(batch)
-            # eval_iters.stats.feed_batch(batch)
             return reply
 
         GC.reg_callback(actor_name,
                         lambda batch, e=e, stat=stat: actor(batch, e, stat))
 
     root = os.environ.get("root", "./")
-    print("Root: \"%s\"" % root)
+    print(f'Root: "{root}"')
     args = env["game"].options
-    global loop_end
     loop_end = False
 
     def game_start(batch):
@@ -152,27 +156,21 @@ def main():
                         time.sleep(10)
 
     def game_end(batch):
-        global loop_end
-        # print("In game end")
-        wr = batch.GC.getGameStats().getWinRateStats()
-        win_rate = 100.0 * wr.black_wins / wr.total_games \
-            if wr.total_games > 0 else 0.0
-        print("%s B/W: %d/%d. Black winrate: %.2f (%d)" %
-              (str(datetime.now()), wr.black_wins, wr.white_wins,
-               win_rate, wr.total_games))
+        nonlocal loop_end
+        wr = batch.GC.getClient().getGameStats().getWinRateStats()
+        win_rate = (100.0 * wr.black_wins / wr.total_games
+                    if wr.total_games > 0 else 0.0)
+        print(f'{datetime.now()!s} B/W: {wr.black_wins}/{wr.white_wins}.'
+              f'Black winrate: {win_rate:.2f} ({wr.total_games})')
+
         if args.suicide_after_n_games > 0 and \
-           wr.total_games >= args.suicide_after_n_games:
-            print("#suicide_after_n_games: %d, total_games: %d" %
-                  (args.suicide_after_n_games, wr.total_games))
+                wr.total_games >= args.suicide_after_n_games:
+            print(f'#suicide_after_n_games: {args.suicide_after_n_games}, '
+                  f'total_games: {wr.total_games}')
             loop_end = True
 
     GC.reg_callback_if_exists("game_start", game_start)
     GC.reg_callback_if_exists("game_end", game_end)
-
-    # def episode_start(i):
-    #     global GC
-    #     GC.GC.setSelfplayCount(10000)
-    #     evaluator.episode_start(i)
 
     GC.start()
     if args.eval_model_pair:
@@ -188,8 +186,8 @@ def main():
                              env["mi_" + actor_name], actor_name, args)
 
         # We just use one thread to do selfplay.
-        GC.GC.setRequest(int(black), int(white),
-                         env['game'].options.resign_thres, 1)
+        GC.GC.getClient().setRequest(
+            int(black), int(white), env['game'].options.resign_thres, 1)
 
     for actor_name in actors:
         env["eval_" + actor_name].episode_start(0)
