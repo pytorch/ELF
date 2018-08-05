@@ -25,6 +25,7 @@
 #include "elf/comm/comm.h"
 #include "elf/logging/Pybind.h"
 #include "elf/options/Pybind.h"
+#include "elf/ai/tree_search/Pybind.h"
 
 namespace {
 
@@ -144,6 +145,9 @@ void registerPy(pybind11::module& m) {
 
   auto m_options = m.def_submodule("_options");
   elf::options::registerPy(m_options);
+
+  auto m_mcts = m.def_submodule("_mcts");
+  elf::ai::tree_search::registerPy(m_mcts);
 
   register_game(m);
 }

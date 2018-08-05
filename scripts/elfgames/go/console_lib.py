@@ -4,6 +4,7 @@ from collections import Counter
 import time
 
 from elf.options import auto_import_options, PyOptionSpec
+from _elf import elf_C
 
 def getTimeStamp():
     return int(time.time() * 1000)
@@ -281,8 +282,17 @@ class GoConsoleGTP:
         return True, msg
 
     def on_time_left(self, batch, items, reply):
-        reply["timeleft"] = int(items[2]) * 1000
-        reply["byoyomi"] = int(items[3]) 
+        ctrl_options = elf_C._mcts.CtrlOptions()
+        ctrl_options.msec_time_left = int(items[2]) * 1000
+        ctrl_options.byoyomi = int(items[2]) * 1000
+        batch.game_obj.getGame(0).addMCTSParams(ctrl_options)
+        return True, None
+
+    def on_mcts_set(self, batch, items, reply):
+        ctrl_options = elf_C._mcts.CtrlOptions()
+        ctrl_options.rollout_per_thread = int(items[1])
+        ctrl_options.msec_per_move = int(items[2])
+        batch.game_obj.getGame(0).addMCTSParams(ctrl_options)
         return True, None
 
     @classmethod
@@ -386,7 +396,7 @@ class GoConsoleGTP:
 
             c = items[0]
             self.curr_timestamp = getTimeStamp()
-            reply = dict(a=None, timestamp=self.curr_timestamp, timeleft=-1, byoyomi=-1)
+            reply = dict(a=None, timestamp=self.curr_timestamp)
 
             try:
                 ret, msg = self.commands[c](batch, items, reply)

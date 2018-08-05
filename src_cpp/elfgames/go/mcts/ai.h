@@ -14,6 +14,16 @@
 #include "elfgames/go/base/go_state.h"
 
 struct GoHumanInfo {};
+struct GoHumanReply {
+  Coord c = M_INVALID;
+  int64_t msec_ts_recv_cmd = -1;
+
+  std::string info() const {
+    std::stringstream ss;
+    ss << "c=" << coord2str2(c) << ", ts recv_cmd: " << msec_ts_recv_cmd;
+    return ss.str();
+  }
+};
 
 using AI = elf::ai::AIClientT<BoardFeature, GoReply>;
 using HumanPlayer = elf::ai::AIClientT<GoHumanInfo, GoHumanReply>;

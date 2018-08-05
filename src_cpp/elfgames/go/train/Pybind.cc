@@ -108,6 +108,7 @@ void registerPy(pybind11::module& m) {
   py::class_<GoGameSelfPlay>(m, "GoGameSelfPlay")
       .def("showBoard", &GoGameSelfPlay::showBoard)
       .def("peekMCTS", &GoGameSelfPlay::peekMCTS)
+      .def("addMCTSParams", &GoGameSelfPlay::addMCTSParams)
       .def("getNextPlayer", &GoGameSelfPlay::getNextPlayer)
       .def("getLastMove", &GoGameSelfPlay::getLastMove)
       .def("getScore", &GoGameSelfPlay::getScore)

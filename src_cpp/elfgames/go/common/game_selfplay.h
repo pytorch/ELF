@@ -39,6 +39,10 @@ class GoGameSelfPlay {
   }
   bool OnReceive(const MsgRequest& request, RestartReply* reply);
 
+  void addMCTSParams(const elf::ai::tree_search::CtrlOptions &ctrl_options) {
+    _ai->addMCTSParams(ctrl_options);
+  }
+
   std::string peekMCTS(int topn) {
     auto sorted = _ai->peekMCTS();
 

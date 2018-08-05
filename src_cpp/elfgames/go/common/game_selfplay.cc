@@ -336,7 +336,6 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
       GoHumanReply reply;
       curr_ai->align_state(s);
       _human_player->act(info, &reply);
-      curr_ai->setTimeLimit(reply.msec_ts_recv_cmd, reply.msec_time_left, reply.byoyomi);
 
       // skip the current move, and ask the ai to move.
       if (reply.c == M_SKIP)

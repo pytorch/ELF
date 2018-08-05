@@ -71,14 +71,6 @@ class GoFeature {
     reply.msec_ts_recv_cmd = *ts;
   }
 
-  static void ReplyTimeLeft(GoHumanReply& reply, const int64_t* time_left) {
-    reply.msec_time_left = *time_left;
-  }
-
-  static void ReplyByoyomi(GoHumanReply& reply, const int64_t* byoyomi) {
-    reply.byoyomi = *byoyomi;
-  }
-
   static void ReplyHumanAction(GoHumanReply& reply, const int64_t* action) {
     switch ((SpecialActionType)*action) {
       case SA_RESIGN:
@@ -226,9 +218,7 @@ class GoFeature {
 
     e.addClass<GoHumanReply>()
         .addFunction<int64_t>("a", ReplyHumanAction)
-        .addFunction<int64_t>("timestamp", ReplyTimeStamp)
-        .addFunction<int64_t>("timeleft", ReplyTimeLeft)
-        .addFunction<int64_t>("byoyomi", ReplyByoyomi);
+        .addFunction<int64_t>("timestamp", ReplyTimeStamp);
 
     e.addClass<GoStateExtOffline>()
         .addFunction<int32_t>("move_idx", extractMoveIdx)

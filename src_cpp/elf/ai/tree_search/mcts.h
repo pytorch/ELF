@@ -52,15 +52,8 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
     return ts_.get();
   }
 
-  void setTimeLimit(int64_t msec_start_ts, int64_t msec_time_left, int64_t byoyomi) {
-    if (msec_start_ts > 0) {
-      run_options_.msec_start_time = msec_start_ts;
-    } else {
-      run_options_.msec_start_time = elf_utils::msec_since_epoch_from_now();
-    }
-
-    run_options_.msec_time_left = msec_time_left;
-    run_options_.byoyomi = byoyomi;
+  void addMCTSParams(const CtrlOptions &options) {
+    ctrl_options_.append(options);
   }
 
   std::vector<std::pair<Action, EdgeInfo>> peekMCTS() {
@@ -69,10 +62,11 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
   }
 
   bool act(const State& s, Action* a) override {
-    //auto now = elf_utils::msec_since_epoch_from_now();
-    if (run_options_.msec_start_time > 0) {
+    if (ctrl_options_.msec_start_time < 0) {
+      ctrl_options_.msec_start_time = elf_utils::msec_since_epoch_from_now();
+    } else {
       //std::cout << "Before MCTS Overhead: "
-      //          << now - run_options_.msec_start_time << " ms" << std::endl;
+      //          << now - ctrl_options_.msec_start_time << " ms" << std::endl;
     }
 
     align_state(s);
@@ -81,7 +75,7 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
       elf_utils::MyClock clock;
       clock.restart();
 
-      lastResult_ = ts_->run(run_options_);
+      lastResult_ = ts_->run(ctrl_options_);
 
       clock.record("MCTS");
       std::cout << "[" << this->getID()
@@ -89,11 +83,11 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
                 << " Action:" << lastResult_.best_action << std::endl;
       std::cout << clock.summary() << std::endl;
     } else {
-      lastResult_ = ts_->run(run_options_);
+      lastResult_ = ts_->run(ctrl_options_);
     }
 
     *a = lastResult_.best_action;
-    run_options_.reset();
+    ctrl_options_.reset();
     return true;
   }
 
@@ -175,7 +169,7 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
   size_t nextMoveNumber_ = 0;
   MCTSResult lastResult_;
 
-  MCTSRunOptions run_options_;
+  CtrlOptions ctrl_options_;
 };
 
 } // namespace tree_search

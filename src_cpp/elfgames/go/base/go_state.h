@@ -260,16 +260,3 @@ struct GoReply {
   }
 };
 
-struct GoHumanReply {
-  Coord c;
-  int64_t msec_ts_recv_cmd = -1;
-  int64_t msec_time_left = -1;
-  int64_t byoyomi = -1;
-
-  std::string info() const {
-    std::stringstream ss;
-    ss << "c=" << coord2str2(c) << ", ts_recv_cmd = " << msec_ts_recv_cmd
-       << " msec, time_left = " << msec_time_left << " msec, byoyomi = " << byoyomi;
-    return ss.str();
-  }
-};

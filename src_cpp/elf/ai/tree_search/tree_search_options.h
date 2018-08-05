@@ -225,6 +225,52 @@ static TSOptions createFromJson(const json& j) {
 
 DEF_END
 
+DEF_STRUCT(CtrlOptions)
+  DEF_FIELD(int64_t, msec_start_time, -1, "Timestamp when receiving command (e.g., genmove), -1 means invalid");
+  DEF_FIELD(int64_t, msec_time_left, -1, "Time left (in msec) in the match, -1 means invalid");
+  DEF_FIELD(int64_t, byoyomi, -1, "Byoyomi count. -1 means invalid.");
+  DEF_FIELD(int64_t, rollout_per_thread, -1, "Set #rollout per thread. -1 means invalid");
+  DEF_FIELD(int64_t, msec_per_move, -1, "Specified time spent (in msec) per move");
+
+  std::string info() const {
+    std::stringstream ss;
+    ss << "MCTSCtrlOptions: msec_start_time: " << msec_start_time; 
+    if (msec_time_left > 0) ss << ", time_left = " << msec_time_left << " msec"; 
+    if (byoyomi > 0) ss << ", byoyomi = " << byoyomi;
+    if (rollout_per_thread > 0) ss << "rollout_per_thread = " << rollout_per_thread;
+    if (msec_per_move > 0) ss << "msec_per_move = " << msec_per_move << " msec";
+    return ss.str();
+  }
+
+  void reset() {
+    msec_start_time = -1;
+    msec_time_left = -1;
+    byoyomi = -1;
+    rollout_per_thread = -1;
+    msec_per_move = -1;
+  }
+
+  void append(const CtrlOptions &options) {
+    if (options.msec_start_time > 0) {
+      msec_start_time = options.msec_start_time;
+    }
+    if (options.msec_time_left > 0) {
+      msec_time_left = options.msec_time_left;
+    }
+    if (options.byoyomi > 0) {
+      byoyomi = options.byoyomi;
+    }
+    if (options.rollout_per_thread > 0) {
+      rollout_per_thread = options.rollout_per_thread;
+    }
+    if (options.msec_per_move > 0) {
+      msec_per_move = options.msec_per_move;
+    }
+  }
+
+DEF_END
+
+
 } // namespace tree_search
 } // namespace ai
 } // namespace elf

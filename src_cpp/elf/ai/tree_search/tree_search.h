@@ -46,17 +46,6 @@ namespace elf {
 namespace ai {
 namespace tree_search {
 
-struct MCTSRunOptions {
-  int64_t msec_start_time = -1;
-  int64_t msec_time_left = -1;
-  int64_t byoyomi = -1;
-  void reset() {
-    msec_start_time = -1;
-    msec_time_left = -1;
-    byoyomi = -1;
-  }
-};
-
 enum MCTSSignal {
   MCTS_CMD_INVALID = -1,
   MCTS_CMD_PAUSE,
@@ -519,7 +508,7 @@ class TreeSearchT {
     return root->chooseAction(MCTSResult::PRIOR);
   }
 
-  MCTSResult run(const MCTSRunOptions& run_options) {
+  MCTSResult run(const CtrlOptions& options) {
     if (options_.root_epsilon > 0.0) {
       sendSearchSignal(MCTS_CMD_PAUSE);
       Node* root = searchTree_.getRootNode();
@@ -547,9 +536,9 @@ class TreeSearchT {
       }
 
       uint64_t now = elf_utils::msec_since_epoch_from_now();
-      uint64_t dt = now - run_options.msec_start_time;
+      uint64_t dt = now - options.msec_start_time;
       if (overhead == 0) overhead = dt;
-      if (timeCtrl(dt, overhead, run_options) == MCTS_TIMEOUT) {
+      if (timeCtrl(dt, overhead, options) == MCTS_TIMEOUT) {
         Node* root = searchTree_.getRootNode();
         if (root->isVisited()) {
           int count_curr_root = 0, count_since_last_resume = 0;
@@ -629,18 +618,18 @@ class TreeSearchT {
     // std::cout << "Finish sending signal: " << signal << std::endl;
   }
 
-  MCTSTimeCtrl timeCtrl(uint64_t time_msec, uint64_t overhead, const MCTSRunOptions& run_options) {
+  MCTSTimeCtrl timeCtrl(uint64_t time_msec, uint64_t overhead, const CtrlOptions& options) {
     if (options_.time_sec_allowed_per_move < 0)
       return MCTS_ONTIME;
     uint64_t allowed_time = 0;
     uint64_t time_msec_per_move = (uint64_t)options_.time_sec_allowed_per_move * 1000;
-    if (run_options.byoyomi == 1) {
+    if (options.byoyomi == 1) {
       // respect last byoyomi
       allowed_time =  time_msec_per_move;
     } else {
       if (overhead * 3 > time_msec_per_move) {
         // too much overhead, willing to spend more time
-        if (run_options.byoyomi == 0) {
+        if (options.byoyomi == 0) {
           // add back overhead
           allowed_time = time_msec_per_move + overhead;
         } else {
