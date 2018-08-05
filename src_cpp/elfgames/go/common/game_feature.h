@@ -199,7 +199,7 @@ class GoFeature {
         .addExtent(batchsize);
 
     e.addField<int64_t>(
-         {"black_ver", "white_ver", "selfplay_ver", "timestamp", "timeleft", "byoyomi"})
+         {"black_ver", "white_ver", "selfplay_ver", "timestamp"})
         .addExtent(batchsize);
 
     e.addField<uint64_t>({"hash", "rhash"})

@@ -87,7 +87,7 @@ class Loader(object):
         if self.options.distri_mode == "server":
             desc["human_actor"] = dict(
                 input=[],
-                reply=["a", "timestamp", "timeleft", "byoyomi"],
+                reply=["a", "timestamp"],
                 batchsize=1,
             )
 

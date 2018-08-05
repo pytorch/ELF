@@ -4,7 +4,7 @@ from collections import Counter
 import time
 
 from elf.options import auto_import_options, PyOptionSpec
-from _elf import elf_C
+import _elf as elf_C
 
 def getTimeStamp():
     return int(time.time() * 1000)

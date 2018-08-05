@@ -83,7 +83,7 @@ class Loader(object):
         if mode == "online":
             desc["human_actor"] = dict(
                 input=[],
-                reply=["a", "timestamp", "timeleft", "byoyomi", "rollout_per_thread","msec_per_move"],
+                reply=["a", "timestamp"],
                 batchsize=1,
             )
             # Used for MCTS/Direct play.
