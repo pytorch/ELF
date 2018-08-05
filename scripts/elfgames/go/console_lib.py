@@ -1,13 +1,12 @@
-# Copyright (c) 2018-present, Facebook, Inc.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 import inspect
 import traceback
 from collections import Counter
+import time
 
+from elf.options import auto_import_options, PyOptionSpec
+
+def getTimeStamp():
+    return int(time.time() * 1000)
 
 def move2xy(v):
     if v.lower() == "pass":
@@ -96,7 +95,7 @@ class GoConsole:
         return reply
 
     def showboard(self, batch):
-        print(batch.GC.getGame(0).showBoard())
+        print(batch.game_obj.getGame(0).showBoard())
 
     def prompt(self, prompt_str, batch):
         if self.last_move_idx is not None:
@@ -122,6 +121,7 @@ class GoConsole:
                 cmd = self.repeat_cmd
             else:
                 cmd = input(prompt_str)
+
             items = cmd.split()
             if len(items) < 1:
                 print("Invalid input")
@@ -195,11 +195,11 @@ class GoConsole:
 
                 '''
                 elif c == "u":
-                    batch.GC.undoMove(0)
+                    batch.game_obj.undoMove(0)
                     self.showboard(batch)
                 elif c == "h":
                     handicap = int(items[1])
-                    batch.GC.applyHandicap(0, handicap)
+                    batch.game_obj.applyHandicap(0, handicap)
                     self.showboard(batch)
                 '''
 
@@ -231,12 +231,16 @@ class GoConsoleGTP:
         return True, None
 
     def on_genmove(self, batch, items, reply):
-        ret, msg = self.check_player(batch, items[1][0])
-        if ret:
+        if len(items) >= 2:
+            ret, msg = self.check_player(batch, items[1][0])
+            if ret:
+                reply["a"] = self.actions["skip"]
+                return True, reply
+            else:
+                return False, msg
+        else:
             reply["a"] = self.actions["skip"]
             return True, reply
-        else:
-            return False, msg
 
     def on_play(self, batch, items, reply):
         ret, msg = self.check_player(batch, items[1][0])
@@ -247,7 +251,7 @@ class GoConsoleGTP:
             return False, msg
 
     def on_showboard(self, batch, items, reply):
-        self.showboard(batch)
+        #self.showboard(batch)
         return True, None
 
     def on_final_score(self, batch, items, reply):
@@ -271,8 +275,25 @@ class GoConsoleGTP:
         msg = "\n".join(self.commands.keys())
         return True, msg
 
-    def __init__(self, GC, evaluator):
+    def on_time_left(self, batch, items, reply):
+        reply["timeleft"] = int(items[2]) * 1000
+        reply["byoyomi"] = int(items[3]) 
+        return True, None
+
+    @classmethod
+    def get_option_spec(cls):
+        spec = PyOptionSpec()
+        spec.addBoolOption(
+            'auto_cmd',
+            'Automatically replying the prompt with genmove',
+            False)
+        return spec
+
+    @auto_import_options
+    def __init__(self, spec):
         self.exit = False
+
+    def setup(self, GC, evaluator):
         self.GC = GC
         self.board_size = GC.params["board_size"]
         self.evaluator = evaluator
@@ -308,16 +329,16 @@ class GoConsoleGTP:
         return xy2move(x, y)
 
     def showboard(self, batch):
-        print(batch.GC.getGame(0).showBoard())
+        print(batch.game_obj.getGame(0).showBoard())
 
     def get_next_player(self, batch):
-        return batch.GC.getGame(0).getNextPlayer()
+        return batch.game_obj.getGame(0).getNextPlayer()
 
     def get_last_move(self, batch):
-        return batch.GC.getGame(0).getLastMove()
+        return batch.game_obj.getGame(0).getLastMove()
 
     def get_final_score(self, batch):
-        return batch.GC.getGame(0).getLastScore()
+        return batch.game_obj.getGame(0).getLastScore()
 
     def check_player(self, batch, player):
         board_next_player = self.get_next_player(batch)
@@ -333,26 +354,34 @@ class GoConsoleGTP:
             return True, None
 
     def print_msg(self, ret, msg):
-        print("\n%s %s\n\n" % (("=" if ret else "?"), msg))
+        print("%s %s\n" % (("=" if ret else "?"), msg))
 
     def prompt(self, prompt_str, batch):
+        curr_timestamp = getTimeStamp()
+
         # Show last command results.
         if self.last_cmd == "play" or self.last_cmd == "clear_board":
             self.print_msg(True, "")
         elif self.last_cmd == "genmove":
+            #print("Genmove spent: %d ms" % (curr_timestamp - self.curr_timestamp))
             self.print_msg(True, self.get_last_move(batch))
 
         self.last_cmd = ""
 
         while True:
-            cmd = input(prompt_str)
+            if self.options.auto_cmd:
+                cmd = "genmove"
+            else:
+                cmd = input(prompt_str)
+
             items = cmd.split()
             if len(items) < 1:
                 self.print_msg(False, "Invalid input")
                 continue
 
             c = items[0]
-            reply = dict(pi=None, a=None, V=0)
+            self.curr_timestamp = getTimeStamp()
+            reply = dict(a=None, timestamp=self.curr_timestamp, timeleft=-1, byoyomi=-1)
 
             try:
                 ret, msg = self.commands[c](batch, items, reply)

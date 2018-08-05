@@ -9,13 +9,13 @@ NUM_ROLLOUTS=25
 DIM=64
 NUM_BLOCK=5
 
-LOAD_PATH=`hostname`
-LOAD_PATH=${LOAD_PATH:6:3}
+ADDR="[`hostname -I | cut -d ' ' -f 1`]"
+echo $ADDR
 
-source ../scripts/devmode_set_pythonpath.sh
+source ../../devmode_set_pythonpath.sh
 
-root=$ROOT/$LOAD_PATH game=elfgames.go.client model=df_pred model_file=elfgames.go.df_model3 python3 -u df_selfplay.py \
-    --common.mode selfplay --selfplay_timeout_usec 10 --common.base.batchsize 128 --common.base.num_game_thread 32 --keys_in_reply V rv --common.net.port 2341 --common.net.server_id $LOAD_PATH \
+root=$ROOT/$ADDR game=elfgames.go.client model=df_pred model_file=elfgames.go.df_model3 python3 -u selfplay.py \
+    --common.mode selfplay --selfplay_timeout_usec 10 --common.base.batchsize 128 --common.base.num_game_thread 32 --keys_in_reply V rv --common.net.port 2341 --common.net.server_addr $ADDR \
     --use_mcts --use_mcts_ai2 \
     --policy_distri_cutoff 30 \
     --num_block0 $NUM_BLOCK --dim0 $DIM \
