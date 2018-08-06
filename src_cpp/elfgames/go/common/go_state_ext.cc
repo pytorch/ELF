@@ -90,22 +90,24 @@ void GoStateExt::showFinishInfo(FinishReason reason) const {
   for (const auto& i : using_models_) {
     used_model += std::to_string(i) + ", ";
   }
-  _logger->info("[{}:{}] Current request: {}, used_model: {}",
-    _game_idx,
-    _seq,
-    curr_request_.info(),
-    used_model);
+  _logger->info(
+      "[{}:{}] Current request: {}, used_model: {}",
+      _game_idx,
+      _seq,
+      curr_request_.info(),
+      used_model);
 
   switch (reason) {
     case FR_RESIGN:
-      _logger->info("Player {} resigned at {} Resign Thres: {}",
-        player2str(player),
-        _state.getPly(),
-        _resign_check.resign_thres);
+      _logger->info(
+          "Player {} resigned at {} Resign Thres: {}",
+          player2str(player),
+          _state.getPly(),
+          _resign_check.resign_thres);
       break;
     case FR_MAX_STEP:
-      _logger->info("Ply: {} exceeds thread_state. Restarting the game",
-        _state.getPly());
+      _logger->info(
+          "Ply: {} exceeds thread_state. Restarting the game", _state.getPly());
       break;
     case FR_TWO_PASSES:
       _logger->info("Both pass at {}", _state.getPly());
@@ -117,18 +119,21 @@ void GoStateExt::showFinishInfo(FinishReason reason) const {
       _logger->info("Restarting at {}", _state.getPly());
       break;
     case FR_CHEAT_NEWER_WINS_HALF:
-      _logger->info("Cheat mode: Version: {}, swap: {}",
-        curr_request_.vers.info(),
-        curr_request_.client_ctrl.player_swap);
+      _logger->info(
+          "Cheat mode: Version: {}, swap: {}",
+          curr_request_.vers.info(),
+          curr_request_.client_ctrl.player_swap);
       break;
     case FR_CHEAT_SELFPLAY_RANDOM_RESULT:
-      _logger->info("Cheat selfplay mode: Version: {}, swap: {}",
-        curr_request_.vers.info(),
-        curr_request_.client_ctrl.player_swap);
+      _logger->info(
+          "Cheat selfplay mode: Version: {}, swap: {}",
+          curr_request_.vers.info(),
+          curr_request_.client_ctrl.player_swap);
       break;
   }
-  _logger->info("Value: {}, Predicted: {}, ResCheck: {}",
-    _state.getFinalValue(),
-    getLastPredictedValue(),
-    _resign_check.info());
+  _logger->info(
+      "Value: {}, Predicted: {}, ResCheck: {}",
+      _state.getFinalValue(),
+      getLastPredictedValue(),
+      _resign_check.info());
 }

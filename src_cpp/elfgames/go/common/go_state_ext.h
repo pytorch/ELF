@@ -43,7 +43,6 @@ struct GoStateExt {
     restart();
   }
 
-
   std::string dumpSgf(const std::string& filename) const;
   void dumpSgf() const {
     std::string filename = _options.dump_record_prefix + "_" +
@@ -263,7 +262,8 @@ class GoStateExtOffline {
       : _game_idx(game_idx),
         _bf(_state),
         _options(options),
-        _logger(elf::logging::getLogger("elfgames::go::GoStateExtOffline-", "")) {}
+        _logger(
+            elf::logging::getLogger("elfgames::go::GoStateExtOffline-", "")) {}
 
   void fromRecord(const Record& r) {
     _offline_all_moves = sgfstr2coords(r.result.content);
@@ -279,10 +279,11 @@ class GoStateExtOffline {
   bool switchRandomMove(std::mt19937* rng) {
     // Random sample one move
     if ((int)_offline_all_moves.size() <= _options.num_future_actions - 1) {
-      _logger->info("[{}] #moves {} smaller than {} - 1\n",
-        _game_idx,
-        _offline_all_moves.size(),
-        _options.num_future_actions);
+      _logger->info(
+          "[{}] #moves {} smaller than {} - 1",
+          _game_idx,
+          _offline_all_moves.size(),
+          _options.num_future_actions);
       return false;
     }
     size_t move_to = (*rng)() %
