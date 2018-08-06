@@ -9,8 +9,8 @@
 #include "../base/board_feature.h"
 #include "../common/game_feature.h"
 #include "../common/record.h"
-#include "data_loader.h"
 #include "elf/base/game_context.h"
+#include "elf/distributed/data_loader.h"
 #include "elf/distributed/addrs.h"
 #include "elf/logging/IndexedLoggerFactory.h"
 #include "game_ctrl.h"
@@ -52,7 +52,7 @@ class Server {
       // 10s
       netOptions.usec_sleep_when_no_msg = 10000000;
       netOptions.usec_resend_when_no_msg = -1;
-      onlineLoader_.reset(new DataOnlineLoader(netOptions));
+      onlineLoader_.reset(new elf::msg::DataOnlineLoader(netOptions));
       onlineLoader_->start(trainCtrl_.get());
     } else if (options_.common.mode == "offline_train") {
     } else {
@@ -91,7 +91,7 @@ class Server {
  private:
   std::vector<std::unique_ptr<GoGameTrain>> games_;
   std::unique_ptr<TrainCtrl> trainCtrl_;
-  std::unique_ptr<DataOnlineLoader> onlineLoader_;
+  std::unique_ptr<elf::msg::DataOnlineLoader> onlineLoader_;
 
   const GameOptionsTrain options_;
 

@@ -31,6 +31,7 @@ void registerPy(pybind11::module& m) {
   // auto ref = py::return_value_policy::reference_internal;
 
   PB_INIT(CtrlOptions)
+    .def(py::init<>())
     PB_FIELD(msec_start_time)
     PB_FIELD(msec_time_left)
     PB_FIELD(byoyomi)

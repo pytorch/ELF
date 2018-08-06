@@ -54,6 +54,7 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
 
   void addMCTSParams(const CtrlOptions &options) {
     ctrl_options_.append(options);
+    // std::cout << ctrl_options_.info() << std::endl;
   }
 
   std::vector<std::pair<Action, EdgeInfo>> peekMCTS() {
