@@ -13,40 +13,25 @@ ServerGame::ServerGame(
     const GameOptions& options,
     elf::shared::ReaderQueuesT<Record>* reader)
     : reader_(reader) {
+    (void)options;
+    (void)game_idx;
 }
 
 void ServerGame::OnAct(elf::game::Base* base) {
-  std::vector<elf::FuncsWithState> funcsToSend;
-
-  for (size_t i = 0; i < kNumState; ++i) {
-    while (true) {
-      int q_idx;
-      auto sampler = reader_->getSamplerWithParity(&base->rng(), &q_idx);
-      const Record* r = sampler.sample();
-      if (r == nullptr) {
-        continue;
-      }
-      _state_ext[i]->fromRecord(*r);
-
-      // Random pick one ply.
-      if (_state_ext[i]->switchRandomMove(&base->rng()))
-        break;
+  Record r;
+  while (true) {
+    int q_idx;
+    auto sampler = reader_->getSamplerWithParity(&base->rng(), &q_idx);
+    const Record* p = sampler.sample();
+    if (p == nullptr) {
+      continue;
     }
-
-    _state_ext[i]->generateD4Code(&base->rng());
-
-    // elf::FuncsWithState funcs =
-    // client_->BindStateToFunctions({"train"}, &_state_ext);
-    funcsToSend.push_back(base->ctx().client->BindStateToFunctions(
-        {"train"}, _state_ext[i].get()));
+    r = *p;
   }
 
-  // client_->sendWait({"train"}, &funcs);
+  auto *client = base->ctx().client;
+  auto funcs = client->BindStateToFunctions(
+      {"train"}, &r);
 
-  std::vector<elf::FuncsWithState*> funcPtrsToSend(funcsToSend.size());
-  for (size_t i = 0; i < funcsToSend.size(); ++i) {
-    funcPtrsToSend[i] = &funcsToSend[i];
-  }
-
-  base->ctx().client->sendBatchWait({"train"}, funcPtrsToSend);
+  client->sendWait({"train"}, &funcs);
 }

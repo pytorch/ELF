@@ -1,5 +1,5 @@
 .PHONY: all
-all: elf elfgames/go elfgames/tutorial
+all: elf elfgames/go elfgames/tutorial elfgames/tutorial_distri
 
 .PHONY: clean
 clean:
@@ -36,3 +36,7 @@ elfgames/go: build/Makefile
 .PHONY: elfgames/tutorial
 elfgames/tutorial: build/Makefile
 	(cd build && cmake --build elfgames/tutorial -- -j)
+
+.PHONY: elfgames/tutorial_distri
+elfgames/tutorial_distri: build/Makefile
+	(cd build && cmake --build elfgames/tutorial_distri -- -j)

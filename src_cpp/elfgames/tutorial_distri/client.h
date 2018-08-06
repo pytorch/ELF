@@ -6,7 +6,10 @@
 #include "elf/distributed/options.h"
 #include "elf/distributed/shared_rw_buffer3.h"
 
-#include "dispatch_callback.h"
+#include "dispatcher_callback.h"
+#include "record.h"
+#include "options.h"
+#include "client_game.h"
 
 using ThreadedWriter = elf::msg::Client;
 
@@ -28,8 +31,8 @@ class WriterCallback {
 
   std::string OnSend() {
     // Send dummy content.
-    std::string content = "";
-    return content;
+    MsgResult result;
+    return result.dumpJsonString();
   }
 
  private:
@@ -38,12 +41,11 @@ class WriterCallback {
 
 class Client {
  public:
-  Client(const elf::Options& options)
+  Client(const GameOptions& options)
       : options_(options) {}
 
   void setGameContext(elf::GCInterface* ctx) {
-    goFeature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
-
+    // goFeature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
     uint64_t num_games = ctx->options().num_game_thread;
 
     if (ctx->getClient() != nullptr) {
@@ -51,7 +53,7 @@ class Client {
     }
 
     auto netOptions =
-      elf::msg::getNetOptions(options_.common.base, options_.common.net);
+      elf::msg::getNetOptions(options_.base, options_.net);
     // if no message, sleep every 10s
     netOptions.usec_sleep_when_no_msg = 10000000;
     // Resend after 900s
@@ -74,8 +76,7 @@ class Client {
     }
 
     if (ctx->getClient() != nullptr) {
-      dispatcher_callback_.reset(
-          new DispatcherCallback(dispatcher_.get(), ctx->getClient()));
+      dispatcher_callback_.reset(new DispatcherCallback(dispatcher_.get()));
     }
   }
 
@@ -87,7 +88,7 @@ class Client {
   }
 
  private:
-  std::vector<std::unique_ptr<Game>> games_;
+  std::vector<std::unique_ptr<ClientGame>> games_;
   std::unique_ptr<ThreadedDispatcher> dispatcher_;
   std::unique_ptr<DispatcherCallback> dispatcher_callback_;
 
@@ -95,7 +96,6 @@ class Client {
   std::unique_ptr<ThreadedWriter> writer_;
   std::unique_ptr<WriterCallback> writer_callback_;
 
-  const elf::Options options_;
-
-  FeatureExtractor goFeature_;
+  const GameOptions options_;
+  // FeatureExtractor goFeature_;
 };

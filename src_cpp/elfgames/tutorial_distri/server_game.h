@@ -10,6 +10,7 @@
 #include "elf/distributed/shared_reader.h"
 
 #include "record.h"
+#include "options.h"
 
 class ServerGame {
  public:

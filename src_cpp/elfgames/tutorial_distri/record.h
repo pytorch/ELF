@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <nlohmann/json.hpp>
+#include "elf/utils/json_utils.h"
 
 using json = nlohmann::json;
 
@@ -31,7 +32,7 @@ struct MsgRequest {
     JSON_SAVE(j, request);
   }
 
-  static Record createFromJson(const json& j) {
+  static MsgRequest createFromJson(const json& j) {
     MsgRequest r;
     JSON_LOAD(r, j, request);
     return r;
@@ -50,8 +51,8 @@ struct MsgResult {
     JSON_SAVE(j, result);
   }
 
-  static Record createFromJson(const json& j) {
-    MsgRequest r;
+  static MsgResult createFromJson(const json& j) {
+    MsgResult r;
     JSON_LOAD(r, j, result);
     return r;
   }
@@ -68,7 +69,7 @@ struct Record {
   std::string info() const {
     std::stringstream ss;
     ss << "[t=" << timestamp << "][id=" << thread_id << "][seq=" << seq
-       << "][offline=" << offline << "]" << std::endl;
+       << "]" << std::endl;
     // ss << request.info() << std::endl;
     // ss << result.info() << std::endl;
     return ss.str();

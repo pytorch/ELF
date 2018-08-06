@@ -15,6 +15,10 @@
 #include "elf/base/dispatcher.h"
 #include "elf/base/game_base.h"
 
+#include "options.h"
+#include "record.h"
+#include "dispatcher_callback.h"
+
 class ClientGame {
  public:
   using ThreadedDispatcher = elf::ThreadedDispatcherT<MsgRequest, MsgReply>;
@@ -25,7 +29,7 @@ class ClientGame {
 
   void OnAct(elf::game::Base* base);
   void OnEnd(elf::game::Base*) { }
-  bool OnReceive(const MsgRequest& request, RestartReply* reply);
+  bool OnReceive(const MsgRequest& request, MsgReply* reply);
 
  private:
   ThreadedDispatcher* dispatcher_ = nullptr;
