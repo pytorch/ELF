@@ -82,18 +82,19 @@ std::string GoStateExt::dumpSgf(const std::string& filename) const {
 
 void GoStateExt::showFinishInfo(FinishReason reason) const {
   Stone player = _state.nextPlayer();
-  _logger->info("{}\n", _state.showBoard());
+  _logger->info("{}", _state.showBoard());
   std::string sgf_record = dumpSgf("");
-  _logger->info("{}\n", sgf_record);
+  _logger->info("{}", sgf_record);
 
-  _logger->info("[{}:{}] Current request: {}, used_model: ",
+  std::string used_model;
+  for (const auto& i : using_models_) {
+    used_model += std::to_string(i) + ", ";
+  }
+  _logger->info("[{}:{}] Current request: {}, used_model: {}",
     _game_idx,
     _seq,
-    curr_request_.info());
-  for (const auto& i : using_models_) {
-    _logger->info("{}, ", i);
-  }
-  _logger->info("\n");
+    curr_request_.info(),
+    used_model);
 
   switch (reason) {
     case FR_RESIGN:
@@ -103,7 +104,7 @@ void GoStateExt::showFinishInfo(FinishReason reason) const {
         _resign_check.resign_thres);
       break;
     case FR_MAX_STEP:
-      _logger->info("Ply: {} exceeds thread_state.Restarting the game",
+      _logger->info("Ply: {} exceeds thread_state. Restarting the game",
         _state.getPly());
       break;
     case FR_TWO_PASSES:
@@ -126,7 +127,7 @@ void GoStateExt::showFinishInfo(FinishReason reason) const {
         curr_request_.client_ctrl.player_swap);
       break;
   }
-  _logger->info(", Value: {}, Predicted: {}, ResCheck: {}\n",
+  _logger->info("Value: {}, Predicted: {}, ResCheck: {}",
     _state.getFinalValue(),
     getLastPredictedValue(),
     _resign_check.info());

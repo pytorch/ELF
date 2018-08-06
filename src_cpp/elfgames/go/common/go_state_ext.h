@@ -263,7 +263,7 @@ class GoStateExtOffline {
       : _game_idx(game_idx),
         _bf(_state),
         _options(options),
-        _logger(elf::logging::getLogger("elfgames::go::GoStateExt-", "")) {}
+        _logger(elf::logging::getLogger("elfgames::go::GoStateExtOffline-", "")) {}
 
   void fromRecord(const Record& r) {
     _offline_all_moves = sgfstr2coords(r.result.content);
