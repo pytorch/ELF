@@ -578,6 +578,12 @@ class SearchTreeT {
       // std::cout << "applying action " <<
       // ActionTrait<Action>::to_string(action) << std::endl;
       next_root = r->followEdgeCreateIfNull(action, tree_);
+      if (next_root == InvalidNodeId) {
+
+          next_root = tree_.allocateNode(InvalidNodeId, Action(), 0.0);
+          r = tree_[next_root];
+          break;
+      }
       r = tree_[next_root];
     }
 

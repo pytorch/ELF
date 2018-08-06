@@ -57,7 +57,6 @@ class Loader(object):
     def initialize(self):
         job_id = os.environ.get("job_id", "local")
         opt = go.getClientOpt(self.option_map.getOptionSpec(), job_id)
-        print("2")
         mode = getattr(self.options, "common.mode")
         batchsize = getattr(self.options, "common.base.batchsize")
 
@@ -65,12 +64,10 @@ class Loader(object):
 
         if mode not in ["online", "selfplay"]:
             raise "No such mode: " + mode
-        print("3")
         game_obj = go.Client(opt)
         game_obj.setGameContext(GC)
 
         params = game_obj.getParams()
-        print("4")
         if self.options.parameter_print:
             print("**** Options ****")
             print(opt.info())
