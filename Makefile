@@ -1,5 +1,5 @@
 .PHONY: all
-all: elf elfgames/go elfgames/tutorial elfgames/tutorial_distri
+all: elf elfgames/go elfgames/tutorial 
 
 .PHONY: clean
 clean:
