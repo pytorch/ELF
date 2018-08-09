@@ -19,8 +19,8 @@ ClientGame::ClientGame(
     }
 
 bool ClientGame::OnReceive(const MsgRequest& request, MsgReply* reply) {
-  (void)request;
-  state_.content = reply->content;
+  (void)reply;
+  state_.content = request.request;
   return true;
 }
 
@@ -48,7 +48,7 @@ void ClientGame::OnAct(elf::game::Base* base) {
   elf::FuncsWithState funcs_reply = client->BindStateToFunctions({"train"}, &reply);
   funcs.add(funcs_reply);
 
-  client->sendBatchWait({"train"}, &funcs);
+  client->sendWait({"train"}, &funcs);
   
   // Now reply has content.
   state_.content += reply.a;

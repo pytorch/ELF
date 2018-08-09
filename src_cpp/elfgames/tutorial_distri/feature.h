@@ -24,11 +24,11 @@ class Feature {
     } 
   }
 
-  static void GetReplyAction(Reply &reply, int32_t *a) {
+  static void GetReplyAction(Reply &reply, const int32_t *a) {
     reply.a = *a;
   }
 
-  static void GetReplyValue(Reply &reply, float *v) {
+  static void GetReplyValue(Reply &reply, const float *v) {
     reply.value = *v;
   }
 
@@ -44,7 +44,7 @@ class Feature {
     using std::placeholders::_2;
 
     e.addClass<State>()
-        .addFunction<int64_t>("s", std::bind(SendState, this, _1, _2));
+        .addFunction<float>("s", std::bind(&Feature::SendState, this, _1, _2));
 
     e.addClass<Reply>()
         .addFunction<int32_t>("a", GetReplyAction)
