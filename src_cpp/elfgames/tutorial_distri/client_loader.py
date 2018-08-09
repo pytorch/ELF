@@ -38,6 +38,16 @@ class Loader(object):
         GC = elf.GameContext(opt.base)
         game_obj = tutorial.Client(opt)
         game_obj.setGameContext(GC)
+        params = game_obj.getParams()
+
+        batchsize = opt.base.batchsize
+
+        desc = {}
+        desc["actor"] = dict(
+            input=["s"],
+            reply=["a", "V"],
+            batchsize=batchsize,
+        )
 
         return GCWrapper(
             GC,

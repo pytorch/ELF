@@ -21,7 +21,7 @@ class Loader(object):
             'some string dummy arguments',
             '')
         spec.addBoolOption(
-            "client_dummy3",
+            "server_dummy3",
             "Some boolean dummy arguments",
             True)
 
@@ -38,6 +38,21 @@ class Loader(object):
         GC = elf.GameContext(opt.base)
         game_obj = tutorial.Server(opt)
         game_obj.setGameContext(GC)
+        params = game_obj.getParams()
+
+        batchsize = opt.base.batchsize
+
+        desc = {}
+        desc["actor"] = dict(
+            input=["s"],
+            reply=["a", "V"],
+            batchsize=batchsize,
+        )
+        desc["train"] = dict(
+            input=["s"],
+            reply=[],
+            batchsize=batchsize,
+        )
 
         return GCWrapper(
             GC,
