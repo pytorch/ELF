@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "elf/ai/ai.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "elf/utils/member_check.h"
 #include "elf/utils/utils.h"
 
@@ -40,7 +41,9 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
   MCTSAI_T(
       const elf::ai::tree_search::TSOptions& options,
       std::function<Actor*(int)> gen)
-      : options_(options) {
+      : options_(options),
+        logger_(
+            elf::logging::getLogger("elf::ai::tree_search::MCTSAI_T-", "")) {
     ts_.reset(new TreeSearch(options_, gen));
   }
 
@@ -62,10 +65,12 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
       lastResult_ = ts_->run(s);
 
       clock.record("MCTS");
-      std::cout << "[" << this->getID()
-                << "] MCTSAI Result: " << lastResult_.info()
-                << " Action:" << lastResult_.best_action << std::endl;
-      std::cout << clock.summary() << std::endl;
+      logger_->info(
+          "[{}] MCTSAI Result: {} Action: {}\n{}",
+          this->getID(),
+          lastResult_.info(),
+          lastResult_.best_action,
+          clock.summary());
     } else {
       lastResult_ = ts_->run(s);
     }
@@ -125,6 +130,7 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
   std::unique_ptr<TreeSearch> ts_;
   size_t nextMoveNumber_ = 0;
   MCTSResult lastResult_;
+  std::shared_ptr<spdlog::logger> logger_;
 
   void resetTree() {
     ts_->clear();

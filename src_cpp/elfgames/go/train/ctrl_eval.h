@@ -12,6 +12,7 @@
 #include "client_manager.h"
 #include "ctrl_utils.h"
 #include "elf/ai/tree_search/tree_search_options.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "elf/utils/utils.h"
 #include "fair_pick.h"
 
@@ -30,7 +31,10 @@ class ModelPerf {
       const GameOptions& options,
       const ClientManager& mgr,
       const ModelPair& p)
-      : options_(options), curr_pair_(p) {
+      : options_(options),
+        curr_pair_(p),
+        logger_(
+            elf::logging::getLogger("elfgames::go::train::ModelPerf-", "")) {
     const size_t cushion = 5;
     const size_t max_request_per_layer = mgr.getExpectedNumEval() / 2;
     const size_t num_request = options.eval_num_games / 2 + cushion;
@@ -81,8 +85,7 @@ class ModelPerf {
     eval_result_ = eval_check();
 
     if (n_done() > 0 && (sent_ % 100 == 0 || recv_ % 100 == 0)) {
-      std::cout << "EvalResult: [" << elf_utils::now() << "]" << info()
-                << std::endl;
+      logger_->info("EvalResult: [{}]{}", elf_utils::now(), info());
     }
 
     if (sealed_ || eval_result_ == EVAL_INCOMPLETE)
@@ -116,13 +119,14 @@ class ModelPerf {
 
     for (const auto& g : games) {
       fair_pick::RegisterResult res = g.first->reg(c);
-      // cout << "a = " << a << ", a_swap: " << a_swap << endl;
       if (fair_pick::release_request(res))
         continue;
       if (sent_ % 100 == 0) {
-        std::cout << elf_utils::now()
-                  << " Sending evaluation request: " << curr_pair_.info()
-                  << ", sent: " << sent_ << std::endl;
+        logger_->info(
+            "{} Sending evaluation request: {}, seng: {}",
+            elf_utils::now(),
+            curr_pair_.info(),
+            sent_);
       }
 
       // We only use eval_num_threads threads to run evaluation to make it
@@ -157,6 +161,8 @@ class ModelPerf {
   bool sealed_ = false;
   RecordBuffer record_;
   EvalResult eval_result_ = EVAL_INVALID;
+
+  std::shared_ptr<spdlog::logger> logger_;
 
   static size_t compute_num_eval_machine(size_t n, size_t max_num_eval) {
     if (max_num_eval == 0)
@@ -204,9 +210,12 @@ class ModelPerf {
   void set_sealed() {
     // Save all games.
     sealed_ = true;
-    std::cout << "Sealed[pass=" << (eval_result_ == EVAL_BLACK_PASS) << "]["
-              << elf_utils::now() << "]" << info() << ", "
-              << record_.prefix_save_counter() << std::endl;
+    logger_->info(
+        "Sealed[pass={}][{}]{}, {}",
+        (eval_result_ == EVAL_BLACK_PASS),
+        elf_utils::now(),
+        info(),
+        record_.prefix_save_counter());
     record_.saveCurrent();
     record_.clear();
   }
@@ -215,7 +224,9 @@ class ModelPerf {
 class EvalSubCtrl {
  public:
   EvalSubCtrl(const GameOptions& options, const TSOptions& mcts_options)
-      : options_(options) {
+      : options_(options),
+        logger_(
+            elf::logging::getLogger("elfgames::go::train::EvalSubCtrl-", "")) {
     // [TODO]: A bit hacky, we need to have a better way for this.
     mcts_opt_ = mcts_options;
     mcts_opt_.alg_opt.unexplored_q_zero = false;
@@ -231,13 +242,12 @@ class EvalSubCtrl {
     auto models_to_eval = models_to_eval_;
 
     for (const auto& ver : models_to_eval) {
-      // cout << "UpdateState: checking ver = " << ver << endl;
       ModelPerf& perf = find_or_create(mgr, get_key(ver));
 
       auto res = perf.updateState(mgr);
       switch (res) {
         case ModelPerf::EVAL_INVALID:
-          std::cout << "res cannot be EVAL_INVALID" << std::endl;
+          logger_->info("res cannot be EVAL_INVALID");
           assert(false);
         case ModelPerf::EVAL_INCOMPLETE:
           break;
@@ -282,7 +292,6 @@ class EvalSubCtrl {
     // model first.
     // Note that on_eval_status might change models_to_eval,
     for (const auto& ver : models_to_eval_) {
-      // cout << "fillInRequests, checking ver = " << ver << endl;
       ModelPerf& perf = find_or_create(info.getManager(), get_key(ver));
       perf.fillInRequest(info, msg);
       if (!msg->vers.wait())
@@ -296,7 +305,7 @@ class EvalSubCtrl {
     models_to_eval_.clear();
     // All perfs need to go away as well.
     // perfs_.clear();
-    std::cout << "Set new baseline model, ver: " << ver << std::endl;
+    logger_->info("Set new baseline model, ver: {}", ver);
   }
 
   void addNewModelForEvaluation(int64_t selfplay_ver, int64_t new_version) {
@@ -304,21 +313,27 @@ class EvalSubCtrl {
 
     if (selfplay_ver == best_baseline_model_) {
       if (selfplay_ver < new_version) {
-        std::cout << "Add new version: " << new_version
-                  << ", selfplay_ver: " << selfplay_ver
-                  << ", baseline: " << best_baseline_model_ << mcts_opt_.info()
-                  << std::endl;
+        logger_->info(
+            "Add new version: {}, selfplay_ver: {}, baseline: {}{}",
+            new_version,
+            selfplay_ver,
+            best_baseline_model_,
+            mcts_opt_.info());
         add_candidate_model(new_version);
       } else {
-        std::cout << "New version: " << new_version
-                  << " is the same or earlier tha "
-                  << ", baseline: " << best_baseline_model_ << mcts_opt_.info()
-                  << std::endl;
+        logger_->info(
+            "New version: {} is the same or earlier than baseline: {}{}",
+            new_version,
+            best_baseline_model_,
+            mcts_opt_.info());
       }
     } else {
-      std::cout << "New version " << new_version << " is not registered. "
-                << "Selfplay_ver " << selfplay_ver << " != internal one "
-                << best_baseline_model_ << std::endl;
+      logger_->info(
+          "New version {} is not registered. Selfplay_ver {} != internal one "
+          "{}",
+          new_version,
+          selfplay_ver,
+          best_baseline_model_);
     }
   }
 
@@ -332,6 +347,8 @@ class EvalSubCtrl {
   std::vector<int64_t> models_to_eval_;
 
   std::unordered_map<ModelPair, std::unique_ptr<ModelPerf>> perfs_;
+
+  std::shared_ptr<spdlog::logger> logger_;
 
   ModelPair get_key(int ver) {
     ModelPair p;
@@ -372,8 +389,7 @@ class EvalSubCtrl {
   ModelPerf* find_or_null(const ModelPair& mp) {
     auto it = perfs_.find(mp);
     if (it == perfs_.end()) {
-      std::cout << "The pair " + mp.info() + " was not sent before!"
-                << std::endl;
+      logger_->info("The pair {} was not sent before!", mp.info());
       return nullptr;
     }
     return it->second.get();

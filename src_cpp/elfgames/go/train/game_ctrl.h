@@ -52,7 +52,6 @@ class ThreadedCtrl : public ThreadedCtrlBase {
         rng_(time(NULL)) {
     selfplay_.reset(new SelfPlaySubCtrl(options, mcts_opt));
     eval_.reset(new EvalSubCtrl(options, mcts_opt));
-    // std::cout << "Thread id: " << std::this_thread::get_id() << std::endl;
 
     ctrl_.reg();
     ctrl_.addMailbox<_ModelUpdateStatus>();
@@ -60,11 +59,9 @@ class ThreadedCtrl : public ThreadedCtrlBase {
 
   void Start() {
     if (!ctrl_.isRegistered()) {
-      // std::cout << "Start(): id: " << std::this_thread::get_id() << ", not
       // registered!" << std::endl;
       ctrl_.reg();
     } else {
-      // std::cout << "Start(): id: " << std::this_thread::get_id() <<", already
       // registered!" << std::endl;
     }
     ctrl_.addMailbox<_ModelUpdateStatus>();

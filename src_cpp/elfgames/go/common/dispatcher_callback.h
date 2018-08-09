@@ -2,6 +2,7 @@
 
 #include "elf/base/context.h"
 #include "elf/base/dispatcher.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "record.h"
 
 using Ctrl = elf::Ctrl;
@@ -11,7 +12,10 @@ using ThreadedDispatcher = elf::ThreadedDispatcherT<MsgRequest, RestartReply>;
 class DispatcherCallback {
  public:
   DispatcherCallback(ThreadedDispatcher* dispatcher, elf::GameClient* client)
-      : client_(client) {
+      : client_(client),
+        logger_(elf::logging::getLogger(
+            "elfgames::go::common::DispatcherCallback-",
+            "")) {
     using std::placeholders::_1;
     using std::placeholders::_2;
 
@@ -24,9 +28,10 @@ class DispatcherCallback {
     const size_t thread_idx = stoi(addr.label.substr(5));
     if (thread_idx == 0) {
       // Actionable request
-      std::cout << elf_utils::now()
-                << ", EvalCtrl get new request: " << request->info()
-                << std::endl;
+      logger_->info(
+          "{}, EvalCtrl get new request: {}",
+          elf_utils::now(),
+          request->info());
     }
 
     int thread_used = request->client_ctrl.num_game_thread_used;
@@ -47,16 +52,16 @@ class DispatcherCallback {
     size_t n = 0;
 
     for (size_t i = 0; i < replies.size(); ++i) {
-      // std::cout << "EvalCtrl: Get confirm from " << msg.second.result << ",
-      // game_idx = " << msg.second.game_idx << std::endl;
       switch (replies[i]) {
         case RestartReply::UPDATE_MODEL:
         case RestartReply::UPDATE_MODEL_ASYNC:
           if (request != nullptr && *request != requests[i]) {
-            std::cout << elf_utils::now()
-                      << "Request inconsistent. existing request: "
-                      << request->info()
-                      << ", now request: " << requests[i].info() << std::endl;
+            logger_->error(
+                "{} Request inconsistent. Existing request: {}, now request: "
+                "{}",
+                elf_utils::now(),
+                request->info(),
+                requests[i].info());
             throw std::runtime_error("Request inconsistent!");
           }
           request = &requests[i];
@@ -71,10 +76,13 @@ class DispatcherCallback {
 
     if (request != nullptr) {
       // Once it is done, send to Python side.
-      std::cout << elf_utils::now() << " Get actionable request: black_ver = "
-                << request->vers.black_ver
-                << ", white_ver = " << request->vers.white_ver
-                << ", #addrs_to_reply: " << n << std::endl;
+      logger_->info(
+          "{} Get actionable request: black_ver = {}, white_ver = {}, "
+          "#addrs_to_reply: {}",
+          elf_utils::now(),
+          request->vers.black_ver,
+          request->vers.white_ver,
+          n);
       elf::FuncsWithState funcs =
           client_->BindStateToFunctions({start_target_}, &request->vers);
       client_->sendWait({start_target_}, &funcs);
@@ -94,4 +102,5 @@ class DispatcherCallback {
  private:
   elf::GameClient* client_ = nullptr;
   const std::string start_target_ = "game_start";
+  std::shared_ptr<spdlog::logger> logger_;
 };

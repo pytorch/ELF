@@ -17,6 +17,7 @@
 #include "ctrl_utils.h"
 
 #include "elf/ai/tree_search/tree_search_options.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 
 using TSOptions = elf::ai::tree_search::TSOptions;
 
@@ -167,7 +168,11 @@ class ResignThresholdCalculator {
 struct SelfPlayRecord {
  public:
   SelfPlayRecord(int ver, const GameOptions& options)
-      : ver_(ver), options_(options) {
+      : ver_(ver),
+        options_(options),
+        logger_(elf::logging::getLogger(
+            "elfgames::go::train::SelfPlayRecord-",
+            "")) {
     std::string selfplay_prefix =
         "selfplay-" + options_.server_id + "-" + options_.time_signature;
     records_.resetPrefix(selfplay_prefix + "-" + std::to_string(ver_));
@@ -202,8 +207,7 @@ struct SelfPlayRecord {
       move300_up++;
 
     if (counter_ - last_counter_shown_ >= 100) {
-      std::cout << elf_utils::now() << std::endl;
-      std::cout << info() << std::endl;
+      logger_->info("{}\n{}", elf_utils::now(), info());
       last_counter_shown_ = counter_;
     }
   }
@@ -306,6 +310,8 @@ struct SelfPlayRecord {
   int last_counter_shown_ = 0;
   int num_weight_update_ = 0;
   double resign_threshold_ = 0.0;
+
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 class SelfPlaySubCtrl {
@@ -326,7 +332,10 @@ class SelfPlaySubCtrl {
             options.resign_target_fp_rate,
             options.resign_thres,
             options.resign_thres_lower_bound,
-            options.resign_thres_upper_bound) {}
+            options.resign_thres_upper_bound),
+        logger_(elf::logging::getLogger(
+            "elfgames::go::train::SelfPlaySubCtrl-",
+            "")) {}
 
   FeedResult feed(const Record& r) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -345,10 +354,11 @@ class SelfPlaySubCtrl {
     perf->feed(r);
     total_selfplay_++;
     if (total_selfplay_ % 1000 == 0) {
-      std::cout << elf_utils::now()
-                << " SelfPlaySubCtrl: #total selfplay feeded: "
-                << total_selfplay_ << ", " << resignThresholdCalculator_.info()
-                << std::endl;
+      logger_->info(
+          "{} SelfPlaySubCtrl: #total selfplay feeded: {}, {}",
+          elf_utils::now(),
+          total_selfplay_,
+          resignThresholdCalculator_.info());
     }
     perf->checkAndSave();
     return FEEDED;
@@ -366,7 +376,7 @@ class SelfPlaySubCtrl {
   bool setCurrModel(int64_t ver) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (ver != curr_ver_) {
-      std::cout << "SelfPlay: " << curr_ver_ << " -> " << ver << std::endl;
+      logger_->info("SelfPlay: {} -> {}", curr_ver_, ver);
       curr_ver_ = ver;
       find_or_create(curr_ver_);
       return true;
@@ -415,12 +425,6 @@ class SelfPlaySubCtrl {
       msg->vers.white_ver = -1;
       msg->vers.mcts_opt = mcts_options_;
       perf->fillInRequest(info, msg);
-      /*
-         if (perf.n() % 10 == 0) {
-         cout << elf_util::now() << ", #game: " << perf.n() << ", send msg: " <<
-         msg->info() << endl;
-         }
-         */
     }
   }
 
@@ -434,6 +438,8 @@ class SelfPlaySubCtrl {
   ResignThresholdCalculator resignThresholdCalculator_;
 
   int64_t total_selfplay_ = 0;
+
+  std::shared_ptr<spdlog::logger> logger_;
 
   SelfPlayRecord& find_or_create(int64_t ver) {
     auto it = perfs_.find(ver);
@@ -449,9 +455,7 @@ class SelfPlaySubCtrl {
   SelfPlayRecord* find_or_null(int64_t ver) {
     auto it = perfs_.find(ver);
     if (it == perfs_.end()) {
-      std::cout << "The version " + std::to_string(ver) +
-              " was not sent before!"
-                << std::endl;
+      logger_->info("The version {} was not sent before!", std::to_string(ver));
       return nullptr;
     }
     return it->second.get();
@@ -460,9 +464,7 @@ class SelfPlaySubCtrl {
   const SelfPlayRecord* find_or_null(int64_t ver) const {
     auto it = perfs_.find(ver);
     if (it == perfs_.end()) {
-      std::cout << "The version " + std::to_string(ver) +
-              " was not sent before!"
-                << std::endl;
+      logger_->info("The version {} was not sent before!", std::to_string(ver));
       return nullptr;
     }
     return it->second.get();

@@ -18,6 +18,8 @@
 
 #include "common.h"
 
+#include "elf/logging/IndexedLoggerFactory.h"
+
 // This file exists to bind functionss of the form f(State, MemoryAddress).
 // to its arguments
 // State usually is game state that comes from clients and MemoryAddress is
@@ -469,6 +471,8 @@ class ClassFieldT;
 //
 class Extractor {
  public:
+  Extractor() : logger_(elf::logging::getLogger("elf::base::Extractor-", "")) {}
+
   template <typename T>
   FuncMapT<T>& addField(const std::string& key) {
     auto& f = fields_[key];
@@ -554,8 +558,7 @@ class Extractor {
     for (const std::string& k : keys) {
       auto it = fields_.find(k);
       if (it == fields_.end()) {
-        // TODO: This should be Google log (ssengupta@fb)
-        std::cout << "Warning! key[" << k << "] is missing!" << std::endl;
+        logger_->info("Warning! key[{}] is missing!", k);
       } else {
         pointers.emplace(k, AnyP(*it->second));
       }
@@ -566,6 +569,7 @@ class Extractor {
  private:
   // A bunch of pointer to Field.
   std::unordered_map<std::string, std::unique_ptr<FuncMapBase>> fields_;
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 template <typename S>
@@ -573,7 +577,9 @@ class ClassFieldT {
  public:
   using ClassField = ClassFieldT<S>;
 
-  ClassFieldT(Extractor* ext) : ext_(ext) {}
+  ClassFieldT(Extractor* ext)
+      : ext_(ext),
+        logger_(elf::logging::getLogger("elf::base::ClassFieldT-", "")) {}
 
   template <typename T>
   ClassField& addFunction(
@@ -607,12 +613,13 @@ class ClassFieldT {
 
  private:
   Extractor* ext_;
+  std::shared_ptr<spdlog::logger> logger_;
 
   template <typename T>
   FuncMapT<T>* get(const std::string& key) {
     FuncMapT<T>* f = ext_->getFunctions<T>(key);
     if (f == nullptr) {
-      std::cout << "ClassFieldT: cannot find " << key << std::endl;
+      logger_->info("ClassFieldT: cannot find {}", key);
       assert(false);
     }
     return f;
@@ -621,7 +628,7 @@ class ClassFieldT {
   FuncMapBase* get(const std::string& key) {
     FuncMapBase* f = ext_->getFunctions(key);
     if (f == nullptr) {
-      std::cout << "ClassFieldT: cannot find " << key << std::endl;
+      logger_->info("ClassFieldT: cannot find {}", key);
       assert(false);
     }
     assert(f != nullptr);

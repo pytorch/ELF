@@ -13,6 +13,7 @@
 #include <string>
 
 #include "elf/ai/tree_search/tree_search_options.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "pybind_helper.h"
 
 struct ContextOptions {
@@ -24,29 +25,21 @@ struct ContextOptions {
   // History length. How long we should keep the history.
   int T = 1;
 
-  // verbose options.
-  bool verbose_comm = false;
-
   std::string job_id;
 
   elf::ai::tree_search::TSOptions mcts_options;
 
-  ContextOptions() {}
+  std::shared_ptr<spdlog::logger> _logger;
+
+  ContextOptions()
+      : _logger(elf::logging::getLogger("elf::legacy::ContextOptions-", "")) {}
 
   void print() const {
-    std::cout << "JobId: " << job_id << std::endl;
-    std::cout << "#Game: " << num_games << std::endl;
-    std::cout << "T: " << T << std::endl;
-    if (verbose_comm)
-      std::cout << "Comm Verbose On" << std::endl;
-    std::cout << mcts_options.info() << std::endl;
+    _logger->info("JobId: {}", job_id);
+    _logger->info("#Game: {}", num_games);
+    _logger->info("T: {}", T);
+    _logger->info("{}", mcts_options.info());
   }
 
-  REGISTER_PYBIND_FIELDS(
-      job_id,
-      batchsize,
-      num_games,
-      T,
-      verbose_comm,
-      mcts_options);
+  REGISTER_PYBIND_FIELDS(job_id, batchsize, num_games, T, mcts_options);
 };

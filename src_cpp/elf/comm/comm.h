@@ -20,6 +20,7 @@
 #include <tbb/concurrent_hash_map.h>
 
 #include "elf/concurrency/TBBHashers.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 
 #include "broadcast.h"
 
@@ -323,7 +324,10 @@ class CommT : public CommInternalT<
   class Client : public CommInternal::Client {
    public:
     explicit Client(Comm* pp)
-        : CommInternal::Client(pp), pp_(pp), rng_(time(NULL)) {}
+        : CommInternal::Client(pp),
+          pp_(pp),
+          rng_(time(NULL)),
+          logger_(elf::logging::getLogger("elf::comm::Client-", "")) {}
 
     ReplyStatus sendWait(Data data, const std::vector<std::string>& labels) {
       return CommInternal::Client::sendWait(
@@ -340,6 +344,7 @@ class CommT : public CommInternalT<
    private:
     Comm* pp_;
     std::mt19937 rng_;
+    std::shared_ptr<spdlog::logger> logger_;
 
     std::vector<Id> label2server(const std::vector<std::string>& labels) {
       assert(!labels.empty());
@@ -350,8 +355,7 @@ class CommT : public CommInternalT<
         typename ServerLabelMap::const_accessor elem;
         bool found = pp_->serverLabels_.find(elem, label);
         if (!found) {
-          std::cout << "WARNING! no servers has the label: " << label
-                    << std::endl;
+          logger_->warn("WARNING! no servers has the label: {}", label);
         } else {
           const std::vector<Id>& ids = *(elem->second);
           // Randomly pick one of the label.

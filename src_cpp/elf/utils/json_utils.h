@@ -8,12 +8,11 @@
 
 #pragma once
 
-#define JSON_LOAD(target, j, field)                                        \
-  if (j.find(#field) != j.end()) {                                         \
-    target.field = j[#field];                                              \
-  } else {                                                                 \
-    std::cout << "Error: " << #field << " cannot be found! " << std::endl; \
-    throw std::runtime_error(#field "cannot not be found!");               \
+#define JSON_LOAD(target, j, field)                          \
+  if (j.find(#field) != j.end()) {                           \
+    target.field = j[#field];                                \
+  } else {                                                   \
+    throw std::runtime_error(#field "cannot not be found!"); \
   }
 
 #define JSON_LOAD_OPTIONAL(target, j, field) \
@@ -25,31 +24,28 @@
 
 #define JSON_SAVE_OBJ(j, field) field.setJsonFields(j[#field]);
 
-#define JSON_LOAD_OBJ(target, j, field)                                    \
-  if (j.find(#field) != j.end()) {                                         \
-    target.field = target.field.createFromJson(j[#field]);                 \
-  } else {                                                                 \
-    std::cout << "Error: " << #field << " cannot be found! " << std::endl; \
-    throw std::runtime_error(#field "cannot not be found!");               \
+#define JSON_LOAD_OBJ(target, j, field)                      \
+  if (j.find(#field) != j.end()) {                           \
+    target.field = target.field.createFromJson(j[#field]);   \
+  } else {                                                   \
+    throw std::runtime_error(#field "cannot not be found!"); \
   }
 
-#define JSON_LOAD_OBJ_ARGS(target, j, field, ...)                          \
-  if (j.find(#field) != j.end()) {                                         \
-    target.field = target.field.createFromJson(j[#field], __VA_ARGS__);    \
-  } else {                                                                 \
-    std::cout << "Error: " << #field << " cannot be found! " << std::endl; \
-    throw std::runtime_error(#field "cannot not be found!");               \
+#define JSON_LOAD_OBJ_ARGS(target, j, field, ...)                       \
+  if (j.find(#field) != j.end()) {                                      \
+    target.field = target.field.createFromJson(j[#field], __VA_ARGS__); \
+  } else {                                                              \
+    throw std::runtime_error(#field "cannot not be found!");            \
   }
 
-#define JSON_LOAD_VEC(target, j, field)                                    \
-  target.field.clear();                                                    \
-  if (j.find(#field) != j.end()) {                                         \
-    for (size_t i = 0; i < j[#field].size(); ++i) {                        \
-      target.field.push_back(j[#field][i]);                                \
-    }                                                                      \
-  } else {                                                                 \
-    std::cout << "Error: " << #field << " cannot be found! " << std::endl; \
-    throw std::runtime_error(#field "cannot not be found!");               \
+#define JSON_LOAD_VEC(target, j, field)                      \
+  target.field.clear();                                      \
+  if (j.find(#field) != j.end()) {                           \
+    for (size_t i = 0; i < j[#field].size(); ++i) {          \
+      target.field.push_back(j[#field][i]);                  \
+    }                                                        \
+  } else {                                                   \
+    throw std::runtime_error(#field "cannot not be found!"); \
   }
 
 #define JSON_LOAD_VEC_OPTIONAL(target, j, field)    \

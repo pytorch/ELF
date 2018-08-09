@@ -23,10 +23,6 @@ class ContextArgs(object):
             'T',
             'number of timesteps',
             6)
-        spec.addBoolOption(
-            'verbose_comm',
-            'enables verbose comm',
-            False)
         spec.addIntOption(
             'mcts_threads',
             'number of MCTS threads',
@@ -97,7 +93,6 @@ class ContextArgs(object):
         co.num_games = options.num_games
         co.batchsize = options.batchsize
         co.T = options.T
-        co.verbose_comm = options.verbose_comm
 
         mcts.num_threads = options.mcts_threads
         mcts.num_rollouts_per_thread = options.mcts_rollout_per_thread

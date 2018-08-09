@@ -16,6 +16,8 @@
 #include <shared_mutex>
 #include <thread>
 
+#include "elf/logging/IndexedLoggerFactory.h"
+
 namespace elf {
 
 namespace shared {
@@ -160,7 +162,10 @@ class ReaderQueuesT {
   using ReaderQueue = ReaderQueueT<T>;
 
   ReaderQueuesT(const RQCtrl& reader_ctrl)
-      : min_size_satisfied_(false), parity_sizes_(2, 0) {
+      : min_size_satisfied_(false),
+        parity_sizes_(2, 0),
+        logger_(
+            elf::logging::getLogger("elf::distributed::ReaderQueuesT-", "")) {
     // Make sure this is an even number.
     assert(reader_ctrl.num_reader % 2 == 0);
     min_size_per_queue_ = reader_ctrl.ctrl.queue_min_size;
@@ -291,6 +296,8 @@ class ReaderQueuesT {
   size_t total_insertion_ = 0;
   std::vector<int> parity_sizes_;
 
+  std::shared_ptr<spdlog::logger> logger_;
+
   int insert_impl(int idx, T&& v) {
     int delta = qs_[idx]->Insert(std::move(v));
     total_insertion_++;
@@ -299,11 +306,13 @@ class ReaderQueuesT {
     if (total_insertion_ % 1000 == 0) {
       float even_ratio = static_cast<float>(parity_sizes_[0]) /
           (parity_sizes_[0] + parity_sizes_[1] + 1e-6);
-      std::cout << elf_utils::now()
-                << ", ReaderQueue Insertion: " << total_insertion_
-                << ", even: " << parity_sizes_[0] << " " << 100 * even_ratio
-                << "%"
-                << ", odd: " << parity_sizes_[1] << std::endl;
+      logger_->info(
+          "{}, ReaderQueue Insertion: {}, even: {} {}%, odd {}: ",
+          elf_utils::now(),
+          total_insertion_,
+          parity_sizes_[0],
+          100 * even_ratio,
+          parity_sizes_[1]);
     }
     return delta;
   }
