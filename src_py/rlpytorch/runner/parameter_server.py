@@ -245,7 +245,7 @@ class SharedData:
 
         while True:
             self.cvs_recv[i].wait()
-            utils_elf.transfer_cpu2gpu(batch, batch_gpu, async=True)
+            utils_elf.transfer_cpu2gpu(batch, batch_gpu, non_blocking=True)
             self.cvs_send[i].notify()
             self.cb_remote_batch_process(context, batch_gpu)
 
