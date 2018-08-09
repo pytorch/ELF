@@ -21,7 +21,9 @@ using ReplayBuffer = elf::shared::ReaderQueuesT<Record>;
 
 class TrainCtrl : public elf::msg::DataInterface {
  public:
-  TrainCtrl(Ctrl& ctrl) : ctrl_(ctrl), rng_(time(NULL)) {
+  // TrainCtrl(Ctrl& ctrl) : ctrl_(ctrl), rng_(time(NULL)) {
+  TrainCtrl(Ctrl& ctrl) : rng_(time(NULL)) {
+    (void)ctrl;
     // Register sender for python thread.
     elf::shared::RQCtrl rq_ctrl;
     rq_ctrl.num_reader = 20;
@@ -63,7 +65,7 @@ class TrainCtrl : public elf::msg::DataInterface {
   }
 
  private:
-  Ctrl& ctrl_;
+  // Ctrl& ctrl_;
   std::unique_ptr<ReplayBuffer> replay_buffer_;
   std::mt19937 rng_;
 };

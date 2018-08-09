@@ -32,10 +32,24 @@ struct MsgRequest {
     JSON_SAVE(j, request);
   }
 
+  std::string dumpJsonString() const {
+    json j;
+    setJsonFields(j);
+    return j.dump();
+  }
+
   static MsgRequest createFromJson(const json& j) {
     MsgRequest r;
     JSON_LOAD(r, j, request);
     return r;
+  }
+
+  friend bool operator==(const MsgRequest &m1, const MsgRequest &m2) {
+    return m1.request == m2.request;
+  }
+
+  friend bool operator!=(const MsgRequest &m1, const MsgRequest &m2) {
+    return ! (m1 == m2);
   }
 };
 
@@ -49,6 +63,12 @@ struct MsgResult {
 
   void setJsonFields(json& j) const {
     JSON_SAVE(j, result);
+  }
+
+  std::string dumpJsonString() const {
+    json j;
+    setJsonFields(j);
+    return j.dump();
   }
 
   static MsgResult createFromJson(const json& j) {

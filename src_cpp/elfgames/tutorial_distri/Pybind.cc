@@ -22,7 +22,7 @@ namespace tutorial {
 
 void registerPy(pybind11::module& m) {
   namespace py = pybind11;
-  auto ref = py::return_value_policy::reference_internal;
+  // auto ref = py::return_value_policy::reference_internal;
 
   PB_INIT(GameOptions)
     PB_FIELD(base)
