@@ -33,7 +33,7 @@ class Loader(object):
 
     def initialize(self):
         job_id = os.environ.get("job_id", "local")
-        opt = go.getOpt(self.option_map.getOptionSpec(), job_id)
+        opt = tutorial.getOpt(self.option_map.getOptionSpec(), job_id)
 
         GC = elf.GameContext(opt.base)
         game_obj = tutorial.Server(opt)

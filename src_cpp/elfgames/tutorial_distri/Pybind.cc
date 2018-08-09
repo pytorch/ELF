@@ -20,6 +20,19 @@
 namespace elfgames {
 namespace tutorial {
 
+void getPredefined(elf::options::OptionSpec& spec) {
+  elf::options::Visitor<GameOptions> visitor("", spec);
+}
+
+GameOptions getOpt(
+    const elf::options::OptionSpec& spec,
+    std::string job_id) {
+  GameOptions options;
+  elf::options::Saver<GameOptions> visitor("", spec, options);
+  options.base.job_id = job_id;
+  return options;
+}
+
 void registerPy(pybind11::module& m) {
   namespace py = pybind11;
   // auto ref = py::return_value_policy::reference_internal;
@@ -29,13 +42,18 @@ void registerPy(pybind11::module& m) {
     PB_FIELD(net)
   PB_END
 
+  m.def("getPredefined", getPredefined);
+  m.def("getOpt", getOpt);
+
   py::class_<Server>(m, "Server")
       .def(py::init<const GameOptions&>())
-      .def("setGameContext", &Server::setGameContext);
+      .def("setGameContext", &Server::setGameContext)
+      .def("getParams", &Server::getParams);
 
   py::class_<Client>(m, "Client")
       .def(py::init<const GameOptions&>())
-      .def("setGameContext", &Client::setGameContext);
+      .def("setGameContext", &Client::setGameContext)
+      .def("getParams", &Client::getParams);
 }
 
 } // namespace tutorial

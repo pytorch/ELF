@@ -58,9 +58,9 @@ void registerPy(pybind11::module& m) {
   auto ref = py::return_value_policy::reference_internal;
 
   PB_INIT(GameOptions)
-  PB_FIELD(base)
-  PB_FIELD(net)
-  PB_FIELD(mcts)
+    PB_FIELD(base)
+    PB_FIELD(net)
+    PB_FIELD(mcts)
   PB_END
 
   PB_INIT(GameOptionsTrain)

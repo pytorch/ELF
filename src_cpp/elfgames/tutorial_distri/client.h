@@ -80,6 +80,13 @@ class Client {
     }
   }
 
+  std::unordered_map<std::string, int> getParams() const {
+    return std::unordered_map<std::string, int>{
+      { "input_dim", options_.input_dim },
+      { "num_action", options_.num_action },
+    };
+  }
+
   ~Client() {
     dispatcher_.reset(nullptr);
     writer_.reset(nullptr);

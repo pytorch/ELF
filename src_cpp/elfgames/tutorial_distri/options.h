@@ -16,6 +16,9 @@
 #include "elf/utils/utils.h"
 
 DEF_STRUCT(GameOptions)
+  DEF_FIELD(int32_t, num_action, 10, "Number of actions");
+  DEF_FIELD(int32_t, input_dim, 10, "Input dimention");
+  
   DEF_FIELD_NODEFAULT(elf::msg::Options, net, "Network options");
   DEF_FIELD_NODEFAULT(elf::Options, base, "Base Options");
 DEF_END

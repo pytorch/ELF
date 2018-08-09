@@ -101,6 +101,13 @@ class Server {
     onlineLoader_->start(trainCtrl_.get());
   }
 
+  std::unordered_map<std::string, int> getParams() const {
+    return std::unordered_map<std::string, int>{
+      { "input_dim", options_.input_dim },
+      { "num_action", options_.num_action },
+    };
+  }
+
   ~Server() {
     trainCtrl_.reset(nullptr);
     onlineLoader_.reset(nullptr);
