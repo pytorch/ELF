@@ -245,28 +245,28 @@ class Batch:
                            for k, v in self.batch.items()}
         return new_batch
 
-    def cpu2gpu(self, gpu, async=True):
+    def cpu2gpu(self, gpu, non_blocking=True):
         ''' transfer batch data to gpu '''
         # For each time step
         new_batch = self.empty_copy()
-        new_batch.batch = {k: v.cuda(gpu, async=async)
+        new_batch.batch = {k: v.cuda(gpu, non_blocking=non_blocking)
                            for k, v in self.batch.items()}
         return new_batch
 
-    def cpu2cpu(self, gpu, async=True):
+    def cpu2cpu(self, gpu, non_blocking=True):
         ''' transfer batch data to gpu '''
         # For each time step
         new_batch = self.empty_copy()
         new_batch.batch = {k: v.clone() for k, v in self.batch.items()}
         return new_batch
 
-    def transfer_cpu2gpu(self, batch_gpu, async=True):
+    def transfer_cpu2gpu(self, batch_gpu, non_blocking=True):
         ''' transfer batch data to gpu '''
         # For each time step
         for k, v in self.batch.items():
-            batch_gpu[k].copy_(v, async=async)
+            batch_gpu[k].copy_(v, non_blocking=non_blocking)
 
-    def transfer_cpu2cpu(self, batch_dst, async=True):
+    def transfer_cpu2cpu(self, batch_dst, non_blocking=True):
         ''' transfer batch data to cpu '''
 
         # For each time step
