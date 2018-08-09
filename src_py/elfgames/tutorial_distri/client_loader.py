@@ -24,6 +24,10 @@ class Loader(object):
             "client_dummy3",
             "Some boolean dummy arguments",
             True)
+        spec.addIntOption(
+            'gpu',
+            'GPU id to use',
+            -1)
 
         return spec
 
@@ -40,7 +44,7 @@ class Loader(object):
         game_obj.setGameContext(GC)
         params = game_obj.getParams()
 
-        batchsize = opt.base.batchsize
+        batchsize = getattr(self.options, "base.batchsize")
 
         desc = {}
         desc["actor"] = dict(
@@ -59,6 +63,5 @@ class Loader(object):
                          if (self.options.gpu is not None and self.options.gpu >= 0)
                          else None),
             use_numpy=False,
-            params=params,
-            verbose=self.options.parameter_print)
+            params=params)
 

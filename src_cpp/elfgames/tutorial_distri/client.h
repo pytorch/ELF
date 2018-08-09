@@ -10,6 +10,7 @@
 #include "record.h"
 #include "options.h"
 #include "client_game.h"
+#include "feature.h"
 
 using ThreadedWriter = elf::msg::Client;
 
@@ -42,10 +43,10 @@ class WriterCallback {
 class Client {
  public:
   Client(const GameOptions& options)
-      : options_(options) {}
+      : options_(options), feature_(options) {}
 
   void setGameContext(elf::GCInterface* ctx) {
-    // goFeature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
+    feature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
     uint64_t num_games = ctx->options().num_game_thread;
 
     if (ctx->getClient() != nullptr) {
@@ -104,5 +105,5 @@ class Client {
   std::unique_ptr<WriterCallback> writer_callback_;
 
   const GameOptions options_;
-  // FeatureExtractor goFeature_;
+  Feature feature_;
 };

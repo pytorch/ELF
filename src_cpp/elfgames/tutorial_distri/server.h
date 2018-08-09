@@ -14,6 +14,7 @@
 #include "record.h"
 #include "options.h"
 #include "server_game.h"
+#include "feature.h"
 
 #include <thread>
 
@@ -74,10 +75,10 @@ class TrainCtrl : public elf::msg::DataInterface {
 class Server {
  public:
   Server(const GameOptions& options)
-      : options_(options) {}
+      : options_(options), feature_(options) {}
 
   void setGameContext(elf::GameContext* ctx) {
-    // feature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
+    feature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
 
     size_t num_games = ctx->options().num_game_thread;
     trainCtrl_.reset(new TrainCtrl(ctx->getCtrl()));
@@ -120,5 +121,5 @@ class Server {
 
   const GameOptions options_;
 
-  // FeatureExtractor feature_;
+  Feature feature_;
 };

@@ -12,6 +12,7 @@ import torch.distributed as dist
 
 from elf.options import auto_import_options, PyOptionSpec
 from rlpytorch import Model
+from elfgames.tutorial_distri.optim_method import MyOptim
 
 class MyModel(Model):
     @classmethod
@@ -38,7 +39,7 @@ class MyModel(Model):
 
         self.relu = nn.LeakyReLU(0.1) if self.options.leaky_relu else nn.ReLU()
 
-        input_dim = params["dim"]
+        input_dim = params["input_dim"]
         num_action = params["num_action"]
 
         self.trunk = nn.Linear(input_dim, input_dim)
@@ -67,5 +68,5 @@ class MyModel(Model):
 
 # Format: key, [model, method]
 Models = {
-    "simple": [MyModel],
+    "simple": [MyModel, MyOptim],
 }

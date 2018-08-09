@@ -25,6 +25,7 @@
 #include "elf/comm/comm.h"
 #include "elf/logging/Pybind.h"
 #include "elf/options/Pybind.h"
+#include "elf/utils/pybind.h"
 #include "elf/ai/tree_search/Pybind.h"
 
 namespace {
@@ -102,9 +103,18 @@ void register_game(pybind11::module& m) {
 
   auto ref = py::return_value_policy::reference_internal;
 
-  py::class_<Options>(m, "Options").def(py::init<>());
+  PB_INIT(Options)
+    .def(py::init<>())
+    PB_FIELD(num_game_thread)
+    PB_FIELD(batchsize)
+    PB_FIELD(verbose)
+    PB_FIELD(seed)
+    PB_FIELD(job_id)
+    PB_FIELD(time_signature)
+  PB_END
 
-  py::class_<MsgOptions>(m, "MsgOptions").def(py::init<>());
+  py::class_<MsgOptions>(m, "MsgOptions")
+    .def(py::init<>());
 
   py::class_<GCInterface>(m, "GCInterface")
       .def("start", &GCInterface::start)
