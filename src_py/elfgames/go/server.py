@@ -9,7 +9,7 @@
 
 import os
 
-from elf import GCWrapper, ContextArgs, MoreLabels
+from elf import GCWrapper, MoreLabels
 from elf.options import auto_import_options, PyOptionSpec
 
 import _elf as elf
