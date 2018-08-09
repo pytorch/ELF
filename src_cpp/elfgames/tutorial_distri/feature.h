@@ -9,11 +9,27 @@
 #pragma once
 #include "elf/base/extractor.h"
 #include "options.h"
+#include "record.h"
+#include "state.h"
 
 class Feature {
  public:
   Feature(const GameOptions &options) 
     : options_(options) {
+  }
+
+  void SendState(const State &state, float *data) {
+    for (int i = 0; i < options_.input_dim; ++i) {
+      data[i] = state.content;
+    } 
+  }
+
+  static void GetReplyAction(Reply &reply, int32_t *a) {
+    reply.a = *a;
+  }
+
+  static void GetReplyValue(Reply &reply, float *v) {
+    reply.value = *v;
   }
 
   void registerExtractor(int batchsize, elf::Extractor& e) {
@@ -24,14 +40,15 @@ class Feature {
     e.addField<float>({"pi"})
         .addExtents(batchsize, {batchsize, options_.num_action});
 
-    /*
-    e.addClass<GoReply>()
-        .addFunction<int64_t>("a", ReplyAction)
-        .addFunction<float>("pi", ReplyPolicy)
-        .addFunction<float>("V", ReplyValue)
-        .addFunction<int64_t>("rv", ReplyVersion)
-        .addFunction<uint64_t>("rhash", ReplyHash);
-     */
+    using std::placeholders::_1;
+    using std::placeholders::_2;
+
+    e.addClass<State>()
+        .addFunction<int64_t>("s", std::bind(SendState, this, _1, _2));
+
+    e.addClass<Reply>()
+        .addFunction<int32_t>("a", GetReplyAction)
+        .addFunction<float>("V", GetReplyValue);
   }
 
  private:

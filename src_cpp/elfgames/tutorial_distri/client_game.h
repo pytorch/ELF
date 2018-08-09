@@ -17,6 +17,7 @@
 
 #include "options.h"
 #include "record.h"
+#include "state.h"
 #include "dispatcher_callback.h"
 
 class ClientGame {
@@ -33,7 +34,8 @@ class ClientGame {
 
  private:
   ThreadedDispatcher* dispatcher_ = nullptr;
-  int _online_counter = 0;
+  int counter_ = 0;
+  State state_;
 
   // used to communicate info.
   elf::game::Base* base_ = nullptr;

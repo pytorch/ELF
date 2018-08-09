@@ -106,8 +106,7 @@ class AIClientT : public AI_T<S, A> {
 
     // return client_->sendWait(targets_, &funcs);
     comm::ReplyStatus status = client_->sendWait(targets_, &funcs_s);
-    return status == comm::ReplyStatus::SUCCESS ||
-        status == comm::ReplyStatus::UNKNOWN;
+    return status == comm::ReplyStatus::SUCCESS;
   }
 
   bool act_batch(
