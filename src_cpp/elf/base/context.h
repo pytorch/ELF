@@ -24,6 +24,7 @@
 #include "elf/comm/comm.h"
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "extractor.h"
 #include "sharedmem.h"
 
@@ -133,7 +134,6 @@ class Context {
       msgQueue_.push(PREPARE_TO_STOP);
       completedSwitch_.waitUntilTrue();
       completedSwitch_.reset();
-      // std::cout << " prepare to stop delivered "
       // << smem_->getSharedMemOptions().info() << std::endl;
     }
 
@@ -171,7 +171,6 @@ class Context {
         _Msg msg;
         if (msgQueue_.pop(&msg, std::chrono::microseconds(0))) {
           if (msg == PREPARE_TO_STOP) {
-            // std::cout << " get prepare to stop signal "
             // << smem_opts.info() << std::endl;
 
             smem_->setMinBatchSize(0);
@@ -183,14 +182,12 @@ class Context {
           }
         }
         smem_->waitBatchFillMem(server_);
-        // std::cout << "Receiver[" << smem_opts.getLabel() << "] Batch
         // received. #batch = "
         //          << smem_->getEffectiveBatchSize() << std::endl;
 
         comm::ReplyStatus batch_status =
             batchClient_->sendWait(smem_.get(), {""});
 
-        // std::cout << "Receiver[" << smem_opts.getLabel() << "] Batch
         // releasing. #batch = "
         //          << smem_->getEffectiveBatchSize() << std::endl;
 
@@ -203,7 +200,7 @@ class Context {
  public:
   using GameCallback = std::function<void(int game_idx, GameClient*)>;
 
-  Context() {
+  Context() : logger_(elf::logging::getLogger("elf::base::Context-", "")) {
     // Wait for the derived class to add entries to extractor_.
     server_ = comm_.getServer();
     client_.reset(new GameClient(&comm_, this));
@@ -249,7 +246,6 @@ class Context {
     // for (const string &key : keys) {
     //    LOG(INFO) << key << " ";
     // }
-    // std::cout << std::endl;
 
     smem2keys_[options.getRecvOptions().label] = keys;
     auto anyps = extractor_.getAnyP(keys);
@@ -337,7 +333,7 @@ class Context {
     std::thread tmp_thread([&]() {
       // assert(nice(10) == 10);
 
-      std::cout << "Prepare to stop ..." << std::endl;
+      logger_->info("Prepare to stop ...");
       client_->prepareToStop();
 
       // First set the timeout for all collectors to be finite number.
@@ -346,22 +342,21 @@ class Context {
       }
 
       // Then stop all the threads.
-      std::cout << "Stop all game threads ..." << std::endl;
+      logger_->info("Stop all game threads ...");
       client_->stopGames();
 
-      std::cout << "All games sent notification, "
-                << "Waiting until they join" << std::endl;
+      logger_->info("All games sent notification, Waiting until they join");
 
       for (auto& p : game_threads_) {
         p.join();
       }
 
-      std::cout << "Stop all collectors ..." << std::endl;
+      logger_->info("Stop all collectors ...");
       for (auto& r : collectors_) {
         r->stop();
       }
 
-      std::cout << "Stop tmp pool..." << std::endl;
+      logger_->info("Stop tmp pool...");
       tmp_thread_done = true;
     });
 
@@ -393,6 +388,8 @@ class Context {
   GameCallback game_cb_ = nullptr;
   std::function<void()> cb_after_game_start_ = nullptr;
   std::vector<std::thread> game_threads_;
+
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 template <typename S>

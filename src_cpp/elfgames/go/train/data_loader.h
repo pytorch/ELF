@@ -58,12 +58,14 @@ class DataInterface {
 class DataOnlineLoader {
  public:
   DataOnlineLoader(const elf::shared::Options& net_options)
-      : logger_(elf::logging::getLogger("DataOnlineLoader-", "")) {
+      : logger_(elf::logging::getLogger(
+            "elfgames::go::train::DataOnlineLoader-",
+            "")) {
     auto curr_timestamp = time(NULL);
     const std::string database_name =
         "data-" + std::to_string(curr_timestamp) + ".db";
     reader_.reset(new elf::shared::Reader(database_name, net_options));
-    std::cout << reader_->info() << std::endl;
+    logger_->info(reader_->info());
   }
 
   void start(DataInterface* interface) {
@@ -76,16 +78,12 @@ class DataOnlineLoader {
       try {
         auto info = interface->OnReceive(identity, msg);
         stats_.feed(info);
-        /*
-        if (options_.verbose) {
-          std::cout << "Content from " << identity
-            << ", msg_size: " << msg.size() << ", " << stats_.info()
-            << std::endl;
-        }
-        */
         if (stats_.msg_count % 1000 == 0) {
-          std::cout << elf_utils::now() << ", last_identity: " << identity
-                    << ", " << stats_.info() << std::endl;
+          logger_->info(
+              "{}, last_identity: {}, {}",
+              elf_utils::now(),
+              identity,
+              stats_.info());
         }
         return info.success;
       } catch (...) {

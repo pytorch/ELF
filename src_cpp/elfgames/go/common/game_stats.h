@@ -15,10 +15,15 @@
 #include <thread>
 #include <vector>
 
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "game_utils.h"
 
 class GameStats {
  public:
+  GameStats()
+      : _logger(
+            elf::logging::getLogger("elfgames::go::common::GameStats-", "")) {}
+
   void feedMoveRanking(int ranking) {
     std::lock_guard<std::mutex> lock(_mutex);
     _move_ranking.feed(ranking);
@@ -27,7 +32,7 @@ class GameStats {
   void resetRankingIfNeeded(int num_reset_ranking) {
     std::lock_guard<std::mutex> lock(_mutex);
     if (_move_ranking.total_count > (uint64_t)num_reset_ranking) {
-      std::cout << std::endl << _move_ranking.info() << std::endl;
+      _logger->info("\n{}", _move_ranking.info());
       _move_ranking.reset();
     }
   }
@@ -58,4 +63,5 @@ class GameStats {
   Ranking _move_ranking;
   WinRateStats _win_rate_stats;
   std::vector<std::string> _sgfs;
+  std::shared_ptr<spdlog::logger> _logger;
 };

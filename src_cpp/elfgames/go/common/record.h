@@ -227,7 +227,6 @@ struct MsgResult {
   static MsgResult createFromJson(const json& j) {
     MsgResult res;
 
-    // cout << "extract num_moves" << endl;
     JSON_LOAD(res, j, num_move);
     JSON_LOAD(res, j, reward);
     JSON_LOAD(res, j, content);
@@ -237,10 +236,7 @@ struct MsgResult {
     JSON_LOAD_VEC(res, j, values);
 
     if (j.find("policies") != j.end()) {
-      // cout << "extract policies" << endl;
       size_t num_policies = j["policies"].size();
-      // cout << "Content: " << r.content << endl;
-      //
       for (size_t i = 0; i < num_policies; i++) {
         json j1 = j["policies"][i];
         res.policies.emplace_back();
@@ -248,11 +244,7 @@ struct MsgResult {
           res.policies.back().prob[k] = j1[k];
         }
       }
-      // cout << "extract policies complete: " << num_policies << endl;
     }
-    // cout << "#policies: " << num_policies << " #entries: " << total_entries
-    //     << ", entries/policy: " << (float)(total_entries) / num_policies <<
-    //     endl;
     return res;
   }
 };
@@ -305,7 +297,6 @@ struct Record {
   }
 
   static std::vector<Record> createBatchFromJson(const json& j) {
-    // cout << "from json_batch" << endl;
     std::vector<Record> records;
     for (size_t i = 0; i < j.size(); ++i) {
       try {
@@ -458,7 +449,6 @@ struct Records {
     }
 
     if (j.find("records") != j.end()) {
-      // cout << "from json_batch" << endl;
       for (size_t i = 0; i < j["records"].size(); ++i) {
         rs.records.push_back(Record::createFromJson(j["records"][i]));
       }

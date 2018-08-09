@@ -11,6 +11,7 @@
 #include <iostream>
 
 #include "elf/ai/tree_search/mcts.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "elfgames/go/mcts/ai.h"
 
 struct MCTSActorParams {
@@ -44,7 +45,9 @@ class MCTSActor {
   enum PreEvalResult { EVAL_DONE, EVAL_NEED_NN };
 
   MCTSActor(elf::GameClient* client, const MCTSActorParams& params)
-      : params_(params), rng_(params.seed) {
+      : params_(params),
+        rng_(params.seed),
+        logger_(elf::logging::getLogger("elfgames::go::mcts::MCTSActor-", "")) {
     ai_.reset(new AI(client, {params_.actor_name}));
   }
 
@@ -106,10 +109,8 @@ class MCTSActor {
       p_replies.push_back(&replies[i]);
     }
 
-    // cout << "About to send situation to " << params_.actor_name << endl;
-    // cout << s.showBoard() << endl;
     if (!ai_->act_batch(p_bfs, p_replies)) {
-      std::cout << "act unsuccessful! " << std::endl;
+      logger_->info("act unsuccessful! ");
     } else {
       for (size_t i = 0; i < sel_indices.size(); i++) {
         post_nn_result(replies[i], &resps[sel_indices[i]]);
@@ -131,13 +132,11 @@ class MCTSActor {
       // members containing:
       // Coord c, vector<float> pi, float v;
       GoReply reply(bf);
-      // cout << "About to send situation to " << params_.actor_name << endl;
-      // cout << s.showBoard() << endl;
 
       // AI-Client will run a one-step neural network
       if (!ai_->act(bf, &reply)) {
         // This happens when the game is about to end,
-        std::cout << "act unsuccessful! " << std::endl;
+        logger_->info("act unsuccessful! ");
       } else {
         // call pi2response()
         // action will be inv-transformed
@@ -167,6 +166,9 @@ class MCTSActor {
   std::unique_ptr<AI> ai_;
   std::ostream* oo_ = nullptr;
   std::mt19937 rng_;
+
+ private:
+  std::shared_ptr<spdlog::logger> logger_;
 
   BoardFeature get_extractor(const GoState& s) {
     // RandomShuffle: static
@@ -208,7 +210,7 @@ class MCTSActor {
       const std::string msg = "model version " + std::to_string(reply.version) +
           " and required version " + std::to_string(params_.required_version) +
           " are not consistent";
-      std::cout << msg << std::endl;
+      logger_->error(msg);
       throw std::runtime_error(msg);
     }
 
@@ -363,7 +365,6 @@ class MCTSGoAI : public elf::ai::tree_search::MCTSAI_T<MCTSActor> {
   elf::ai::tree_search::MCTSPolicy<Coord> getMCTSPolicy() const {
     const auto& result = getLastResult();
     auto policy = result.mcts_policy;
-    // cout << policy.info() << endl;
     policy.normalize();
     return policy;
   }

@@ -9,6 +9,7 @@
 #pragma once
 #include <atomic>
 #include "../common/record.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 
 class ClientManager;
 
@@ -112,7 +113,10 @@ class ClientManager {
         max_num_eval_(max_num_eval),
         max_num_threads_(max_num_threads),
         max_client_delay_sec_(max_client_delay_sec),
-        timer_(timer) {
+        timer_(timer),
+        logger_(elf::logging::getLogger(
+            "elfgames::go::train::ClientManager-",
+            "")) {
     assert(timer_ != nullptr);
   }
 
@@ -126,14 +130,6 @@ class ClientManager {
       const std::unordered_map<int, ThreadState>& states) {
     std::lock_guard<std::mutex> lock(mutex_);
     ClientInfo& info = _getClient(identity);
-
-    // Print out the stats.
-    /*
-    std::cout << "State update[" << rs.identity << "][" << elf_utils::now() <<
-    "]"; for (const auto& s : rs.states) { std::cout << s.second.info() << ", ";
-    }
-    std::cout << std::endl;
-    */
 
     for (const auto& s : states) {
       info.stateUpdate(s.second);
@@ -196,6 +192,8 @@ class ClientManager {
   int num_selfplay_only_ = 0;
   int num_eval_then_selfplay_ = 0;
 
+  std::shared_ptr<spdlog::logger> logger_;
+
   std::string _info() const {
     std::stringstream ss;
     int n = num_selfplay_only_ + num_eval_then_selfplay_;
@@ -251,15 +249,17 @@ class ClientManager {
     }
 
     if (!newly_dead.empty() || !newly_alive.empty()) {
-      std::cout << getCurrTimeStamp()
-                << " Client newly dead: " << newly_dead.size()
-                << ", newly alive: " << newly_alive.size() << ", " << _info()
-                << std::endl;
+      logger_->info(
+          "{} Client newly dead: {}, newly alive: {}, {}",
+          getCurrTimeStamp(),
+          newly_dead.size(),
+          newly_alive.size(),
+          _info());
       for (const auto& s : newly_dead) {
-        std::cout << "Newly dead: " << s << std::endl;
+        logger_->info("Newly dead: {}", s);
       }
       for (const auto& s : newly_alive) {
-        std::cout << "Newly alive: " << s << std::endl;
+        logger_->info("Newly alive: {}", s);
       }
     }
   }

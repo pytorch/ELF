@@ -14,9 +14,6 @@ ClientInfo::State::State(const ClientManager& mgr) : mgr_(mgr) {
 
 bool ClientInfo::State::CompareGame(const ModelPair& p) const {
   std::lock_guard<std::mutex> lock(mutex_);
-  // cout << "CompareGame: p: " << p.black_ver << "/" << p.white_ver
-  //      << ", last_state: " << last_state_.black << "/" <<
-  //      last_state_.white << endl;
   return last_state_.black == p.black_ver && last_state_.white == p.white_ver;
 }
 

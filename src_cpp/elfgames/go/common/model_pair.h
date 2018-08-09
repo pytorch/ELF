@@ -48,13 +48,9 @@ struct ModelPair {
 
   static ModelPair createFromJson(const json& j) {
     ModelPair p;
-    // cout << "extract black_Ver" << endl;
     JSON_LOAD(p, j, black_ver);
-    // cout << "extract white_Ver" << endl;
     JSON_LOAD(p, j, white_ver);
-    // cout << "extract MCTS" << endl;
     JSON_LOAD_OBJ(p, j, mcts_opt);
-    // cout << "extract MCTS complete" << endl;
     return p;
   }
 };
