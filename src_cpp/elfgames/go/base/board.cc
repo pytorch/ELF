@@ -2067,8 +2067,6 @@ float getTrompTaylorScore(
 
   // Finally count the score.
   float raw_score = territories[S_BLACK] - territories[S_WHITE];
-  // std::cout << "black: " << territories[S_BLACK] << ", white: " <<
-  // territories[S_WHITE] << ", score: " << raw_score << std::endl;
   return raw_score;
 }
 

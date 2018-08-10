@@ -82,47 +82,58 @@ std::string GoStateExt::dumpSgf(const std::string& filename) const {
 
 void GoStateExt::showFinishInfo(FinishReason reason) const {
   Stone player = _state.nextPlayer();
-  std::cout << _state.showBoard() << std::endl;
+  _logger->info("{}", _state.showBoard());
   std::string sgf_record = dumpSgf("");
-  std::cout << sgf_record << std::endl;
+  _logger->info("{}", sgf_record);
 
-  std::cout << "[" << _game_idx << ":" << _seq
-            << "] Current request: " << curr_request_.info()
-            << ", used_model: ";
+  std::string used_model;
   for (const auto& i : using_models_) {
-    std::cout << i << ", ";
+    used_model += std::to_string(i) + ", ";
   }
-  std::cout << std::endl;
+  _logger->info(
+      "[{}:{}] Current request: {}, used_model: {}",
+      _game_idx,
+      _seq,
+      curr_request_.info(),
+      used_model);
 
   switch (reason) {
     case FR_RESIGN:
-      std::cout << "Player " << player2str(player) << " resigned at "
-                << _state.getPly()
-                << " Resign Thres: " << _resign_check.resign_thres;
+      _logger->info(
+          "Player {} resigned at {} Resign Thres: {}",
+          player2str(player),
+          _state.getPly(),
+          _resign_check.resign_thres);
       break;
     case FR_MAX_STEP:
-      std::cout << "Ply: " << _state.getPly()
-                << " exceeds thread_state.Restarting the game";
+      _logger->info(
+          "Ply: {} exceeds thread_state. Restarting the game", _state.getPly());
       break;
     case FR_TWO_PASSES:
-      std::cout << "Both pass at " << _state.getPly();
+      _logger->info("Both pass at {}", _state.getPly());
       break;
     case FR_ILLEGAL:
-      std::cout << "Illegal move at " << _state.getPly();
+      _logger->info("Illegal move at {}", _state.getPly());
       break;
     case FR_CLEAR:
-      std::cout << "Restarting at " << _state.getPly();
+      _logger->info("Restarting at {}", _state.getPly());
       break;
     case FR_CHEAT_NEWER_WINS_HALF:
-      std::cout << "Cheat mode: Version: " << curr_request_.vers.info()
-                << ", swap: " << curr_request_.client_ctrl.player_swap;
+      _logger->info(
+          "Cheat mode: Version: {}, swap: {}",
+          curr_request_.vers.info(),
+          curr_request_.client_ctrl.player_swap);
       break;
     case FR_CHEAT_SELFPLAY_RANDOM_RESULT:
-      std::cout << "Cheat selfplay mode: Version: " << curr_request_.vers.info()
-                << ", swap: " << curr_request_.client_ctrl.player_swap;
+      _logger->info(
+          "Cheat selfplay mode: Version: {}, swap: {}",
+          curr_request_.vers.info(),
+          curr_request_.client_ctrl.player_swap);
       break;
   }
-  std::cout << ", Value: " << _state.getFinalValue()
-            << ", Predicted: " << getLastPredictedValue()
-            << ", ResCheck: " << _resign_check.info() << std::endl;
+  _logger->info(
+      "Value: {}, Predicted: {}, ResCheck: {}",
+      _state.getFinalValue(),
+      getLastPredictedValue(),
+      _resign_check.info());
 }

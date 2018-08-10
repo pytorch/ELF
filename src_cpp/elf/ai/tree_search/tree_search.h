@@ -24,6 +24,7 @@
 #include "elf/comm/primitive.h"
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "elf/utils/member_check.h"
 
 #include "tree_search_node.h"
@@ -67,7 +68,11 @@ class TreeSearchSingleThreadT {
   using SearchTree = SearchTreeT<State, Action>;
 
   TreeSearchSingleThreadT(int thread_id, const TSOptions& options)
-      : threadId_(thread_id), options_(options) {
+      : threadId_(thread_id),
+        options_(options),
+        logger_(elf::logging::getLogger(
+            "elf::ai::tree_search::TreeSearchSingleThreadT-",
+            "")) {
     if (options_.verbose) {
       std::string log_file =
           options_.log_prefix + std::to_string(thread_id) + ".txt";
@@ -91,7 +96,7 @@ class TreeSearchSingleThreadT {
     Node* root = search_tree.getRootNode();
     if (root == nullptr || root->getStatePtr() == nullptr) {
       if (stop_search == nullptr || !stop_search->load()) {
-        std::cout << "[" << threadId_ << "] root node is nullptr!" << std::endl;
+        logger_->info("[{}] root node is nullptr!", threadId_);
       }
       return false;
     }
@@ -131,6 +136,8 @@ class TreeSearchSingleThreadT {
   // TODO: The weird variable name below needs to change (ssengupta@fb)
   elf::concurrency::ConcurrentQueue<int> runInfoWhenStateReady_;
   std::unique_ptr<std::ostream> output_;
+
+  std::shared_ptr<spdlog::logger> logger_;
 
   MEMBER_FUNC_CHECK(reward)
   template <
@@ -325,13 +332,15 @@ class TreeSearchT {
   using MCTSResult = MCTSResultT<Action>;
 
   TreeSearchT(const TSOptions& options, std::function<Actor*(int)> actor_gen)
-      : options_(options), stopSearch_(false) {
+      : options_(options),
+        stopSearch_(false),
+        logger_(
+            elf::logging::getLogger("elf::ai::tree_search::TreeSearchT-", "")) {
     for (int i = 0; i < options.num_threads; ++i) {
       treeSearches_.emplace_back(new TreeSearchSingleThread(i, options_));
       actors_.emplace_back(actor_gen(i));
     }
 
-    // cout << "#Thread: " << options.num_threads << endl;
     for (int i = 0; i < options.num_threads; ++i) {
       TreeSearchSingleThread* th = treeSearches_[i].get();
       threadPool_.emplace_back(std::thread{[i, this, th]() {
@@ -457,6 +466,8 @@ class TreeSearchT {
   elf::concurrency::Counter<size_t> treeReady_;
   elf::concurrency::Counter<size_t> countStoppedThreads_;
 
+  std::shared_ptr<spdlog::logger> logger_;
+
   void notifySearches(int num_rollout) {
     for (size_t i = 0; i < treeSearches_.size(); ++i) {
       treeSearches_[i]->notifyReady(num_rollout);
@@ -483,7 +494,6 @@ class TreeSearchT {
   MCTSResult chooseAction() const {
     const Node* root = searchTree_.getRootNode();
     if (root == nullptr) {
-      std::cout << "TreeSearch::root cannot be null!" << std::endl;
       throw std::range_error("TreeSearch::root cannot be null!");
     }
 

@@ -18,6 +18,7 @@
 #include <sched.h>
 
 #include <zmq.hpp>
+#include "elf/logging/IndexedLoggerFactory.h"
 
 namespace elf {
 
@@ -47,7 +48,6 @@ inline bool s_send(zmq::socket_t& socket, const std::string& s) {
   memcpy(message.data(), s.data(), s.size());
 
   bool rc = socket.send(message);
-  // std::cout << "Sending " << s << std::endl;
   return (rc);
 }
 
@@ -57,7 +57,6 @@ inline bool s_sendmore(zmq::socket_t& socket, const std::string& s) {
   memcpy(message.data(), s.data(), s.size());
 
   bool rc = socket.send(message, ZMQ_SNDMORE);
-  // std::cout << "Sending more " << s << std::endl;
   return (rc);
 }
 
@@ -79,7 +78,10 @@ inline void set_opts(zmq::socket_t* opt) {
 
 class SegmentedRecv {
  public:
-  SegmentedRecv(zmq::socket_t& socket) : socket_(socket) {}
+  SegmentedRecv(zmq::socket_t& socket)
+      : socket_(socket),
+        logger_(
+            elf::logging::getLogger("elf::distributed::SegmentedRecv-", "")) {}
 
   /*
   void recvBlocked(size_t n, std::vector<std::string>* p_msgs) {
@@ -105,7 +107,6 @@ class SegmentedRecv {
         return false;
       }
     }
-    // std::cout << "Receive noblock: " << msgs[i] << std::endl;
     return true;
   }
 
@@ -125,8 +126,7 @@ class SegmentedRecv {
         if (!at_prefix || s == prefix) {
           p_msgs->push_back(s);
         } else if (at_prefix) {
-          std::cout << "recvNonblockedWithPrefix: " << prefix << " != " << s
-                    << std::endl;
+          logger_->warn("recvNonblockedWithPrefix: {} != {}", prefix, s);
         }
       } else {
         // If we don't get the message, return everything to last_msgs_.
@@ -135,7 +135,6 @@ class SegmentedRecv {
         return false;
       }
     }
-    // std::cout << "Receive noblock: " << msgs[i] << std::endl;
     return true;
   }
 
@@ -152,6 +151,7 @@ class SegmentedRecv {
  private:
   zmq::socket_t& socket_;
   std::deque<std::string> last_msgs_;
+  std::shared_ptr<spdlog::logger> logger_;
 
   bool getNoblock(std::string* s) {
     if (!last_msgs_.empty()) {
@@ -178,7 +178,10 @@ class SegmentedRecv {
 
 class SameThreadChecker {
  public:
-  SameThreadChecker() {
+  SameThreadChecker()
+      : logger_(elf::logging::getLogger(
+            "elf::distributed::SameThreadChecker-",
+            "")) {
     id_ = std::this_thread::get_id();
   }
 
@@ -189,15 +192,15 @@ class SameThreadChecker {
 
   virtual ~SameThreadChecker() {
     if (!check()) {
-      std::cout << "Thread used to "
-                << "construct is different from "
-                << "the destructor thread !" << std::endl;
+      logger_->error(
+          "Thread used to construct is different from the destructor thread!");
       assert(false);
     }
   }
 
  private:
   std::thread::id id_;
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 static const std::string kSendPrefix = "ZMQSend";
@@ -205,7 +208,9 @@ static const std::string kRecvPrefix = "ZMQRecv";
 
 class ZMQReceiver : public SameThreadChecker {
  public:
-  ZMQReceiver(int port, bool use_ipv6) : context_(1) {
+  ZMQReceiver(int port, bool use_ipv6)
+      : context_(1),
+        logger_(elf::logging::getLogger("elf::distributed::ZMQReceiver-", "")) {
     broker_.reset(new zmq::socket_t(context_, ZMQ_ROUTER));
     if (use_ipv6) {
       int ipv6 = 1;
@@ -234,7 +239,7 @@ class ZMQReceiver : public SameThreadChecker {
       //  Encourage workers until it's time to fire them
       s_send(*broker_, msg);
     } catch (const std::exception& e) {
-      std::cout << "Exception encountered! " << e.what() << std::endl;
+      logger_->error("Exception encountered! {}", e.what());
     }
   }
 
@@ -253,7 +258,7 @@ class ZMQReceiver : public SameThreadChecker {
       *msg = msgs[6];
       return true;
     } catch (const std::exception& e) {
-      std::cout << "Exception encountered! " << e.what() << std::endl;
+      logger_->error("Exception encountered! {}", e.what());
       return false;
     }
   }
@@ -270,6 +275,7 @@ class ZMQReceiver : public SameThreadChecker {
   std::unique_ptr<zmq::socket_t> broker_;
   std::unique_ptr<SegmentedRecv> receiver_;
   std::mutex mutex_;
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 class ZMQSender : public SameThreadChecker {
@@ -279,7 +285,8 @@ class ZMQSender : public SameThreadChecker {
       const std::string& addr,
       int port,
       bool use_ipv6)
-      : context_(1) {
+      : context_(1),
+        logger_(elf::logging::getLogger("elf::distributed::ZMQSender-", "")) {
     sender_.reset(new zmq::socket_t(context_, ZMQ_DEALER));
     if (use_ipv6) {
       int ipv6 = 1;
@@ -302,7 +309,7 @@ class ZMQSender : public SameThreadChecker {
       s_sendmore(*sender_, "");
       s_send(*sender_, msg);
     } catch (const std::exception& e) {
-      std::cout << "Exception encountered! " << e.what() << std::endl;
+      logger_->error("Exception encountered! {}", e.what());
     }
   }
 
@@ -320,7 +327,7 @@ class ZMQSender : public SameThreadChecker {
       *msg = msgs[5];
       return true;
     } catch (const std::exception& e) {
-      std::cout << "Exception encountered! " << e.what() << std::endl;
+      logger_->error("Exception encountered! {}", e.what());
       return false;
     }
   }
@@ -328,13 +335,9 @@ class ZMQSender : public SameThreadChecker {
   ~ZMQSender() {
     std::lock_guard<std::mutex> locker(mutex_);
 
-    // std::cout << "Deleting receiver " << std::endl;
     receiver_.reset(nullptr);
 
-    // std::cout << "Deleting sender... " << std::endl;
     sender_.reset(nullptr);
-
-    // std::cout << "Deleted in ZMQSender " << std::endl;
   }
 
  private:
@@ -342,6 +345,7 @@ class ZMQSender : public SameThreadChecker {
   std::unique_ptr<zmq::socket_t> sender_;
   std::unique_ptr<SegmentedRecv> receiver_;
   std::mutex mutex_;
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 } // namespace distri

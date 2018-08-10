@@ -257,8 +257,8 @@ void BoardFeature::extractAGZ(float* features) const {
   Stone player = _board->_next_player;
 
   if (history.size() > MAX_NUM_AGZ_HISTORY) {
-    std::cout << "#history.size() = " << history.size() << ", > "
-              << MAX_NUM_AGZ_HISTORY << std::endl;
+    logger_->info(
+        "#history.size() = {}, > {}", history.size(), MAX_NUM_AGZ_HISTORY);
     assert(false);
   }
 

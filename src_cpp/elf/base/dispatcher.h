@@ -3,6 +3,7 @@
 #include <iostream>
 #include "../concurrency/ConcurrentQueue.h"
 #include "ctrl.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 
 namespace elf {
 
@@ -18,7 +19,10 @@ class ThreadedDispatcherT : public ThreadedCtrlBase {
   using ThreadRecv = std::function<bool(const S&, R*)>;
 
   ThreadedDispatcherT(Ctrl& ctrl, int num_games)
-      : ThreadedCtrlBase(ctrl, 500), num_games_(num_games) {}
+      : ThreadedCtrlBase(ctrl, 500),
+        num_games_(num_games),
+        logger_(
+            elf::logging::getLogger("elf::base::ThreadedDispatcherT-", "")) {}
 
   void Start(ServerReply replier, ServerFirstSend first_send = nullptr) {
     server_replier_ = replier;
@@ -30,7 +34,6 @@ class ThreadedDispatcherT : public ThreadedCtrlBase {
   void RegGame(int game_idx) {
     ctrl_.reg("game_" + std::to_string(game_idx));
     ctrl_.addMailbox<S, R>();
-    // cout << "Register game " << game_idx << endl;
     game_counter_.increment();
   }
 
@@ -67,13 +70,15 @@ class ThreadedDispatcherT : public ThreadedCtrlBase {
   ServerReply server_replier_ = nullptr;
   ServerFirstSend server_first_send_ = nullptr;
 
+ private:
+  std::shared_ptr<spdlog::logger> logger_;
+
   void before_loop() override {
     // Wait for all games + this processing thread.
-    std::cout << "Wait all games[" << num_games_
-              << "] to register their mailbox" << std::endl;
+    logger_->info("Wait all games[{}] to register their mailbox", num_games_);
     game_counter_.waitUntilCount(num_games_);
     game_counter_.reset();
-    std::cout << "All games [" << num_games_ << "] registered" << std::endl;
+    logger_->info("All games [{}] registered", num_games_);
 
     addrs_ = ctrl_.filterPrefix(std::string("game"));
     for (size_t i = 0; i < addrs_.size(); ++i) {
@@ -82,7 +87,6 @@ class ThreadedDispatcherT : public ThreadedCtrlBase {
   }
 
   void on_thread() override {
-    // cout << "Register Recv threads" << endl;
     S msg;
     if (ctrl_.peekMail(&msg, 0)) {
       if (just_started_ || msg != last_msg_) {

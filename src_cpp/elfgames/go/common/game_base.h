@@ -10,6 +10,7 @@
 
 #include "elf/base/context.h"
 #include "elf/legacy/python_options_utils_cpp.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "elf/utils/utils.h"
 
 #include "game_feature.h"
@@ -24,7 +25,9 @@ class GoGameBase {
       : client_(client),
         _game_idx(game_idx),
         _options(options),
-        _context_options(context_options) {
+        _context_options(context_options),
+        _logger(
+            elf::logging::getLogger("elfgames::go::common::GoGameBase-", "")) {
     if (options.seed == 0) {
       _seed = elf_utils::get_seed(
           game_idx ^ std::hash<std::string>{}(context_options.job_id));
@@ -35,9 +38,13 @@ class GoGameBase {
   }
 
   void mainLoop() {
-    if (_options.verbose)
-      std::cout << "[" << _game_idx << "] Seed:" << _seed
-                << ", thread_id: " << std::this_thread::get_id() << std::endl;
+    if (_options.verbose) {
+      _logger->info(
+          "[{}] Seed: {}, thread_id: {}",
+          _game_idx,
+          _seed,
+          std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    }
     // Main loop of the game.
     while (!client_->DoStopGames()) {
       act();
@@ -57,4 +64,7 @@ class GoGameBase {
 
   GameOptions _options;
   ContextOptions _context_options;
+
+ private:
+  std::shared_ptr<spdlog::logger> _logger;
 };

@@ -85,12 +85,6 @@ Coord GoGameSelfPlay::mcts_make_diverse_move(MCTSGoAI* mcts_go_ai, Coord c) {
   if (diverse_policy) {
     // Sample from the policy.
     c = policy.sampleAction(&_rng);
-    /*
-    if (show_board) {
-        cout << "Move changed to [" << c << "][" << coord2str(c) << "][" <<
-    coord2str2(c) << "]" << endl;
-    }
-    */
   }
   if (_options.policy_distri_training_for_all || diverse_policy) {
     // [TODO]: Warning: MCTS Policy might not correspond to move idx.
@@ -139,13 +133,6 @@ void GoGameSelfPlay::finish_game(FinishReason reason) {
 
   if (!_options.dump_record_prefix.empty()) {
     _state_ext.dumpSgf();
-  }
-
-  if (_options.print_result) {
-    // lock_guard<mutex> lock(_mutex);
-    // cout << endl << (final_value > 0 ? "Black" : "White") << " win. Ply: " <<
-    // _state.getPly() << ", Value: " << final_value << ", Predicted: " <<
-    // predicted_value << endl;
   }
 
   // reset tree if MCTS_AI, otherwise just do nothing
@@ -295,10 +282,6 @@ void GoGameSelfPlay::act() {
     // Check request every 5 times.
     // Update current state.
     if (notifier_ != nullptr) {
-      // std::cout << "Thread[" << _game_idx << ",ply:" <<
-      // _state_ext.state().getPly()
-      // << "] state updating: " << _state_ext.getThreadState().info() <<
-      // std::endl;
       notifier_->OnStateUpdate(_state_ext.getThreadState());
     }
   }

@@ -21,6 +21,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "elf/utils/utils.h"
 
 using json = nlohmann::json;
@@ -108,12 +109,16 @@ struct EdgeInfo {
   int num_visits;
   float virtual_loss;
 
+  std::shared_ptr<spdlog::logger> logger_;
+
   EdgeInfo(float probability)
       : prior_probability(probability),
         child_node(InvalidNodeId),
         reward(0),
         num_visits(0),
-        virtual_loss(0) {}
+        virtual_loss(0),
+        logger_(
+            elf::logging::getLogger("elf::ai::tree_search::EdgeInfo-", "")) {}
 
   float getQSA() const {
     return reward / num_visits;
@@ -123,9 +128,8 @@ struct EdgeInfo {
   void checkValid() const {
     if (virtual_loss != 0) {
       // TODO: This should be a Google log (ssengupta@fb)
-      std::cout << "Virtual loss is not zero[" << virtual_loss << "]"
-                << std::endl;
-      std::cout << info(true) << std::endl;
+      logger_->info(
+          "Virtual loss is not zero[{}]\n{}", virtual_loss, info(true));
       assert(virtual_loss == 0);
     }
   }

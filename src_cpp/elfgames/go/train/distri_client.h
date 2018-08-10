@@ -3,6 +3,7 @@
 #include <chrono>
 #include "../common/dispatcher_callback.h"
 #include "distri_base.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 
 using ThreadedCtrlBase = elf::ThreadedCtrlBase;
 
@@ -13,7 +14,9 @@ class ThreadedWriterCtrl : public ThreadedCtrlBase {
       const ContextOptions& contextOptions,
       const GameOptions& options)
       : ThreadedCtrlBase(ctrl, 0),
-        logger_(elf::logging::getLogger("ThreadedWriterCtrl-", "")) {
+        logger_(elf::logging::getLogger(
+            "elfgames::go::train::ThreadedWriterCtrl-",
+            "")) {
     elf::shared::Options netOptions = getNetOptions(contextOptions, options);
     writer_.reset(new elf::shared::Writer(netOptions));
     auto currTimestamp = time(NULL);
@@ -36,7 +39,7 @@ class ThreadedWriterCtrl : public ThreadedCtrlBase {
   uint64_t ts_since_last_sent_ = elf_utils::sec_since_epoch_from_now();
   std::shared_ptr<spdlog::logger> logger_;
 
-  static const uint64_t kMaxSecSinceLastSent = 900;
+  static constexpr uint64_t kMaxSecSinceLastSent = 900;
 
   void on_thread() {
     std::string smsg;
@@ -45,26 +48,32 @@ class ThreadedWriterCtrl : public ThreadedCtrlBase {
 
     // Will block..
     if (!writer_->getReplyNoblock(&smsg)) {
-      std::cout << elf_utils::now() << ", WriterCtrl: no message, seq=" << seq_
-                << ", since_last_sec=" << now - ts_since_last_sent_;
+      logger_->info(
+          "{}, WriterCtrl: no message, seq={}, since_last_sec={}",
+          elf_utils::now(),
+          seq_,
+          now - ts_since_last_sent_);
 
       // 900s = 15min
       if (now - ts_since_last_sent_ < kMaxSecSinceLastSent) {
-        std::cout << ", sleep for 10 sec .. " << std::endl;
+        logger_->info("Sleep for 10 sec .. ");
         std::this_thread::sleep_for(std::chrono::seconds(10));
       } else {
-        std::cout << ", no reply for too long (" << now - ts_since_last_sent_
-                  << '>' << kMaxSecSinceLastSent << " sec), resending"
-                  << std::endl;
+        logger_->warn(
+            "No reply for too long ({}>{} sec), resending",
+            now - ts_since_last_sent_,
+            kMaxSecSinceLastSent);
         getContentAndSend(seq_, false);
       }
       return;
     }
 
-    std::cout << elf_utils::now()
-              << " In reply func: Message got. since_last_sec="
-              << now - ts_since_last_sent_ << ", seq=" << seq_ << ", " << smsg
-              << std::endl;
+    logger_->info(
+        "{} In reply func: Message got. since_last_sec={}, seq={}, {}",
+        elf_utils::now(),
+        now - ts_since_last_sent_,
+        seq_,
+        smsg);
 
     json j = json::parse(smsg);
     MsgRequestSeq msg = MsgRequestSeq::createFromJson(j);
@@ -76,8 +85,10 @@ class ThreadedWriterCtrl : public ThreadedCtrlBase {
 
   void getContentAndSend(int64_t msg_seq, bool iswait) {
     if (msg_seq != seq_) {
-      std::cout << "Warning! The sequence number [" << msg_seq
-                << "] in the msg is different from " << seq_ << std::endl;
+      logger_->info(
+          "Warning! The sequence number [{}] in the msg is different from {}",
+          msg_seq,
+          seq_);
     }
 
     std::pair<int, std::string> content;
@@ -90,13 +101,6 @@ class ThreadedWriterCtrl : public ThreadedCtrlBase {
         std::this_thread::sleep_for(std::chrono::seconds(60));
     }
 
-    /*
-    std::cout << "Sending state update[" << records_.identity << "][" <<
-    elf_utils::now() << "]"; for (const auto& s : records_.states) { std::cout
-    << s.second.info() << ", ";
-    }
-    std::cout << std::endl;
-    */
     writer_->Insert(content.second);
     seq_ = msg_seq + 1;
     ts_since_last_sent_ = elf_utils::sec_since_epoch_from_now();
@@ -105,7 +109,11 @@ class ThreadedWriterCtrl : public ThreadedCtrlBase {
 
 struct GuardedRecords {
  public:
-  GuardedRecords(const std::string& identity) : records_(identity) {}
+  GuardedRecords(const std::string& identity)
+      : records_(identity),
+        logger_(elf::logging::getLogger(
+            "elfgames::go::train::GuardedRecords",
+            "")) {}
 
   void feed(const GoStateExt& s) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -131,8 +139,10 @@ struct GuardedRecords {
         states[s.second.thread_id] = s.second;
       }
 
-      std::cout << "GuardedRecords::updateState[" << elf_utils::now() << "] "
-                << visStates(states, &timestamps) << std::endl;
+      logger_->info(
+          "GuardedRecords::updateState[{}] {}",
+          elf_utils::now(),
+          visStates(states, &timestamps));
 
       last_state_vis_time_ = now;
     }
@@ -146,10 +156,12 @@ struct GuardedRecords {
   std::string dumpAndClear() {
     // send data.
     std::lock_guard<std::mutex> lock(mutex_);
-    std::cout << "GuardedRecords::DumpAndClear[" << elf_utils::now()
-              << "], #records: " << records_.records.size();
+    logger_->info(
+        "GuardedRecords::DumpAndClear[{}], #records: {}, {}",
+        elf_utils::now(),
+        records_.records.size(),
+        visStates(records_.states));
 
-    std::cout << ", " << visStates(records_.states) << std::endl;
     std::string s = records_.dumpJsonString();
     records_.clear();
     return s;
@@ -160,6 +172,7 @@ struct GuardedRecords {
   Records records_;
   std::deque<std::pair<uint64_t, ThreadState>> last_states_;
   uint64_t last_state_vis_time_ = 0;
+  std::shared_ptr<spdlog::logger> logger_;
 
   static std::string visStates(
       const std::unordered_map<int, ThreadState>& states,

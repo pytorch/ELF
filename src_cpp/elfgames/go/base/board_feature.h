@@ -13,6 +13,8 @@
 #include <random>
 #include <vector>
 
+#include "elf/logging/IndexedLoggerFactory.h"
+
 #define MAX_NUM_FEATURE 25
 
 #define OUR_LIB 0
@@ -61,7 +63,11 @@ class BoardFeature {
   enum Rot { NONE = 0, CCW90, CCW180, CCW270 };
 
   BoardFeature(const GoState& s, Rot rot, bool flip)
-      : s_(s), _rot(rot), _flip(flip) {}
+      : s_(s),
+        _rot(rot),
+        _flip(flip),
+        logger_(
+            elf::logging::getLogger("elfgames::go::base::BoardFeature-", "")) {}
   BoardFeature(const GoState& s) : s_(s), _rot(NONE), _flip(false) {}
 
   static BoardFeature RandomShuffle(const GoState& s, std::mt19937* rng) {
@@ -147,6 +153,8 @@ class BoardFeature {
   bool _flip = false;
 
   static constexpr int64_t kBoardRegion = BOARD_SIZE * BOARD_SIZE;
+
+  std::shared_ptr<spdlog::logger> logger_;
 
   int transform(int x, int y) const {
     auto p = Transform(std::make_pair(x, y));
