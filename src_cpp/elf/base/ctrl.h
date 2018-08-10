@@ -18,10 +18,8 @@
 #include <typeindex>
 #include <unordered_map>
 #include <tbb/concurrent_hash_map.h>
-#include <execinfo.h>
-#include <stdlib.h>
-#include <unistd.h>
 
+#include "elf/utils/utils.h"
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
 #include "elf/concurrency/TBBHashers.h"
@@ -71,13 +69,13 @@ class CtrlFuncs {
     {
       typename FuncMap::const_accessor elem;
       bool found = funcMap_.find(elem, std::type_index(typeid(T)));
-      assert(found);
+      elf_utils::check(found);
       p = elem->second.get();
     }
-    assert(p != nullptr);
+    elf_utils::check(p != nullptr);
 
     const _CallbackT<T>* cb_wrapper = dynamic_cast<const _CallbackT<T>*>(p);
-    assert(cb_wrapper != nullptr);
+    elf_utils::check(cb_wrapper != nullptr);
 
     return cb_wrapper->func;
   }
@@ -143,7 +141,7 @@ struct _ThreadInfoT {
   template <typename... RecvTs>
   void addMailbox() {
     // Make sure reg is called.
-    assert(addr_.id != std::thread::id());
+    elf_utils::check(addr_.id != std::thread::id());
     add_mailbox<Queue<RecvTs>...>(mailbox_);
   }
 
@@ -158,7 +156,7 @@ struct _ThreadInfoT {
       return nullptr;
 
     auto* mailbox = dynamic_cast<_MailboxQueue<Queue<R>>*>(it->second.get());
-    assert(mailbox != nullptr);
+    elf_utils::check(mailbox != nullptr);
 
     return &mailbox->q;
   }
@@ -185,7 +183,7 @@ class ThreadInfosT {
     if (label != "") {
       typename ThreadStrMap::accessor elem2;
       bool uninitialized = threadStrMap_.insert(elem2, label);
-      assert(uninitialized);
+      elf_utils::check(uninitialized);
       elem2->second = id;
     }
     return addr;
@@ -213,21 +211,21 @@ class ThreadInfosT {
   template <typename R>
   void waitMail(Id id, R* r) {
     Queue<R>* q = _th_info(id).template getMailboxQueue<R>();
-    assert(q != nullptr);
+    elf_utils::check(q != nullptr);
     q->pop(r);
   }
 
   template <typename R>
   bool peekMail(Id id, R* r, int timeout_usec) {
     Queue<R>* q = _th_info(id).template getMailboxQueue<R>();
-    assert(q != nullptr);
+    elf_utils::check(q != nullptr);
     return q->pop(r, std::chrono::microseconds(timeout_usec));
   }
 
   template <typename R>
   void sendMail(Id id, const R& r) {
     Queue<R>* q = _th_info(id).template getMailboxQueue<R>();
-    assert(q != nullptr);
+    elf_utils::check(q != nullptr);
     q->push(r);
   }
 
@@ -251,26 +249,16 @@ class ThreadInfosT {
   _ThreadInfo* _th_info_impl(Id id) const {
     typename ThreadInfoMap::accessor elem;
     bool found = threadInfoMap_.find(elem, id);
-    if (!found) {
-      void *array[10];
-      size_t size;
-
-      // get void*'s for all entries on the stack
-      size = backtrace(array, 10);
-
-      // print out all the frames to stderr
-      backtrace_symbols_fd(array, size, STDERR_FILENO);
-      assert(false);
-    }
+    elf_utils::check(found);
     _ThreadInfo* res = elem->second.get();
-    assert(res != nullptr);
+    elf_utils::check(res != nullptr);
     return res;
   }
   std::thread::id _th_label2id(const std::string& label) const {
     typename ThreadStrMap::accessor elem;
     // std::cout << "looking for label: " << label << std::endl;
     bool found = threadStrMap_.find(elem, label);
-    assert(found);
+    elf_utils::check(found);
     return elem->second;
   }
 
@@ -322,7 +310,7 @@ class CtrlT {
   template <typename T>
   bool call(T& msg) {
     auto cb = callbacks_.template getCallback<T>();
-    assert(cb != nullptr);
+    elf_utils::check(cb != nullptr);
     const auto& addr = threads_.getAddr(std::this_thread::get_id());
     return cb(addr, msg);
   }

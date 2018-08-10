@@ -20,8 +20,25 @@
 
 // TODO - replace this with something appropriate from C++ (ssengupta@fb)
 #include <time.h>
+#include <execinfo.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 namespace elf_utils {
+
+inline void check(bool cond) {
+  if (!cond) {
+      void *array[10];
+      size_t size;
+
+      // get void*'s for all entries on the stack
+      size = backtrace(array, 10);
+
+      // print out all the frames to stderr
+      backtrace_symbols_fd(array, size, STDERR_FILENO);
+      assert(false);
+   }
+}
 
 inline std::string print_bool(bool b) {
   return b ? "True" : "False";
