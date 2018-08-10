@@ -256,6 +256,8 @@ struct Records {
     records.clear();
   }
 
+  size_t size() const { return records.size(); }
+
   void addRecord(Record&& r) {
     records.emplace_back(r);
   }

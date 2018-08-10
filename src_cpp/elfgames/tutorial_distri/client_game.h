@@ -11,6 +11,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <functional>
 
 #include "elf/base/dispatcher.h"
 #include "elf/base/game_base.h"
@@ -23,9 +24,12 @@
 class ClientGame {
  public:
   using ThreadedDispatcher = elf::ThreadedDispatcherT<MsgRequest, MsgReply>;
+  using CollectFunc = std::function<void (const State &, const Reply &)>;
+
   ClientGame(
       int game_idx,
       const GameOptions& options,
+      CollectFunc collect_func,
       ThreadedDispatcher* dispatcher);
 
   void OnAct(elf::game::Base* base);
@@ -37,6 +41,8 @@ class ClientGame {
   ThreadedDispatcher* dispatcher_ = nullptr;
   int counter_ = 0;
   State state_;
+
+  CollectFunc collect_func_;
 
   // used to communicate info.
   elf::game::Base* base_ = nullptr;

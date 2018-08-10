@@ -12,9 +12,11 @@
 ClientGame::ClientGame(
     int game_idx,
     const GameOptions& options,
+    CollectFunc func,
     ThreadedDispatcher* dispatcher)
     : game_idx_(game_idx), 
-      dispatcher_(dispatcher),
+      dispatcher_(dispatcher), 
+      collect_func_(func),
       options_(options) {
     }
 
@@ -51,6 +53,8 @@ void ClientGame::OnAct(elf::game::Base* base) {
 
   // std::cout << "[" << game_idx_ << "] Sending client data " << std::endl;
   client->sendWait({"actor"}, &funcs);
+
+  collect_func_(state_, reply);
   
   // Now reply has content.
   state_.content += reply.a;

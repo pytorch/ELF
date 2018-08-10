@@ -39,9 +39,9 @@ class TrainCtrl : public elf::msg::DataInterface {
   elf::shared::InsertInfo OnReceive(
       const std::string& identity,
       const std::string& msg) override {
-    std::cout << "TrainCtrl: RecvMsg[" << identity << "]: " << msg << std::endl;
     (void)identity;
     Records rs = Records::createFromJsonString(msg);
+    std::cout << "TrainCtrl: RecvMsg[" << identity << "]: " << rs.size() << std::endl;
 
     elf::shared::InsertInfo insert_info;
     for (size_t i = 0; i < rs.records.size(); ++i) {

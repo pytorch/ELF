@@ -33,15 +33,25 @@ class WriterCallback {
   }
 
   std::string OnSend() {
-    // Send dummy content.
-    MsgResult result;
-    std::string msg = result.dumpJsonString(); 
-    std::cout << "WriterCB: SendMsg: " << msg << std::endl;
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::string msg = records_.dumpJsonString(); 
+    std::cout << "WriterCB: SendMsg: " << records_.size() << std::endl;
+    records_.clear();
     return msg;
+  }
+
+  void addRecord(const State &s, const Reply &r) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Record record;
+    record.request.state = s;
+    record.result.reply = r;
+    records_.addRecord(std::move(record));
   }
 
  private:
   Ctrl& ctrl_;
+  std::mutex mutex_;
+  Records records_;
 };
 
 class Client {
@@ -68,11 +78,14 @@ class Client {
         new WriterCallback(writer_.get(), ctx->getCtrl()));
 
     using std::placeholders::_1;
+    using std::placeholders::_2;
+
+    auto collect_func = std::bind(&WriterCallback::addRecord, writer_callback_.get(), _1, _2);
 
     for (size_t i = 0; i < num_games; ++i) {
       auto* g = ctx->getGame(i);
       if (g != nullptr) {
-        games_.emplace_back(new ClientGame(i, options_, dispatcher_.get()));
+        games_.emplace_back(new ClientGame(i, options_, collect_func, dispatcher_.get()));
         g->setCallbacks(
             std::bind(&ClientGame::OnAct, games_[i].get(), _1),
             std::bind(&ClientGame::OnEnd, games_[i].get(), _1),
