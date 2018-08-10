@@ -18,6 +18,9 @@
 #include <typeindex>
 #include <unordered_map>
 #include <tbb/concurrent_hash_map.h>
+#include <execinfo.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
@@ -248,7 +251,17 @@ class ThreadInfosT {
   _ThreadInfo* _th_info_impl(Id id) const {
     typename ThreadInfoMap::accessor elem;
     bool found = threadInfoMap_.find(elem, id);
-    assert(found);
+    if (!found) {
+      void *array[10];
+      size_t size;
+
+      // get void*'s for all entries on the stack
+      size = backtrace(array, 10);
+
+      // print out all the frames to stderr
+      backtrace_symbols_fd(array, size, STDERR_FILENO);
+      assert(false);
+    }
     _ThreadInfo* res = elem->second.get();
     assert(res != nullptr);
     return res;

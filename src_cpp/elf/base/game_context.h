@@ -28,6 +28,7 @@ class GameContext : public GCInterface {
   GameContext(const Options& options)
       : GCInterface(options),
         logger_(elf::logging::getLogger("elf::GameContext-", "")) {
+    std::cout << "Initialize game context" << std::endl;
     batchContext_.reset(new BatchContext());
     collectorContext_.reset(new CollectorContext());
 

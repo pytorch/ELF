@@ -50,18 +50,16 @@ def main():
     #         zip(actors, stats, env["model_loaders"], evaluators):
     for i in range(len(actors)):
         actor_name = actors[i]
-        stat = stats[i]
         e = env["eval_" + actor_name]
 
         print("register " + actor_name + " for e = " + str(e))
         e.setup(sampler=env["sampler"], mi=env["mi_" + actor_name])
 
-        def actor(batch, e, stat):
+        def actor(batch, e):
             reply = e.actor(batch)
             return reply
 
-        GC.reg_callback(actor_name,
-                        lambda batch, e=e, stat=stat: actor(batch, e, stat))
+        GC.reg_callback(actor_name, lambda batch, e=e: actor(batch, e))
 
     args = env["game"].options
 

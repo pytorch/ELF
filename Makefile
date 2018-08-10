@@ -15,6 +15,7 @@ build/Makefile: CMakeLists.txt */CMakeLists.txt
 	mkdir -p build
 	#(cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_FLAGS=-fsanitize=address ..)
 	#(cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=-fsanitize=address ..)
+	#(cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug ..)
 	(cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..)
 
 .PHONY: elf

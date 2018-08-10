@@ -35,7 +35,7 @@ class Feature {
   void registerExtractor(int batchsize, elf::Extractor& e) {
     // Register multiple fields.
     e.addField<float>("s").addExtents(batchsize, {batchsize, options_.input_dim});
-    e.addField<int64_t>("a").addExtent(batchsize);
+    e.addField<int32_t>("a").addExtent(batchsize);
     e.addField<float>({"V"}).addExtent(batchsize);
     e.addField<float>({"pi"})
         .addExtents(batchsize, {batchsize, options_.num_action});
