@@ -49,7 +49,7 @@ class Loader(object):
         desc = {}
         desc["actor"] = dict(
             input=["s"],
-            reply=["a", "V"],
+            reply=["a", "V", "pi"],
             batchsize=batchsize,
         )
 
@@ -58,7 +58,7 @@ class Loader(object):
             game_obj,
             batchsize,
             desc,
-            num_recv=8,
+            num_recv=2,
             default_gpu=(self.options.gpu
                          if (self.options.gpu is not None and self.options.gpu >= 0)
                          else None),

@@ -26,14 +26,18 @@ class WriterCallback {
 
   int64_t OnRecv(const std::string& smsg) {
     // Send data.
-    ctrl_.sendMail("dispatcher", smsg);
+    std::cout << "WriterCB: RecvMsg: " << smsg << std::endl;
+    ctrl_.sendMail("dispatcher", 
+        MsgRequest::createFromJson(json::parse(smsg)));
     return -1;
   }
 
   std::string OnSend() {
     // Send dummy content.
     MsgResult result;
-    return result.dumpJsonString();
+    std::string msg = result.dumpJsonString(); 
+    std::cout << "WriterCB: SendMsg: " << msg << std::endl;
+    return msg;
   }
 
  private:

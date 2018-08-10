@@ -45,15 +45,20 @@ def main():
         additional_to_load=additional_to_load)
 
     GC = env["game"].initialize()
+    args = env["game"].options
+    model = env["model_loaders"][0].load_model(GC.params)
 
     # for actor_name, stat, model_loader, e in \
     #         zip(actors, stats, env["model_loaders"], evaluators):
     for i in range(len(actors)):
         actor_name = actors[i]
         e = env["eval_" + actor_name]
+        mi = env["mi_" + actor_name]
+
+        mi.add_model("actor", model, cuda=(args.gpu >= 0), gpu_id=args.gpu)
 
         print("register " + actor_name + " for e = " + str(e))
-        e.setup(sampler=env["sampler"], mi=env["mi_" + actor_name])
+        e.setup(sampler=env["sampler"], mi=mi)
 
         def actor(batch, e):
             reply = e.actor(batch)

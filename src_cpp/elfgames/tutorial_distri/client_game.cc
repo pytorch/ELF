@@ -13,15 +13,16 @@ ClientGame::ClientGame(
     int game_idx,
     const GameOptions& options,
     ThreadedDispatcher* dispatcher)
-    : dispatcher_(dispatcher),
+    : game_idx_(game_idx), 
+      dispatcher_(dispatcher),
       options_(options) {
-      (void)game_idx;
     }
 
 bool ClientGame::OnReceive(const MsgRequest& request, MsgReply* reply) {
   (void)reply;
   state_.content = request.request;
-  return true;
+  // No next section.
+  return false;
 }
 
 void ClientGame::OnAct(elf::game::Base* base) {
@@ -43,12 +44,13 @@ void ClientGame::OnAct(elf::game::Base* base) {
   elf::GameClient *client = base->ctx().client;
 
   // Simply use info to construct random samples.
-  elf::FuncsWithState funcs = client->BindStateToFunctions({"train"}, &state_);
+  elf::FuncsWithState funcs = client->BindStateToFunctions({"actor"}, &state_);
   Reply reply;
-  elf::FuncsWithState funcs_reply = client->BindStateToFunctions({"train"}, &reply);
+  elf::FuncsWithState funcs_reply = client->BindStateToFunctions({"actor"}, &reply);
   funcs.add(funcs_reply);
 
-  client->sendWait({"train"}, &funcs);
+  // std::cout << "[" << game_idx_ << "] Sending client data " << std::endl;
+  client->sendWait({"actor"}, &funcs);
   
   // Now reply has content.
   state_.content += reply.a;

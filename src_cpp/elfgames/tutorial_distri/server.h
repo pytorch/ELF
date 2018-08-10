@@ -35,9 +35,11 @@ class TrainCtrl : public elf::msg::DataInterface {
   }
 
   void OnStart() override {}
+
   elf::shared::InsertInfo OnReceive(
       const std::string& identity,
       const std::string& msg) override {
+    std::cout << "TrainCtrl: RecvMsg[" << identity << "]: " << msg << std::endl;
     (void)identity;
     Records rs = Records::createFromJsonString(msg);
 
@@ -58,6 +60,7 @@ class TrainCtrl : public elf::msg::DataInterface {
     MsgRequest request;
     request.request = rng_() % 100;
     *msg = request.dumpJsonString();
+    std::cout << "TrainCtrl: ReplyMsg[" << identity << "]: " << *msg << std::endl;
     return true;
   }
 

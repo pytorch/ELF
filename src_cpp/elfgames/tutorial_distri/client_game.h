@@ -33,6 +33,7 @@ class ClientGame {
   bool OnReceive(const MsgRequest& request, MsgReply* reply);
 
  private:
+  const int game_idx_;
   ThreadedDispatcher* dispatcher_ = nullptr;
   int counter_ = 0;
   State state_;

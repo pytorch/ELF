@@ -32,6 +32,11 @@ class Feature {
     reply.value = *v;
   }
 
+  void GetReplyPi(Reply &reply, const float *v) {
+    reply.pi.resize(options_.num_action);
+    std::copy(v, v + options_.num_action, &reply.pi[0]);
+  }
+
   void registerExtractor(int batchsize, elf::Extractor& e) {
     // Register multiple fields.
     e.addField<float>("s").addExtents(batchsize, {batchsize, options_.input_dim});
@@ -48,7 +53,8 @@ class Feature {
 
     e.addClass<Reply>()
         .addFunction<int32_t>("a", GetReplyAction)
-        .addFunction<float>("V", GetReplyValue);
+        .addFunction<float>("V", GetReplyValue)
+        .addFunction<float>("pi", std::bind(&Feature::GetReplyPi, this, _1, _2));
   }
 
  private:
