@@ -18,7 +18,9 @@ ServerGame::ServerGame(
 }
 
 void ServerGame::OnAct(elf::game::Base* base) {
-  Record r;
+  State state;
+  Reply reply;
+
   while (true) {
     int q_idx;
     auto sampler = reader_->getSamplerWithParity(&base->rng(), &q_idx);
@@ -26,12 +28,14 @@ void ServerGame::OnAct(elf::game::Base* base) {
     if (p == nullptr) {
       continue;
     }
-    r = *p;
+    state = p->request.state;
+    reply = p->result.reply;
   }
 
   auto *client = base->ctx().client;
-  auto funcs = client->BindStateToFunctions(
-      {"train"}, &r);
+  auto funcs = client->BindStateToFunctions({"train"}, &state);
+  auto funcs2 = client->BindStateToFunctions({"train"}, &reply);
+  funcs.add(funcs2);
 
   client->sendWait({"train"}, &funcs);
 }

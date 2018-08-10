@@ -20,7 +20,7 @@ ClientGame::ClientGame(
 
 bool ClientGame::OnReceive(const MsgRequest& request, MsgReply* reply) {
   (void)reply;
-  state_.content = request.request;
+  state_ = request.state;
   // No next section.
   return false;
 }

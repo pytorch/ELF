@@ -16,20 +16,41 @@
 
 #include <nlohmann/json.hpp>
 #include "elf/utils/json_utils.h"
+#include "state.h"
 
 using json = nlohmann::json;
 
+inline void to_json(json& j, const State& state) {
+  j["content"] = state.content;
+}
+
+inline void from_json(const json& j, State& state) {
+  state.content = j["content"];
+}
+
+inline void to_json(json& j, const Reply& reply) {
+  j["value"] = reply.value;
+  j["pi"] = reply.pi;
+  j["a"] = reply.a;
+}
+
+inline void from_json(const json& j, Reply& reply) {
+  reply.value = j["value"];
+  reply.pi = j["pi"].get<std::vector<float>>();
+  reply.a = j["a"];
+}
+
 struct MsgRequest {
-  int request = -1;
+  State state;
 
   std::string info() const {
     std::stringstream ss;
-    ss << "[request=" << request << "]";
+    ss << "[request=" << state.info() << "]";
     return ss.str();
   }
 
   void setJsonFields(json& j) const {
-    JSON_SAVE(j, request);
+    JSON_SAVE(j, state);
   }
 
   std::string dumpJsonString() const {
@@ -40,12 +61,12 @@ struct MsgRequest {
 
   static MsgRequest createFromJson(const json& j) {
     MsgRequest r;
-    JSON_LOAD(r, j, request);
+    JSON_LOAD(r, j, state);
     return r;
   }
 
   friend bool operator==(const MsgRequest &m1, const MsgRequest &m2) {
-    return m1.request == m2.request;
+    return m1.state == m2.state;
   }
 
   friend bool operator!=(const MsgRequest &m1, const MsgRequest &m2) {
@@ -54,15 +75,15 @@ struct MsgRequest {
 };
 
 struct MsgResult {
-  int result = -1;
+  Reply reply;
   std::string info() const {
     std::stringstream ss;
-    ss << "[result=" << result << "]";
+    ss << "[result=" << reply.info() << "]";
     return ss.str();
   }
 
   void setJsonFields(json& j) const {
-    JSON_SAVE(j, result);
+    JSON_SAVE(j, reply);
   }
 
   std::string dumpJsonString() const {
@@ -73,7 +94,7 @@ struct MsgResult {
 
   static MsgResult createFromJson(const json& j) {
     MsgResult r;
-    JSON_LOAD(r, j, result);
+    JSON_LOAD(r, j, reply);
     return r;
   }
 };

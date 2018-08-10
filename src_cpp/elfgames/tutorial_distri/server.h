@@ -58,7 +58,7 @@ class TrainCtrl : public elf::msg::DataInterface {
 
     // Send new request to that client.
     MsgRequest request;
-    request.request = rng_() % 100;
+    request.state.content = rng_() % 100;
     *msg = request.dumpJsonString();
     std::cout << "TrainCtrl: ReplyMsg[" << identity << "]: " << *msg << std::endl;
     return true;
