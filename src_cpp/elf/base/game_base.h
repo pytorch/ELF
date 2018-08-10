@@ -44,11 +44,13 @@ class Base {
 
   void mainLoop() {
     assert(act_func_ != nullptr);
-    if (options_.verbose)
+    if (options_.verbose) {
       //std::cout << "[" << options_.game_idx << "] Seed:" << options_.seed
       //          << ", thread_id: " << std::this_thread::get_id() << std::endl;
-    if (start_func_ != nullptr)
+    }
+    if (start_func_ != nullptr) {
       start_func_(this);
+    }
 
     // Main loop of the game.
     while (!ctx_.client->DoStopGames()) {
