@@ -25,20 +25,12 @@ void GoGameTrain::act() {
 
   for (size_t i = 0; i < kNumState; ++i) {
     while (true) {
-      // std::cout << "[" << _game_idx << "][" << i << "] Before get sampler "
-      // << std::endl;
       int q_idx;
       auto sampler = reader_->getSamplerWithParity(&_rng, &q_idx);
       const Record* r = sampler.sample();
-      // std::cout << "[" << _game_idx << "] Get Sampler, q_idx: " << q_idx <<
-      // "/" << reader_->nqueue() << std::endl;
       if (r == nullptr) {
-        // std::cout << "[" << _game_idx << "][" << i << "] No data, wait.." <<
-        // std::endl;
         continue;
       }
-      // std::cout << "[" << _game_idx << "][" << i << "] Has data.." <<
-      // std::endl;
       _state_ext[i]->fromRecord(*r);
 
       // Random pick one ply.
@@ -46,7 +38,6 @@ void GoGameTrain::act() {
         break;
     }
 
-    // std::cout << "[" << _game_idx << "] Generating D4Code.." << endl;
     _state_ext[i]->generateD4Code(&_rng);
 
     // elf::FuncsWithState funcs =
@@ -63,8 +54,5 @@ void GoGameTrain::act() {
   }
 
   // VERY DANGEROUS - sending pointers of local objects to a function
-  // std::cout << "[" << _game_idx << "] Sending packages to python.." <<
-  // std::endl;
   client_->sendBatchWait({"train"}, funcPtrsToSend);
-  // std::cout << "[" << _game_idx << "] Return from python ..." << std::endl;
 }

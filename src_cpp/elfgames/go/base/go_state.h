@@ -199,9 +199,6 @@ class GoState {
       final_score = (float)simple_tt_scoring(_board, oo) - komi;
     }
 
-    // cout << "Calling evaluate on the current situation, final score: " <<
-    // final_score << endl;
-    // cout << showBoard();
     return final_score;
   }
 

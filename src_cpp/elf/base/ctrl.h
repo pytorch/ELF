@@ -256,7 +256,6 @@ class ThreadInfosT {
 
   std::thread::id _th_label2id(const std::string& label) const {
     typename ThreadStrMap::accessor elem;
-    // std::cout << "looking for label: " << label << std::endl;
     bool found = threadStrMap_.find(elem, label);
     assert(found);
     return elem->second;
@@ -371,12 +370,9 @@ class ThreadedCtrlBaseT {
 
   virtual ~ThreadedCtrlBaseT() {
     done_ = true;
-    // std::cout << "ThreadedCtrlBase: Ending thread.." << std::endl;
     if (thread_ != nullptr) {
       thread_->join();
     }
-
-    // std::cout << "ThreadedCtrlBase: thread ended.." << std::endl;
   }
 
  protected:

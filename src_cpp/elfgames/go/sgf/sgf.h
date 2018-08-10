@@ -14,13 +14,12 @@
 #include <string>
 #include <vector>
 
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "elfgames/go/base/board.h"
 #include "elfgames/go/base/common.h"
 
 // Load the remaining part.
 inline Coord str2coord(const std::string& s) {
-  // cout << "coord:" << s << endl;
-  //
   if (s.size() < 2)
     return M_PASS;
   size_t i = 0;
@@ -37,7 +36,6 @@ inline Coord str2coord(const std::string& s) {
     return M_INVALID;
   // if (x >= 9) x --;
   int y = s[i] - 'a';
-  // cout << "x: " << x << ", y: " << y << endl;
 
   // tt
   if (!ON_BOARD(x, y))
@@ -183,6 +181,7 @@ class Sgf {
   SgfHeader _header;
   std::unique_ptr<SgfEntry> _root;
   int _num_moves;
+  std::shared_ptr<spdlog::logger> _logger;
 
   bool load_header(
       const char* s,
@@ -259,7 +258,9 @@ class Sgf {
     int _move_idx;
   };
 
-  Sgf() : _num_moves(0) {}
+  Sgf()
+      : _num_moves(0),
+        _logger(elf::logging::getLogger("elfgames::go::sgf::Sgf-", "")) {}
   bool load(const std::string& filename);
   bool load(const std::string& filename, const std::string& game);
 

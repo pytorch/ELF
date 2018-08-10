@@ -34,9 +34,6 @@ bool Sgf::load(const std::string& filename, const std::string& game_string) {
   int next_offset = 0;
   if (load_header(str, seg(0, len), &next_offset)) {
     _root.reset(load(str, seg(next_offset, len), &next_offset));
-    // cout << "Next offset = " << next_offset << " len = " << len << endl;
-    // cout << printHeader();
-    // cout << printMainVariation();
 
     auto iter = begin();
     if (iter.done())
@@ -55,13 +52,12 @@ bool Sgf::load(const std::string& filename, const std::string& game_string) {
     }
     return true;
   } else {
-    std::cout << "Failed to read the header of " << filename << std::endl;
+    _logger->info("Failed to read the header of {}", filename);
   }
   return false;
 }
 
 bool Sgf::load(const std::string& filename) {
-  // std::cout << "Loading SGF: " << filename << std::endl;
   // Load the game.
   std::ifstream iFile(filename);
   std::stringstream ss;
@@ -85,7 +81,6 @@ static int get_key_values(
   bool done = false;
   bool backslash = false;
 
-  // cout << "Begin calling get_key_values with [" << range.first << ", " <<
   // range.second << ")" << endl;
   for (i = range.first; i < range.second && !done; ++i) {
     if (s[i] == '\\') {
@@ -98,7 +93,6 @@ static int get_key_values(
     }
 
     char c = s[i];
-    // std::cout << "Next c: " << c << endl;
     switch (state) {
       case STATE_KEY:
         if (c == '[') {
@@ -124,8 +118,6 @@ static int get_key_values(
     }
   }
 
-  // cout << "End calling get_key_values with [" << range.first << ", " <<
-  // range.second << "). next_offset = " << i << endl;
   return i;
 }
 
@@ -141,7 +133,6 @@ static void save_sgf_header(
   std::string v = trim(make_str(s, value));
   std::string k = trim(make_str(s, key));
 
-  // std::cout << "SGF_Header: \"" << k << "\" = \"" <<  v << "\"" << std::endl;
   if (k == "RE") {
     if (!v.empty()) {
       header->winner = (v[0] == 'B' || v[0] == 'b') ? S_BLACK : S_WHITE;
@@ -175,10 +166,7 @@ static void save_sgf_header(
 bool Sgf::load_header(const char* s, const seg& range, int* next_offset) {
   // Load the header.
   int i = range.first;
-  // std::cout << "[" << range.first << ", " << range.second << ")" <<
-  // std::endl;
   while (s[i] != ';' && i < range.second) {
-    // std::cout << "Char[" << i << "]: " << s[i] << std::endl;
     i++;
   }
   if (s[i] != ';')

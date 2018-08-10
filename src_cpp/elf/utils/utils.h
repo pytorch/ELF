@@ -215,7 +215,6 @@ class MyClock {
   }
 
   inline bool record(const std::string& item) {
-    // cout << "Record: " << item << endl;
     auto it = _durations.find(item);
     if (it == _durations.end()) {
       it = _durations

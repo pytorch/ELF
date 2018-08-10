@@ -22,6 +22,7 @@
 #include <sstream>
 #include <thread>
 
+#include "elf/logging/IndexedLoggerFactory.h"
 #include "elf/utils/utils.h"
 
 #include "shared_reader.h"
@@ -55,7 +56,10 @@ struct Options {
 class Writer {
  public:
   // Constructor.
-  Writer(const Options& opt) : rng_(time(NULL)), options_(opt) {
+  Writer(const Options& opt)
+      : rng_(time(NULL)),
+        options_(opt),
+        logger_(elf::logging::getLogger("elf::distributed::Writer-", "")) {
     identity_ = options_.identity + "-" + get_id(rng_);
     sender_.reset(new elf::distri::ZMQSender(
         identity_, options_.addr, options_.port, options_.use_ipv6));
@@ -91,8 +95,8 @@ class Writer {
       return false;
 
     if (title != "reply") {
-      std::cout << "Writer[" << identity_ << "] wrong title " << title
-                << " in getReplyNoblock()" << std::endl;
+      logger_->warn(
+          "Writer[{}] wrong title {} in getReplyNoblock()", identity_, title);
       return false;
     } else {
       return true;
@@ -100,9 +104,7 @@ class Writer {
   }
 
   ~Writer() {
-    // std::cout << "Started writer distructor" << std::endl;
     sender_.reset(nullptr);
-    // std::cout << "Writer distructor done" << std::endl;
   }
 
  private:
@@ -111,6 +113,7 @@ class Writer {
   std::string identity_;
   Options options_;
   std::mutex write_mutex_;
+  std::shared_ptr<spdlog::logger> logger_;
 
   static std::string get_id(std::mt19937& rng) {
     long host_name_max = sysconf(_SC_HOST_NAME_MAX);
@@ -147,7 +150,8 @@ class Reader {
         options_(opt),
         db_name_(filename),
         rng_(time(NULL)),
-        done_(false) {}
+        done_(false),
+        logger_(elf::logging::getLogger("elf::distributed::Reader-", "")) {}
 
   void startReceiving(
       ProcessFunc proc_func,
@@ -170,11 +174,11 @@ class Reader {
   }
 
   ~Reader() {
-    std::cout << "Destroying Reader ... " << std::endl;
+    logger_->info("Destroying Reader ... ");
     done_ = true;
     receiver_thread_->join();
 
-    std::cout << "Reader destroyed... " << std::endl;
+    logger_->info("Reader destroyed... ");
   }
 
  private:
@@ -188,35 +192,46 @@ class Reader {
   int client_size_ = 0;
   int num_package_ = 0, num_failed_ = 0, num_skipped_ = 0;
 
+  std::shared_ptr<spdlog::logger> logger_;
+
   void threaded_receive_msg(
       ProcessFunc proc_func,
       ReplyFunc replier = nullptr) {
     std::string identity, title, msg;
     while (!done_.load()) {
       if (!receiver_.recv_noblock(&identity, &title, &msg)) {
-        std::cout << elf_utils::now()
-                  << ", Reader: no message, Stats: " << num_package_ << "/"
-                  << num_failed_ << "/" << num_skipped_
-                  << ", wait for 10 sec ... " << std::endl;
+        logger_->info(
+            "{}, Reader: no message, Stats: {}/{}/{}, wait for 10 sec ... ",
+            elf_utils::now(),
+            num_package_,
+            num_failed_,
+            num_skipped_);
         std::this_thread::sleep_for(std::chrono::seconds(10));
         continue;
       }
 
       if (title == "ctrl") {
         client_size_++;
-        std::cout << elf_utils::now() << " Ctrl from " << identity << "["
-                  << client_size_ << "]: " << msg << std::endl;
+        logger_->info(
+            "{} Ctrl from {}[{}]: {}",
+            elf_utils::now(),
+            identity,
+            client_size_,
+            msg);
         // receiver_.send(identity, "ctrl", "");
       } else if (title == "content") {
         if (!proc_func(this, identity, msg)) {
-          std::cout << "Msg processing error! from " << identity << std::endl;
+          logger_->warn("Msg processing error! from {}", identity);
           num_failed_++;
         } else {
           num_package_++;
         }
       } else {
-        std::cout << elf_utils::now() << " Skipping unknown title: \"" << title
-                  << "\", identity: \"" << identity << "\"" << std::endl;
+        logger_->warn(
+            "{} Skipping unknown title: \"{}\", identity: \"{}\"",
+            elf_utils::now(),
+            title,
+            identity);
         num_skipped_++;
       }
 

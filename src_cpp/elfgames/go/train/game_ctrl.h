@@ -25,6 +25,7 @@
 #include "elf/base/dispatcher.h"
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
+#include "elf/logging/IndexedLoggerFactory.h"
 
 #include "../common/game_stats.h"
 #include "../common/go_game_specific.h"
@@ -49,10 +50,11 @@ class ThreadedCtrl : public ThreadedCtrlBase {
         replay_buffer_(replay_buffer),
         options_(options),
         client_(client),
-        rng_(time(NULL)) {
+        rng_(time(NULL)),
+        logger_(
+            elf::logging::getLogger("elfgames::go::train::ThreadedCtrl-", "")) {
     selfplay_.reset(new SelfPlaySubCtrl(options, mcts_opt));
     eval_.reset(new EvalSubCtrl(options, mcts_opt));
-    // std::cout << "Thread id: " << std::this_thread::get_id() << std::endl;
 
     ctrl_.reg();
     ctrl_.addMailbox<_ModelUpdateStatus>();
@@ -60,12 +62,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
 
   void Start() {
     if (!ctrl_.isRegistered()) {
-      // std::cout << "Start(): id: " << std::this_thread::get_id() << ", not
-      // registered!" << std::endl;
       ctrl_.reg();
-    } else {
-      // std::cout << "Start(): id: " << std::this_thread::get_id() <<", already
-      // registered!" << std::endl;
     }
     ctrl_.addMailbox<_ModelUpdateStatus>();
     start<std::pair<Addr, int64_t>>();
@@ -75,14 +72,16 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     SelfPlaySubCtrl::CtrlResult res;
     while ((res = selfplay_->needWaitForMoreSample(selfplay_ver)) ==
            SelfPlaySubCtrl::CtrlResult::INSUFFICIENT_SAMPLE) {
-      std::cout << elf_utils::now() << ", Insufficient sample for model "
-                << selfplay_ver << "... waiting 30s" << std::endl;
+      logger_->info(
+          "{}, Insufficient sample for model {}... waiting 30s",
+          elf_utils::now(),
+          selfplay_ver);
       std::this_thread::sleep_for(30s);
     }
 
     if (res == SelfPlaySubCtrl::CtrlResult::SUFFICIENT_SAMPLE) {
-      std::cout << elf_utils::now() << ", Sufficient sample for model "
-                << selfplay_ver << std::endl;
+      logger_->info(
+          "{}, Sufficient sample for model {}", elf_utils::now(), selfplay_ver);
       selfplay_->notifyCurrentWeightUpdate();
     }
   }
@@ -106,7 +105,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
   }
 
   bool setInitialVersion(int64_t init_version) {
-    std::cout << "Setting init version: " << init_version << std::endl;
+    logger_->info("Setting init version: {}", init_version);
     eval_->setBaselineModel(init_version);
 
     if (selfplay_->getCurrModel() < 0) {
@@ -176,7 +175,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
         }
         break;
       case CLIENT_INVALID:
-        std::cout << "Warning! Invalid client_type! " << std::endl;
+        logger_->info("Warning! Invalid client_type! ");
         break;
     }
   }
@@ -196,6 +195,9 @@ class ThreadedCtrl : public ThreadedCtrlBase {
 
   std::string kTrainCtrl = "train_ctrl";
 
+ private:
+  std::shared_ptr<spdlog::logger> logger_;
+
   void on_thread() override {
     std::pair<Addr, int64_t> data;
     if (!ctrl_.peekMail(&data, 0))
@@ -209,8 +211,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
 
     // After setCurrModel, new model from python side with the old selfplay_ver
     // will not enter the replay buffer
-    std::cout << "Updating .. old_ver: " << old_ver << ", new_ver: " << ver
-              << std::endl;
+    logger_->info("Updating .. old_ver: {}, new_ver: {}", old_ver, ver);
     // A better model is found, clean up old games (or not?)
     if (!options_.keep_prev_selfplay) {
       replay_buffer_->clear();
@@ -241,7 +242,8 @@ class TrainCtrl : public DataInterface {
       : ctrl_(ctrl),
         rng_(time(NULL)),
         selfplay_record_("tc_selfplay"),
-        logger_(elf::logging::getLogger("TrainCtrl-", "")) {
+        logger_(
+            elf::logging::getLogger("elfgames::go::train::TrainCtrl-", "")) {
     // Register sender for python thread.
     elf::shared::RQCtrl rq_ctrl;
     rq_ctrl.num_reader = options.num_reader;
@@ -275,8 +277,7 @@ class TrainCtrl : public DataInterface {
   }
 
   bool setEvalMode(int64_t new_ver, int64_t old_ver) {
-    std::cout << "Setting eval mode: new: " << new_ver << ", old: " << old_ver
-              << std::endl;
+    logger_->info("Setting eval mode: new: {}, old: {}", new_ver, old_ver);
     client_mgr_->setSelfplayOnlyRatio(0.0);
     threaded_ctrl_->setEvalMode(new_ver, old_ver);
     return true;
@@ -325,11 +326,15 @@ class TrainCtrl : public DataInterface {
           valid_eval++;
       }
 
-      std::cout << "TrainCtrl: Receive data[" << recv_count_ << "] from "
-                << rs.identity << ", #state_update: " << rs.states.size()
-                << ", #records: " << rs.records.size()
-                << ", #valid_selfplay: " << valid_selfplay
-                << ", #valid_eval: " << valid_eval << std::endl;
+      logger_->info(
+          "TrainCtrl: Receive data[{}] from {}, #state_update: {}, "
+          "#records: {}, #valid_selfplay: {}, #valid_eval: {}",
+          recv_count_,
+          rs.identity,
+          rs.states.size(),
+          rs.records.size(),
+          valid_selfplay,
+          valid_eval);
     }
     return insert_info;
   }
@@ -338,8 +343,7 @@ class TrainCtrl : public DataInterface {
     ClientInfo& info = client_mgr_->getClient(identity);
 
     if (info.justAllocated()) {
-      std::cout << "New allocated: " << identity << ", " << client_mgr_->info()
-                << std::endl;
+      logger_->info("New allocated: {}, {}", identity, client_mgr_->info());
     }
 
     MsgRequestSeq request;

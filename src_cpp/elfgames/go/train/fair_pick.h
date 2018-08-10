@@ -154,13 +154,9 @@ class BatchRequest {
   AddResult Add(const ClientInfo& c, float r) {
     auto it = requests_.find(c.id());
     if (it == requests_.end()) {
-      // cout << hex << "[" << this << "]" << dec << " msg from \"" << c.id() <<
-      // "\" is not registered." << endl;
       return NOT_REGISTERED;
     }
     if (!it->second.Add(r)) {
-      // cout << hex << "[" << this << "]" << dec << "msg from \"" << c.id() <<
-      // "\" overflows and is thus skipped" << endl;
       return OVERFLOW_NOT_ADDED;
     }
 
