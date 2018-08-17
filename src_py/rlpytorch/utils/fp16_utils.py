@@ -25,27 +25,19 @@ def apply_nonrecursive(module, fn):
         if buf is not None:
             module._buffers[key] = fn(buf)
 
-
-def convert_fp16_if(module, condition):
-    """Nonrecursively converts a module's parameters and buffers to fp16
-    if a given condition is met.
-    """
-    if condition(module):
-        apply_nonrecursive(
-            module, lambda t: t.half() if t.is_floating_point() else t)
+    return module
 
 
 class FP16Model(Model):
     def __init__(self, option_map, params, model):
         super().__init__(option_map, params)
 
-        def should_convert_to_fp16(module):
-            return not isinstance(
-                module, torch.nn.modules.batchnorm._BatchNorm)
-
-        self.fp16_model = convert_fp16_if(
-            model.float(), should_convert_to_fp16)
+        self.model = model.float()
+        for module in model.modules():
+            if not isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+                apply_nonrecursive(
+                    module, lambda t: t.half() if t.is_floating_point() else t)
 
     def forward(self, input):
         fp16_input = input.half()
-        return self.fp16_model(fp16_input)
+        return self.model(fp16_input)
