@@ -325,6 +325,8 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
   MCTSGoAI* curr_ai =
       ((_ai2 != nullptr && player == S_WHITE) ? _ai2.get() : _ai.get());
 
+  Coord c = M_INVALID;
+
   if (_human_player != nullptr) {
     do {
       if (s.terminated()) {
@@ -338,8 +340,16 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
       _human_player->act(info, &reply);
 
       // skip the current move, and ask the ai to move.
-      if (reply.c == M_SKIP)
+      if (reply.c == M_SKIP) {
+        // Genmove. 
         break;
+      }
+      if (reply.c == M_PEEK) {
+        // Peek
+        curr_ai->act(s, &c);
+        return;
+      }
+      
       if (reply.c == M_CLEAR) {
         if (!_state_ext.state().justStarted()) {
           finish_game(FR_CLEAR);
@@ -397,8 +407,6 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
   bool use_policy_network_only =
       (player == S_WHITE && options_.white_use_policy_network_only) ||
       (player == S_BLACK && options_.black_use_policy_network_only);
-
-  Coord c = M_INVALID;
 
   if (use_policy_network_only) {
     // Then we only use policy network to move.

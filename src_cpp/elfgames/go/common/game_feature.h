@@ -14,7 +14,7 @@
 
 #include "elf/base/extractor.h"
 
-enum SpecialActionType { SA_SKIP = -100, SA_PASS, SA_RESIGN, SA_CLEAR };
+enum SpecialActionType { SA_SKIP = -100, SA_PASS, SA_RESIGN, SA_CLEAR, SA_PEEK };
 
 class GoFeature {
  public:
@@ -84,6 +84,9 @@ class GoFeature {
         break;
       case SA_CLEAR:
         reply.c = M_CLEAR;
+        break;
+      case SA_PEEK:
+        reply.c = M_PEEK;
         break;
       default:
         reply.c = BoardFeature::action2CoordNoTransform(*action);
@@ -250,6 +253,7 @@ class GoFeature {
         {"ACTION_PASS", SA_PASS},
         {"ACTION_RESIGN", SA_RESIGN},
         {"ACTION_CLEAR", SA_CLEAR},
+        {"ACTION_PEEK", SA_PEEK},
     };
   }
 

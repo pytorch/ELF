@@ -244,9 +244,8 @@ class GoConsoleGTP:
             return True, reply
 
     def on_peek(self, batch, items, reply):
-        topn = int(items[1])
-        print(batch.game_obj.getGame(0).peekMCTS(topn))
-        return True, ""
+        reply["a"] = self.actions["peek"]
+        return True, reply
 
     def on_play(self, batch, items, reply):
         ret, msg = self.check_player(batch, items[1][0])
@@ -316,7 +315,8 @@ class GoConsoleGTP:
             "skip": GC.params["ACTION_SKIP"],
             "pass": GC.params["ACTION_PASS"],
             "resign": GC.params["ACTION_RESIGN"],
-            "clear": GC.params["ACTION_CLEAR"]
+            "clear": GC.params["ACTION_CLEAR"],
+            "peek": GC.params["ACTION_PEEK"]
         }
         self.last_cmd = ""
 
@@ -380,6 +380,9 @@ class GoConsoleGTP:
         elif self.last_cmd == "genmove":
             #print("Genmove spent: %d ms" % (curr_timestamp - self.curr_timestamp))
             self.print_msg(True, self.get_last_move(batch))
+        elif self.last_cmd == "peek":
+            topn = int(self.last_items[1])
+            print(batch.game_obj.getGame(0).peekMCTS(topn))
 
         self.last_cmd = ""
 
@@ -401,6 +404,7 @@ class GoConsoleGTP:
             try:
                 ret, msg = self.commands[c](batch, items, reply)
                 self.last_cmd = c
+                self.last_items = items
                 if not ret:
                     self.print_msg(False, msg)
                 else:
