@@ -214,22 +214,26 @@ class SharedMemRemote : public SharedMem {
         mode_(mode),
         reply_recv_(reply_recv),
         stats_(stats) {
+  }
 
+  void start() override {
       // We need to have a (or one per sample) remote_smem_ and a local smem_
       // Note that all remote_smem_ shared memory with smem_.
+      remote_smem_.clear();
       switch (mode_) {
         case RECV_SMEM:
+          // std::cout << "RECV_SMEM" << std::endl;
           remote_smem_.emplace_back(smem_);
+          // std::cout << "smem info: " << remote_smem_.back().info() << std::endl;
           break;
         case RECV_ENTRY:
-          for (int i = 0; i < opts.getBatchSize(); ++i) {
+          // std::cout << "RECV_ENTRY" << std::endl;
+          for (int i = 0; i < smem_.getSharedMemOptions().getBatchSize(); ++i) {
             remote_smem_.emplace_back(smem_.copySlice(i));
           }
           break;
       }
   }
-
-  void start() override {}
 
   void push(const std::string& msg) {
     q_.push(msg);
@@ -239,14 +243,17 @@ class SharedMemRemote : public SharedMem {
     std::string msg;
     do {
       q_.pop(&msg);
-      SMemFromJson(json::parse(msg), remote_smem_[next_remote_smem_++]);
+      // std::cout << "smem info: " << smem_.info() << std::endl;
+      // std::cout << "remote_smem info: " << remote_smem_[next_remote_smem_].info() << std::endl;
+      auto &curr_smem = remote_smem_[next_remote_smem_++];
+      SMemFromJson(json::parse(msg), curr_smem);
+      cum_batchsize_ += curr_smem.getEffectiveBatchSize(); 
     } while (next_remote_smem_ < (int)remote_smem_.size());
 
     const auto& opt = smem_.getSharedMemOptions();
     if (stats_ != nullptr) 
       stats_->feed(opt.getLabelIdx(), smem_.getEffectiveBatchSize());
-    next_remote_smem_ = 0;
-
+    smem_.setEffectiveBatchSize(cum_batchsize_);
     // Note that all remote_smem_ shared memory with smem_.
     // After waitBatchFillMem() return, smem_ has all the content ready.
   }
@@ -265,12 +272,15 @@ class SharedMemRemote : public SharedMem {
       // Notify that we should send the content in remote back.
       reply_recv_(remote.getSharedMemOptionsC().getLabelIdx(), j.dump());
     }
+    next_remote_smem_ = 0;
+    cum_batchsize_ = 0;
   }
 
  private:
   const Mode mode_;
   std::vector<SharedMemData> remote_smem_;
   int next_remote_smem_ = 0;
+  int cum_batchsize_ = 0;
 
   remote::Queue<std::string> q_;
   std::set<std::string> input_keys_{"s", "hash"};

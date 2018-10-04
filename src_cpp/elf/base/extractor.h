@@ -19,6 +19,7 @@
 
 #include "common.h"
 #include "../utils/reflection.h"
+#include "../utils/utils.h"
 
 // This file exists to bind functionss of the form f(State, MemoryAddress).
 // to its arguments
@@ -316,13 +317,13 @@ class AnyP {
       if (i >= (int)f_.getSize().size()) {
         std::cout << "i >= #dim: " << i << ">= " 
           << f_.getSize().size() << std::endl;
-        assert(false);
+        elf_utils::check(false);
       }
       if (idx < 0 || idx >= f_.getSize()[i]) {
         std::cout << "idx >= size() at dim " << i << ": " 
           << idx << " not in [0," 
           << f_.getSize()[i] << ")" << std::endl;
-        assert(false);
+        elf_utils::check(false);
       }
 
       res += idx * stride_[i];
@@ -336,12 +337,12 @@ class AnyP {
   }
 
   size_t getByteSize() const {
-    assert(!stride_.vec().empty());
+    elf_utils::check(!stride_.vec().empty());
     return stride_[0] * f_.getBatchSize();
   }
 
   void setData(const PointerInfo &info) {
-    assert(info.type == f_.getTypeName());
+    elf_utils::check(info.type == f_.getTypeName());
     p_ = reinterpret_cast<unsigned char*>(info.p);
     setStride(info.stride);
   }
@@ -349,40 +350,42 @@ class AnyP {
   template <typename T>
   T* getAddress(std::initializer_list<int> l) {
     // [TODO] Fix this
-    assert(check<T>());
+    elf_utils::check(check<T>());
     return reinterpret_cast<T*>(p_ + LinearIdx(l));
   }
 
   template <typename T>
   const T* getAddress(std::initializer_list<int> l) const {
     // [TODO] Fix this
-    assert(check<T>());
+    elf_utils::check(check<T>());
     return reinterpret_cast<const T*>(p_ + LinearIdx(l));
   }
 
   template <typename T>
   T* getAddress(int l) {
     // [TODO] Fix this
-    assert(check<T>());
+    elf_utils::check(check<T>());
     return reinterpret_cast<T*>(p_ + LinearIdx({l}));
   }
 
   template <typename T>
   const T* getAddress(int l) const {
     // [TODO] Fix this
-    assert(check<T>());
+    elf_utils::check(check<T>());
     return reinterpret_cast<const T*>(p_ + LinearIdx({l}));
   }
 
   AnyP getSlice(int l) const {
     AnyP anyp(f_);
     anyp.p_ = p_ + LinearIdx({l});
+    anyp.stride_ = stride_;
     return anyp;
   }
 
   std::string info() const {
     std::stringstream ss;
-    ss << std::hex << (void*)p_ << std::dec << ", Field: " << f_.info();
+    ss << "Ptr: 0x" << std::hex << (void*)p_ 
+       << std::dec << ", Field: " << f_.info();
     return ss.str();
   }
 
@@ -407,11 +410,11 @@ class AnyP {
   }
 
   void setStride(const Size& stride) {
-    assert(stride.size() == f_.getSize().size());
+    elf_utils::check(stride.size() == f_.getSize().size());
 
     Size default_stride = f_.getSize().getContinuousStrides(f_.getSizeOfType());
     for (size_t i = 0; i < f_.getSize().size(); ++i) {
-      assert(default_stride[i] <= stride[i]);
+      elf_utils::check(default_stride[i] <= stride[i]);
     }
 
     stride_ = stride;
