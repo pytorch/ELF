@@ -292,6 +292,7 @@ class Collectors {
     }
   }
 
+  // Return (index of a string key, index within the string key).
   std::pair<int, int> getNextIdx(const std::string& label) const {
     auto it = smem2keys_.find(label);
     if (it == smem2keys_.end())

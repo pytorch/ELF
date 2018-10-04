@@ -145,17 +145,30 @@ using ReplyRecvFunc = std::function<void (int, std::string &&)>;
 
 class SharedMemRemote : public SharedMem {
  public:
+  enum Mode { RECV_SMEM, RECV_ENTRY };
+
   SharedMemRemote(
       const SharedMemOptions& opts,
       const std::unordered_map<std::string, AnyP>& mem,
-      const int local_idx,
-      const int local_label_idx,
-      ReplyRecvFunc reply_recv, Stats *stats)
+      ReplyRecvFunc reply_recv, Stats *stats, Mode mode = RECV_ENTRY)
       : SharedMem(opts, mem),
-        local_idx_(local_idx),
-        local_label_idx_(local_label_idx),
+        mode_(mode),
         reply_recv_(reply_recv),
-        stats_(stats) {}
+        stats_(stats) {
+
+      // We need to have a (or one per sample) remote_smem_ and a local smem_
+      // Note that all remote_smem_ shared memory with smem_.
+      switch (mode_) {
+        case RECV_SMEM:
+          remote_smem_.emplace_back(smem_);
+          break;
+        case RECV_ENTRY:
+          for (int i = 0; i < opts.getBatchSize(); ++i) {
+            remote_smem_.emplace_back(smem_.copySlice(i));
+          }
+          break;
+      }
+  }
 
   void start() override {}
 
@@ -165,43 +178,40 @@ class SharedMemRemote : public SharedMem {
 
   void waitBatchFillMem() override {
     std::string msg;
-    q_.pop(&msg);
-    elf::SMemFromJson(json::parse(msg), smem_);
+    do {
+      q_.pop(&msg);
+      elf::SMemFromJson(json::parse(msg), remote_smem_[next_remote_smem_++]);
+    } while (next_remote_smem_ < (int)remote_smem_.size());
 
-    auto& opt = smem_.getSharedMemOptions();
-    remote_idx_ = opt.getIdx();
-    remote_label_idx_ = opt.getLabelIdx();
-
+    const auto& opt = smem_.getSharedMemOptions();
     if (stats_ != nullptr) 
-      stats_->feed(remote_label_idx_, smem_.getEffectiveBatchSize());
+      stats_->feed(opt.getLabelIdx(), smem_.getEffectiveBatchSize());
+    next_remote_smem_ = 0;
 
-    opt.setIdx(local_idx_);
-    opt.setLabelIdx(local_label_idx_);
+    // Note that all remote_smem_ shared memory with smem_.
+    // After waitBatchFillMem() return, smem_ has all the content ready.
   }
 
   void waitReplyReleaseBatch(comm::ReplyStatus batch_status) override {
     (void)batch_status;
     assert(reply_recv_ != nullptr);
 
-    auto& opt = smem_.getSharedMemOptions();
-    opt.setIdx(remote_idx_);
-    opt.setLabelIdx(remote_label_idx_);
-
     if (stats_ != nullptr) {
       stats_->recordRelease(smem_.getEffectiveBatchSize());
     }
 
-    json j;
-    elf::SMemToJsonExclude(smem_, input_keys_, j);
-    reply_recv_(remote_label_idx_, j.dump());
+    for (const auto &remote : remote_smem_) {
+      json j;
+      elf::SMemToJsonExclude(remote, input_keys_, j);
+      // Notify that we should send the content in remote back.
+      reply_recv_(remote.getSharedMemOptionsC().getLabelIdx(), j.dump());
+    }
   }
 
  private:
-  const int local_idx_;
-  const int local_label_idx_;
-
-  int remote_idx_ = -1;
-  int remote_label_idx_ = -1;
+  const Mode mode_;
+  std::vector<SharedMemData> remote_smem_;
+  int next_remote_smem_ = 0;
 
   remote::Queue<std::string> q_;
   std::set<std::string> input_keys_{"s", "hash"};
@@ -246,24 +256,29 @@ class BatchReceiver : public elf::remote::RemoteReceiver {
   }
 
   SharedMemData& allocateSharedMem(
-      const SharedMemOptions& options,
+      const SharedMemOptions& opt,
       const std::vector<std::string>& keys) override {
-    const std::string& label = options.getRecvOptions().label;
+    const std::string& label = opt.getRecvOptions().label;
 
     // Allocate data.
     auto idx = collectors_->getNextIdx(label);
     int client_idx = idx.second % getNumClients();
+
+    SharedMemOptions options_with_idx = opt;
+    options_with_idx.setIdx(idx.first);
+    options_with_idx.setLabelIdx(idx.second);
+
     // std::cout << "client_idx: " << client_idx << std::endl;
 
     auto reply_func = [&, client_idx](int idx, std::string &&msg) {
       addReplyMsg(client_idx, idx, std::move(msg));
     };
 
-    auto creator = [&, idx, reply_func](
+    auto creator = [&, reply_func](
                        const SharedMemOptions& options,
                        const std::unordered_map<std::string, AnyP>& anyps) {
       return std::unique_ptr<SharedMemRemote>(
-          new SharedMemRemote(options, anyps, idx.first, idx.second, reply_func, &stats_));
+          new SharedMemRemote(options, anyps, reply_func, &stats_, SharedMemRemote::RECV_SMEM));
     };
 
     BatchClient* batch_client = batchContext_->getClient();
@@ -271,7 +286,7 @@ class BatchReceiver : public elf::remote::RemoteReceiver {
       return batch_client->sendWait(smem_data, {""});
     };
 
-    return collectors_->allocateSharedMem(options, keys, creator, collect_func);
+    return collectors_->allocateSharedMem(options_with_idx, keys, creator, collect_func);
   }
 
   Extractor& getExtractor() override {

@@ -52,6 +52,10 @@ class SharedMemOptions {
     options_.wait_opt.min_batchsize = minbatchsize;
   }
 
+  void setBatchSize(int batchsize) {
+    options_.wait_opt.batchsize = batchsize;
+  }
+
   void setTransferType(TransferType type) {
     type_ = type;
   }
@@ -185,6 +189,19 @@ class SharedMemData {
 
   void setMinBatchSize(int minbatchsize) {
     opts_.setMinBatchSize(minbatchsize);
+  }
+
+  // Get a slide
+  SharedMemData copySlice(int idx) const {
+    SharedMemOptions opts = opts_;
+    opts.setBatchSize(1);
+    std::unordered_map<std::string, AnyP> mem;
+
+    for (auto &p : mem_) {
+      mem.insert(make_pair(p.first, p.second.getSlice(idx)));
+    }
+
+    return SharedMemData(opts, mem);
   }
 
  private:

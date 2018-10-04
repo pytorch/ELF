@@ -346,6 +346,12 @@ class AnyP {
     return reinterpret_cast<const T*>(p_ + LinearIdx({l}));
   }
 
+  AnyP getSlice(int l) const {
+    AnyP anyp(f_);
+    anyp.p_ = p_ + LinearIdx({l});
+    return anyp;
+  }
+
   std::string info() const {
     std::stringstream ss;
     ss << std::hex << (void*)p_ << std::dec << ", Field: " << f_.info();
