@@ -40,6 +40,8 @@ class Allocator(object):
         type_name = p.field().type_name()
         sz = p.field().sz().vec()
 
+        info = elf.PointerInfo()
+        info.type = type_name
         #print(name, type_name, sz)
 
         if not use_numpy:
@@ -50,12 +52,16 @@ class Allocator(object):
             v.fill_(1)
             # Return pointer, size and byte_stride
             strides = [i * v.element_size() for i in v.stride()]
-            p.set(v.data_ptr(), strides)
+            info.p = v.data_ptr()
+            info.stride = strides
         else:
             v = np.zeros(sz, dtype=Allocator.numpy_types[type_name])
             v[:] = 1
             # Return pointer, size and byte_size
-            p.set(v.ctypes.data, v.strides)
+            info.p = v.ctypes.data
+            info.stride = strides
+
+        p.setData(info)
 
         return name, v
 

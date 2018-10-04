@@ -197,10 +197,9 @@ class ReplyQs {
   }
 };
 
-class RemoteSender : public GameContext {
+class RemoteSender {
  public:
-  RemoteSender(const Options& options, const msg::Options& net, SendPattern pattern)
-      : GameContext(options) {
+  RemoteSender(const Options& options, const msg::Options& net, SendPattern pattern) {
     auto netOptions = msg::getNetOptions(options, net);
     netOptions.usec_sleep_when_no_msg = 10;
     // Not used.
@@ -215,9 +214,8 @@ class RemoteSender : public GameContext {
     netOptions.port ++;
     using std::placeholders::_1;
     servers_.reset(new RemoteSenderInstances(netOptions, std::bind(&ReplyQs::push, &replies_, _1), pattern));
-  }
 
-  void start() override {
+    // Setup ctrl_server_
     auto replier = [&](const std::string& identity, std::string* reply_msg) {
       json info;
       info["valid"] = true;
@@ -243,8 +241,6 @@ class RemoteSender : public GameContext {
 
     ctrl_server_->setCallbacks(proc, replier);
     ctrl_server_->start();
-
-    GameContext::start();
   }
 
  protected:

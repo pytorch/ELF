@@ -18,6 +18,7 @@
 #include <unordered_map>
 
 #include "common.h"
+#include "../utils/reflection.h"
 
 // This file exists to bind functionss of the form f(State, MemoryAddress).
 // to its arguments
@@ -231,6 +232,26 @@ class FuncMapT : public FuncMapBase {
   }
 };
 
+class FuncMapFactory {
+ public:
+  template <typename T>
+  void regType() {
+    gen_[TypeNameT<T>::name()] = [](const std::string &name) {
+      return std::unique_ptr<FuncMapBase>(new FuncMapT<T>(name));
+    };
+  }
+
+  std::unique_ptr<FuncMapBase> generate(const std::string &type_name, const std::string &field_name) {
+    auto it = gen_.find(type_name);
+    assert(it != gen_.end());
+    return it->second(field_name);
+  }
+
+ private:
+  using GenFunc = std::function<std::unique_ptr<FuncMapBase> (const std::string &)>;
+  std::unordered_map<std::string, GenFunc> gen_;
+};
+
 template <typename T>
 struct FieldsT {
  public:
@@ -276,6 +297,12 @@ FuncMapT<T>* FuncMapBase::cast() {
   return dynamic_cast<FuncMapT<T>*>(this);
 }
 
+DEF_STRUCT(PointerInfo)
+  DEF_FIELD(uint64_t, p, 0, "pointer address");
+  DEF_FIELD(std::string, type, "", "Type string");
+  DEF_FIELD_NODEFAULT(std::vector<int>, stride, "Stride info");
+DEF_END
+
 class AnyP {
  public:
   AnyP(const FuncMapBase& f) : f_(f) {}
@@ -313,9 +340,10 @@ class AnyP {
     return stride_[0] * f_.getBatchSize();
   }
 
-  void setAddress(uint64_t p, const std::vector<int>& stride) {
-    p_ = reinterpret_cast<unsigned char*>(p);
-    setStride(stride);
+  void setData(const PointerInfo &info) {
+    assert(info.type == f_.getTypeName());
+    p_ = reinterpret_cast<unsigned char*>(info.p);
+    setStride(info.stride);
   }
 
   template <typename T>

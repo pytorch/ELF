@@ -32,11 +32,13 @@ namespace elf {
 
 using json = nlohmann::json;
 
-class BatchSender : public elf::remote::RemoteSender {
+class BatchSender : public remote::RemoteSender, public GameContext {
  public:
   BatchSender(const Options& options, const msg::Options& net) 
-    : elf::remote::RemoteSender(options, net, elf::remote::RAND_ONE) {
+    : remote::RemoteSender(options, net, remote::RAND_ONE), 
+      GameContext(options) {
   }
+
   void setRemoteLabels(const std::set<std::string>& remote_labels) {
     remote_labels_ = remote_labels;
   }
@@ -60,13 +62,13 @@ class BatchSender : public elf::remote::RemoteSender {
 
       func = [this, reply_idx](SharedMemData* smem_data) {
         json j;
-        elf::SMemToJson(*smem_data, input_keys_, j);
+        SMemToJson(*smem_data, input_keys_, j);
         
         sendToClient(j.dump());
         std::string reply;
         getFromClient(reply_idx, &reply);
         // std::cout << ", got reply_j: "<< std::endl;
-        elf::SMemFromJson(json::parse(reply), *smem_data);
+        SMemFromJson(json::parse(reply), *smem_data);
         // std::cout << ", after parsing smem: "<< std::endl;
         return comm::SUCCESS;
       };
@@ -78,6 +80,63 @@ class BatchSender : public elf::remote::RemoteSender {
 private:
   std::set<std::string> remote_labels_;
   std::set<std::string> input_keys_ {"s", "hash"};
+};
+
+// Directly send data to remote. 
+class EnvSender : public remote::RemoteSender {
+ public:
+  EnvSender(const Options& options, const msg::Options& net) 
+    : remote::RemoteSender(options, net, remote::RAND_ONE) { 
+    // [TODO] For now we need to register different type manually. 
+    factory_.regType<float>();
+    factory_.regType<double>();
+    factory_.regType<int64_t>();
+    factory_.regType<int32_t>();
+    factory_.regType<uint64_t>();
+    factory_.regType<uint32_t>();
+
+    reply_idx_ = addQueue();
+  }
+
+  void sendAndWaitReply(
+      const std::string &label,
+      const std::unordered_map<std::string, PointerInfo> &data, 
+      const std::set<std::string> &input_keys) {
+    // Construct smem on the fly, send it to the remote and wait for reply. 
+    //
+    SharedMemOptions opts(label, 1);
+    opts.setIdx(0);
+    opts.setLabelIdx(0);
+
+    // We construct a dummy f here.
+    std::vector<std::unique_ptr<FuncMapBase>> fs;
+    std::unordered_map<std::string, AnyP> anyps;
+
+    for (const auto &item : data) {
+      fs.emplace_back(factory_.generate(item.second.type, item.first));
+      AnyP anyp(*fs.back());
+      anyp.setData(item.second);
+      anyps.insert(make_pair(item.first, anyp));
+    }
+
+    SharedMemData smem_data(opts, anyps);
+
+    // then we send it. 
+    json j;
+    SMemToJson(smem_data, input_keys, j);
+
+    sendToClient(j.dump());
+    std::string reply;
+    getFromClient(reply_idx_, &reply);
+    // std::cout << ", got reply_j: "<< std::endl;
+    SMemFromJson(json::parse(reply), smem_data);
+    // std::cout << ", after parsing smem: "<< std::endl;
+    // after that all the tensors should contain the reply. 
+  }
+
+ private:
+  FuncMapFactory factory_;
+  int reply_idx_ = -1;
 };
 
 class Stats {
@@ -180,7 +239,7 @@ class SharedMemRemote : public SharedMem {
     std::string msg;
     do {
       q_.pop(&msg);
-      elf::SMemFromJson(json::parse(msg), remote_smem_[next_remote_smem_++]);
+      SMemFromJson(json::parse(msg), remote_smem_[next_remote_smem_++]);
     } while (next_remote_smem_ < (int)remote_smem_.size());
 
     const auto& opt = smem_.getSharedMemOptions();
@@ -202,7 +261,7 @@ class SharedMemRemote : public SharedMem {
 
     for (const auto &remote : remote_smem_) {
       json j;
-      elf::SMemToJsonExclude(remote, input_keys_, j);
+      SMemToJsonExclude(remote, input_keys_, j);
       // Notify that we should send the content in remote back.
       reply_recv_(remote.getSharedMemOptionsC().getLabelIdx(), j.dump());
     }
@@ -219,10 +278,12 @@ class SharedMemRemote : public SharedMem {
   Stats *stats_ = nullptr;
 };
 
-class BatchReceiver : public elf::remote::RemoteReceiver {
+class BatchReceiver : public remote::RemoteReceiver {
  public:
-  BatchReceiver(const Options& options, const msg::Options& net) 
-    : elf::remote::RemoteReceiver(options, net), rng_(time(NULL)) {
+  BatchReceiver(const Options& options, 
+      const msg::Options& net) 
+    : remote::RemoteReceiver(options, net), 
+      rng_(time(NULL)) {
     batchContext_.reset(new BatchContext);
     collectors_.reset(new Collectors);
 
@@ -237,9 +298,13 @@ class BatchReceiver : public elf::remote::RemoteReceiver {
     initClients(recv_func);
   }
 
+  void setMode(SharedMemRemote::Mode mode) {
+    mode_ = mode;
+  }
+
   void start() override {
     batchContext_->start();
-    elf::remote::RemoteReceiver::start();
+    remote::RemoteReceiver::start();
     collectors_->start();
   }
 
@@ -278,7 +343,7 @@ class BatchReceiver : public elf::remote::RemoteReceiver {
                        const SharedMemOptions& options,
                        const std::unordered_map<std::string, AnyP>& anyps) {
       return std::unique_ptr<SharedMemRemote>(
-          new SharedMemRemote(options, anyps, reply_func, &stats_, SharedMemRemote::RECV_SMEM));
+          new SharedMemRemote(options, anyps, reply_func, &stats_, mode_));
     };
 
     BatchClient* batch_client = batchContext_->getClient();
@@ -298,6 +363,8 @@ private:
   std::unique_ptr<Collectors> collectors_;
   std::mt19937 rng_;
   Stats stats_;
+  
+  SharedMemRemote::Mode mode_ = SharedMemRemote::RECV_SMEM;
 };
 
 } // namespace elf

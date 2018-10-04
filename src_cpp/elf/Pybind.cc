@@ -46,6 +46,7 @@ void register_common_func(pybind11::module& m) {
   namespace py = pybind11;
 
   using comm::ReplyStatus;
+  using elf::PointerInfo;
   using elf::AnyP;
   using elf::FuncMapBase;
   using elf::SharedMemData;
@@ -54,6 +55,13 @@ void register_common_func(pybind11::module& m) {
   using elf::Waiter;
 
   auto ref = py::return_value_policy::reference_internal;
+
+  PB_INIT(PointerInfo)
+    .def(py::init<>())
+    PB_FIELD(p)
+    PB_FIELD(type)
+    PB_FIELD(stride)
+  PB_END
 
   py::enum_<ReplyStatus>(m, "ReplyStatus")
       .value("SUCCESS", ReplyStatus::SUCCESS)
@@ -79,7 +87,7 @@ void register_common_func(pybind11::module& m) {
   py::class_<AnyP>(m, "AnyP")
       .def("info", &AnyP::info)
       .def("field", &AnyP::field, ref)
-      .def("set", &AnyP::setAddress);
+      .def("setData", &AnyP::setData, ref);
 
   py::class_<FuncMapBase>(m, "FuncMapBase")
       .def("batchsize", &FuncMapBase::getBatchSize)
@@ -99,6 +107,7 @@ void register_game(pybind11::module& m) {
   using MsgOptions = elf::msg::Options;
   using elf::BatchReceiver;
   using elf::BatchSender;
+  using elf::EnvSender;
   using elf::GCInterface;
 
   auto ref = py::return_value_policy::reference_internal;
@@ -141,6 +150,10 @@ void register_game(pybind11::module& m) {
 
   py::class_<BatchReceiver, GCInterface>(m, "BatchReceiver")
       .def(py::init<const Options&, const MsgOptions&>());
+
+  py::class_<EnvSender>(m, "EnvSender")
+      .def(py::init<const Options&, const MsgOptions&>())
+      .def("sendAndWaitReply", &EnvSender::sendAndWaitReply, ref);
 }
 
 } // namespace
