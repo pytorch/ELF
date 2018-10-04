@@ -153,7 +153,9 @@ void register_game(pybind11::module& m) {
 
   py::class_<EnvSender>(m, "EnvSender")
       .def(py::init<const Options&, const MsgOptions&>())
-      .def("sendAndWaitReply", &EnvSender::sendAndWaitReply, ref);
+      .def("sendAndWaitReply", &EnvSender::sendAndWaitReply)
+      .def("setInputKeys", &EnvSender::setInputKeys, ref)
+      .def("setSMem", &EnvSender::setSMem, ref);
 }
 
 } // namespace

@@ -12,30 +12,78 @@ import torch
 
 import _elf as elf
 
+class NameConverter:
+    def __init__(self):
+        self._c2torch = {
+            "int32_t": torch.IntTensor,
+            "uint32_t": torch.IntTensor,
+            "int64_t": torch.LongTensor,
+            "uint64_t": torch.LongTensor,
+            "float": torch.FloatTensor,
+            "unsigned char": torch.ByteTensor,
+            "char": torch.ByteTensor
+        }
+        self._c2numpy = {
+            "int32_t": 'i4',
+            "uint32_t": 'i4',
+            'int64_t': 'i8',
+            'uint64_t': 'i8',
+            'float': 'f4',
+            'unsigned char': 'byte',
+            'char': 'byte'
+        }
+
+        self._torch2c = dict()
+        for k, v in self._c2torch.items():
+            self._torch2c[v.dtype] = k
+
+    def torch2c(self, v):
+        return self._torch2c[v.dtype]
+
+    def c2torch(self, s):
+        return self._c2torch[s]
+
+    def c2numpy(self, s):
+        return self._c2numpy[s]
+
+
+class EnvWrapper(object):
+    def __init__(self):
+        self.wrapper = elf.EnvSender()
+        self.converter = NameConverter()
+
+    def setEnv(self, env):
+        self.env = env
+
+    def run(self, state_size, action_size):
+        mem_s = torch.FloatTensor(1, *state_size)
+        info_s = self._getInfo(mem_s)
+        mem_a = torch.IntTensor(1, *action_size)
+        info_a = self._getInfo(mem_a)
+
+        self.wrapper.setSMem("actor", { "s" : info_s, "a" : info_a })
+        self.wrapper.setInputKeys(set("s"))
+
+        while True:
+            mem_s[:] = self.env.observation()
+            self.wrapper.sendAndWaitReply("action")
+            self.env.step(mem_a)
+
+    def _getInfo(self, v):
+        assert isinstance(v, torch.Tensor)
+
+        info.stride = [i * v.element_size() for i in v.stride()]
+        info.p = v.data_ptr()
+        info.type = converter.torch2c(v) 
+        return info
+
 
 class Allocator(object):
     ''' A wrapper class for batch data'''
-    torch_types = {
-        "int32_t": torch.IntTensor,
-        "uint32_t": torch.IntTensor,
-        "int64_t": torch.LongTensor,
-        "uint64_t": torch.LongTensor,
-        "float": torch.FloatTensor,
-        "unsigned char": torch.ByteTensor,
-        "char": torch.ByteTensor
-    }
-    numpy_types = {
-        "int32_t": 'i4',
-        "uint32_t": 'i4',
-        'int64_t': 'i8',
-        'uint64_t': 'i8',
-        'float': 'f4',
-        'unsigned char': 'byte',
-        'char': 'byte'
-    }
-
-    @staticmethod
-    def _alloc(p, gpu, use_numpy=True):
+    def __init__(self):
+        self.converter = NameConverter()
+        
+    def _alloc(self, p, gpu, use_numpy=True):
         name = p.field().name()
         type_name = p.field().type_name()
         sz = p.field().sz().vec()
@@ -45,7 +93,7 @@ class Allocator(object):
         #print(name, type_name, sz)
 
         if not use_numpy:
-            v = Allocator.torch_types[type_name](*sz)
+            v = self.converter.c2torch(type_name)(*sz)
             if gpu is not None:
                 with torch.cuda.device(gpu):
                     v = v.pin_memory()
@@ -55,7 +103,7 @@ class Allocator(object):
             info.p = v.data_ptr()
             info.stride = strides
         else:
-            v = np.zeros(sz, dtype=Allocator.numpy_types[type_name])
+            v = np.zeros(sz, dtype=self.converter.c2numpy(type_name))
             v[:] = 1
             # Return pointer, size and byte_size
             info.p = v.ctypes.data
@@ -65,8 +113,7 @@ class Allocator(object):
 
         return name, v
 
-    @staticmethod
-    def spec2batches(ctx, batchsize, spec, default_gpu, use_numpy=False, num_recv=1):
+    def spec2batches(self, ctx, batchsize, spec, default_gpu, use_numpy=False, num_recv=1):
         batch_spec = []
         name2idx = defaultdict(lambda: list())
         idx2name = dict()
@@ -92,7 +139,7 @@ class Allocator(object):
             for _ in range(num_recv):
                 smem = ctx.allocateSharedMem(smem_opts, keys)
                 spec = dict((
-                    Allocator._alloc(
+                    self._alloc(
                         smem[field], this_gpu, use_numpy=use_numpy)
                     for field in keys
                 ))
@@ -333,7 +380,8 @@ class GCWrapper:
         '''
 
         # TODO Make a unified argument server and remove ``params``
-        self.batches, self.name2idx, self.idx2name = Allocator.spec2batches(
+        self.allocator = Allocator()
+        self.batches, self.name2idx, self.idx2name = self.allocator.spec2batches(
             GC, batchsize, spec,
             use_numpy=use_numpy, default_gpu=default_gpu, num_recv=num_recv)
         self.batchdim = batchdim

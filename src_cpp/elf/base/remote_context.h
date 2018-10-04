@@ -98,12 +98,12 @@ class EnvSender : public remote::RemoteSender {
     reply_idx_ = addQueue();
   }
 
-  void sendAndWaitReply(
-      const std::string &label,
-      const std::unordered_map<std::string, PointerInfo> &data, 
-      const std::set<std::string> &input_keys) {
-    // Construct smem on the fly, send it to the remote and wait for reply. 
-    //
+  void setInputKeys(const std::set<std::string> &input_keys) {
+    input_keys_ = input_keys;
+  }
+
+  void setSMem(const std::string &label, 
+               const std::unordered_map<std::string, PointerInfo> &data) {
     SharedMemOptions opts(label, 1);
     opts.setIdx(0);
     opts.setLabelIdx(0);
@@ -119,23 +119,27 @@ class EnvSender : public remote::RemoteSender {
       anyps.insert(make_pair(item.first, anyp));
     }
 
-    SharedMemData smem_data(opts, anyps);
+    smem_data_.reset(new SharedMemData(opts, anyps));
+  }
 
-    // then we send it. 
+  void sendAndWaitReply() {
+    // we send it. 
     json j;
-    SMemToJson(smem_data, input_keys, j);
+    SMemToJson(*smem_data_, input_keys_, j);
 
     sendToClient(j.dump());
     std::string reply;
     getFromClient(reply_idx_, &reply);
     // std::cout << ", got reply_j: "<< std::endl;
-    SMemFromJson(json::parse(reply), smem_data);
+    SMemFromJson(json::parse(reply), *smem_data_);
     // std::cout << ", after parsing smem: "<< std::endl;
     // after that all the tensors should contain the reply. 
   }
 
  private:
   FuncMapFactory factory_;
+  std::set<std::string> input_keys_;
+  std::unique_ptr<SharedMemData> smem_data_;
   int reply_idx_ = -1;
 };
 
