@@ -31,7 +31,7 @@ class Loader(object):
 
         GC = elf.BatchReceiver(opt, net_opt)
         GC.setMode(elf.RECV_ENTRY)
-        batchsize = getattr(self.options, "base.batchsize")
+        batchsize = opt.batchsize
 
         desc = {}
         desc["actor"] = dict(
