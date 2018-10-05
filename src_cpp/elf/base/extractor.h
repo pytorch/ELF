@@ -342,6 +342,8 @@ class AnyP {
   }
 
   void setData(const PointerInfo &info) {
+    // std::cout << "info.type = \"" << info.type << "\", f_: \"" << f_.getTypeName() << "\"" << std::endl;
+    // std::cout << "compare result: " << (info.type == f_.getTypeName()) << std::endl; 
     elf_utils::check(info.type == f_.getTypeName());
     p_ = reinterpret_cast<unsigned char*>(info.p);
     setStride(info.stride);
@@ -410,11 +412,14 @@ class AnyP {
   }
 
   void setStride(const Size& stride) {
-    elf_utils::check(stride.size() == f_.getSize().size());
+    // Only check if f_ has the stride constraint.
+    if (f_.getSize().size() > 0) {
+      elf_utils::check(stride.size() == f_.getSize().size());
 
-    Size default_stride = f_.getSize().getContinuousStrides(f_.getSizeOfType());
-    for (size_t i = 0; i < f_.getSize().size(); ++i) {
-      elf_utils::check(default_stride[i] <= stride[i]);
+      Size default_stride = f_.getSize().getContinuousStrides(f_.getSizeOfType());
+      for (size_t i = 0; i < f_.getSize().size(); ++i) {
+        elf_utils::check(default_stride[i] <= stride[i]);
+      }
     }
 
     stride_ = stride;

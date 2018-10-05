@@ -130,8 +130,10 @@ void from_json(const json& j, AnyP& anyp) {
 inline void SMemToJson(const SharedMemData& smem, const std::set<std::string> &keys, json& j) {
   j["opts"] = smem.getSharedMemOptionsC();
   for (const auto& p : smem.GetMem()) {
-    if (keys.find(p.first) != keys.end())
+    if (keys.find(p.first) != keys.end()) {
+      // std::cout << "Saving " << p.first << ", anyp = " << p.second.info() << std::endl;
       j["mem"][p.first] = p.second;
+    }
   }
   j["batchsize"] = smem.getEffectiveBatchSize();
   // std::cout << "to_json: effective batchsize: " << j["batchsize"] <<

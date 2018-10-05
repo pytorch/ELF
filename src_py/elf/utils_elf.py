@@ -24,18 +24,22 @@ class NameConverter:
             "char": torch.ByteTensor
         }
         self._c2numpy = {
-            "int32_t": 'i4',
-            "uint32_t": 'i4',
-            'int64_t': 'i8',
-            'uint64_t': 'i8',
-            'float': 'f4',
-            'unsigned char': 'byte',
-            'char': 'byte'
+            "int32_t": np.dtype('i4'),
+            "uint32_t": np.dtype('i4'),
+            'int64_t': np.dtype('i8'),
+            'uint64_t': np.dtype('i8'),
+            'float': np.dtype('f4'),
+            'unsigned char': np.dtype('byte'),
+            'char': np.dtype('byte')
         }
 
         self._torch2c = dict()
         for k, v in self._c2torch.items():
             self._torch2c[v.dtype] = k
+
+        self._numpy2c = dict()
+        for k, v in self._c2numpy.items():
+            self._numpy2c[v] = k
 
     def torch2c(self, v):
         return self._torch2c[v.dtype]
@@ -45,6 +49,30 @@ class NameConverter:
 
     def c2numpy(self, s):
         return self._c2numpy[s]
+
+    def numpy2c(self, v):
+        return self._numpy2c[v.dtype]
+
+    def getInfo(self, v, type_name=None):
+        info = elf.PointerInfo()
+        if isinstance(v, torch.Tensor):
+            info.stride = [i * v.element_size() for i in v.stride()]
+            info.p = v.data_ptr()
+            if type_name is None:
+                info.type = self.torch2c(v) 
+            else:
+                info.type = type_name
+        elif isinstance(v, np.ndarray):
+            # Return pointer, size and byte_size
+            info.p = v.ctypes.data
+            info.stride = v.strides
+            if type_name is None:
+                info.type = self.numpy2c(v) 
+            else:
+                info.type = type_name
+        else:
+            raise NotImplementedError
+        return info
 
 
 class EnvWrapper(object):
@@ -57,27 +85,38 @@ class EnvWrapper(object):
     def setEnv(self, env):
         self.env = env
 
-    def run(self, state_size, action_size):
-        mem_s = torch.FloatTensor(1, *state_size)
-        info_s = self._getInfo(mem_s)
-        mem_a = torch.IntTensor(1, *action_size)
-        info_a = self._getInfo(mem_a)
+    def run(self, state_size, action_size, transpose=False):
+        print("State_size: " + str(state_size))
+        print("Action_size: " + str(action_size))
 
-        self.wrapper.setSMem("actor", { "s" : info_s, "a" : info_a })
-        self.wrapper.setInputKeys(set("s"))
+        if transpose:
+            state_size = state_size[::-1]
 
-        while True:
-            mem_s[:] = self.env.observation()
-            self.wrapper.sendAndWaitReply("action")
-            self.env.step(mem_a)
+        mem_s = np.zeros((1, *state_size), dtype=np.float32)
+        info_s = self.converter.getInfo(mem_s)
+        mem_a = np.zeros((1, *action_size), dtype=np.int32)
+        info_a = self.converter.getInfo(mem_a)
 
-    def _getInfo(self, v):
-        assert isinstance(v, torch.Tensor)
+        mem_last_r = np.zeros((1), dtype=np.float32)
+        info_last_r = self.converter.getInfo(mem_last_r)
 
-        info.stride = [i * v.element_size() for i in v.stride()]
-        info.p = v.data_ptr()
-        info.type = converter.torch2c(v) 
-        return info
+        self.wrapper.setSMem("actor", { "s" : info_s, "a" : info_a, "last_r" : info_last_r })
+        self.wrapper.setInputKeys(set(["s", "last_r"]))
+
+        def process(v):
+            if not transpose: 
+                return v
+            
+            axis_order = list(range(len(state_size) - 1, -1, -1))
+            return np.transpose(v, axes=axis_order)
+
+        mem_s[:] = process(self.env.reset())
+        mem_last_r[:] = 0
+        terminal = False
+        while not terminal:
+            self.wrapper.sendAndWaitReply()
+            next_s, mem_last_r[:], terminal, _ = self.env.step(mem_a)
+            mem_s[:] = process(next_s)
 
 
 class Allocator(object):
@@ -109,7 +148,7 @@ class Allocator(object):
             v[:] = 1
             # Return pointer, size and byte_size
             info.p = v.ctypes.data
-            info.stride = strides
+            info.stride = v.strides
 
         p.setData(info)
 

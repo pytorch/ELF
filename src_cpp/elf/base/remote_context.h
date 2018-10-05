@@ -109,12 +109,12 @@ class EnvSender : public remote::RemoteSender {
     opts.setLabelIdx(0);
 
     // We construct a dummy f here.
-    std::vector<std::unique_ptr<FuncMapBase>> fs;
     std::unordered_map<std::string, AnyP> anyps;
 
+    fs_.clear();
     for (const auto &item : data) {
-      fs.emplace_back(factory_.generate(item.second.type, item.first));
-      AnyP anyp(*fs.back());
+      fs_.emplace_back(factory_.generate(item.second.type, item.first));
+      AnyP anyp(*fs_.back());
       anyp.setData(item.second);
       anyps.insert(make_pair(item.first, anyp));
     }
@@ -125,7 +125,10 @@ class EnvSender : public remote::RemoteSender {
   void sendAndWaitReply() {
     // we send it. 
     json j;
+    // std::cout << "saving to json" << std::endl;
     SMemToJson(*smem_data_, input_keys_, j);
+
+    // std::cout << "sendToClient" << std::endl;
 
     sendToClient(j.dump());
     std::string reply;
@@ -139,6 +142,8 @@ class EnvSender : public remote::RemoteSender {
  private:
   FuncMapFactory factory_;
   std::set<std::string> input_keys_;
+
+  std::vector<std::unique_ptr<FuncMapBase>> fs_;
   std::unique_ptr<SharedMemData> smem_data_;
   int reply_idx_ = -1;
 };
