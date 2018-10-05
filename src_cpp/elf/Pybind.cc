@@ -25,6 +25,8 @@
 #include "elf/comm/comm.h"
 #include "elf/logging/Pybind.h"
 #include "elf/options/Pybind.h"
+#include "elf/options/OptionMap.h"
+#include "elf/options/reflection_option.h"
 #include "elf/utils/pybind.h"
 #include "elf/ai/tree_search/Pybind.h"
 
@@ -104,11 +106,12 @@ void register_game(pybind11::module& m) {
 
   using elf::GameContext;
   using elf::Options;
-  using MsgOptions = elf::msg::Options;
+  using NetOptions = elf::msg::Options;
   using elf::BatchReceiver;
   using elf::BatchSender;
   using elf::EnvSender;
   using elf::GCInterface;
+  using Mode = elf::SharedMemRemote::Mode;
 
   auto ref = py::return_value_policy::reference_internal;
 
@@ -122,8 +125,17 @@ void register_game(pybind11::module& m) {
     PB_FIELD(time_signature)
   PB_END
 
-  py::class_<MsgOptions>(m, "MsgOptions")
-    .def(py::init<>());
+  PB_INIT(NetOptions)
+    .def(py::init<>())
+    PB_FIELD(server_id)
+    PB_FIELD(server_addr)
+    PB_FIELD(port)
+  PB_END
+
+  py::enum_<Mode>(m, "Mode")
+      .value("RECV_SMEM", Mode::RECV_SMEM)
+      .value("RECV_ENTRY", Mode::RECV_ENTRY)
+      .export_values();
 
   py::class_<GCInterface>(m, "GCInterface")
       .def("start", &GCInterface::start)
@@ -145,14 +157,15 @@ void register_game(pybind11::module& m) {
       .def(py::init<const Options&>());
 
   py::class_<BatchSender, GameContext>(m, "BatchSender")
-      .def(py::init<const Options&, const MsgOptions&>())
+      .def(py::init<const Options&, const NetOptions&>())
       .def("setRemoteLabels", &BatchSender::setRemoteLabels);
 
   py::class_<BatchReceiver, GCInterface>(m, "BatchReceiver")
-      .def(py::init<const Options&, const MsgOptions&>());
+      .def(py::init<const Options&, const NetOptions&>())
+      .def("setMode", &BatchReceiver::setMode);
 
   py::class_<EnvSender>(m, "EnvSender")
-      .def(py::init<const Options&, const MsgOptions&>())
+      .def(py::init<const Options&, const NetOptions&>())
       .def("sendAndWaitReply", &EnvSender::sendAndWaitReply)
       .def("setInputKeys", &EnvSender::setInputKeys, ref)
       .def("setSMem", &EnvSender::setSMem, ref);

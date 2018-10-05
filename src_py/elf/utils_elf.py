@@ -49,7 +49,9 @@ class NameConverter:
 
 class EnvWrapper(object):
     def __init__(self):
-        self.wrapper = elf.EnvSender()
+        opt = elf.Options()
+        net_opt = elf.NetOptions()
+        self.wrapper = elf.EnvSender(opt, net_opt)
         self.converter = NameConverter()
 
     def setEnv(self, env):
