@@ -415,6 +415,7 @@ class GCWrapper:
             use_numpy=use_numpy, default_gpu=default_gpu, num_recv=num_recv)
         self.params = params
         self.GC = GC
+        self.game_obj = game_obj
         self._cb = {}
 
     def reg_has_callback(self, key):
