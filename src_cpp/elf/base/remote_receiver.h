@@ -7,97 +7,64 @@
 #include "game_context.h"
 #include "game_interface.h"
 
+#include <algorithm>
+#include <iterator>
+
 namespace elf {
 namespace remote {
 
-class ReplyMsgs {
+class _Client {
  public:
-  void setSignature(const std::string& signature) {
-    signature_ = signature;
-  }
-
-  void add(int idx, std::string&& s) {
-    std::lock_guard<std::mutex> locker(reply_mutex_);
-    json j;
-    j["idx"] = idx;
-    j["signature"] = signature_;
-    j["content"] = s;
-    j_.push_back(j);
-  }
-  size_t size() {
-    std::lock_guard<std::mutex> locker(reply_mutex_);
-    return j_.size();
-  }
-
-  std::string dump() {
-    std::lock_guard<std::mutex> locker(reply_mutex_);
-    /*
-    if (j_.size() > 0) {
-      std::cout << "dumping.. #records: " << j_.size() << std::endl;
-    }
-    */
-    std::string ret = j_.dump();
-    j_.clear();
-    return ret;
-  }
-
- private:
-  std::mutex reply_mutex_;
-  std::string signature_;
-  json j_;
-};
-
-using RecvFunc = std::function<void (const std::string &)>;
-
-class BatchReceiverInstance {
- public:
-   BatchReceiverInstance(RecvFunc recv) : recv_(recv) {
-     assert(recv_ != nullptr);
+   _Client(const elf::shared::Options &netOptions)
+      : send_q_(send_q), recv_q_(recv_q) {
+     client_.reset(new msg::Client(netOptions));
    }
 
-   void start(const std::string &signature, const elf::shared::Options &netOptions) {
-    client_.reset(new msg::Client(netOptions));
-    reply_.setSignature(signature);
+   void start(const std::vector<std::string>& labels, MsgQ &send_q, MsgQ &recv_q) { 
+     auto id = identity();
+     send_q_ = &send_q.addQ(id, labels);
+     recv_q_ = &recv_q.addQ(id, labels);
+          
+     auto receiver = [&](const std::string& recv_msg) -> int64_t {
+       // Get data
+       recv_q_->parseAdd(recv_msg);
+       return -1;
+     };
 
-    auto receiver = [&](const std::string& recv_msg) -> int64_t {
-      // Get data
-      recv_(recv_msg);
-      return -1;
-    };
+     auto sender = [&]() {
+       // std::cout << timestr() << ", Dump data" << std::endl;
+       return send_q_->dumpClear();
+     };
 
-    auto sender = [&]() {
-      // std::cout << timestr() << ", Dump data" << std::endl;
-      return reply_.dump();
-    };
-
-    client_->setCallbacks(sender, receiver);
-    client_->start();
+     client_->setCallbacks(sender, receiver);
+     client_->start();
    }
 
-   ReplyMsgs &getReplyMsgs() { return reply_; }
+   std::string identity() const { return client_->identity(); }
 
  private:
    std::unique_ptr<msg::Client> client_;
-   RecvFunc recv_ = nullptr;
-
-   ReplyMsgs reply_;
+   MsgSingle *send_q_ = nullptr;
+   MsgSingle *recv_q_ = nullptr;
 };
 
-class RemoteReceiver : public GCInterface {
+// A lot of msg::Client. 
+// 1.  Try connecting to the server side and build connections.
+class Clients : public Interface {
  public:
-  RemoteReceiver(const Options& options, const msg::Options& net)
-      : GCInterface(options), netOptions_(net) {
-    auto netOptions = msg::getNetOptions(options, net);
-    netOptions.usec_sleep_when_no_msg = 1000000;
-    netOptions.usec_resend_when_no_msg = -1;
-    // netOptions.msec_sleep_when_no_msg = 2000;
-    // netOptions.msec_resend_when_no_msg = 2000;
-    netOptions.verbose = false;
-    
-    ctrl_client_.reset(new msg::Client(netOptions));
-  }
+  Clients(const shared::Options &netOptions, const std::vector<std::string> &labels) 
+      : netOptions_(netOptions), 
+        signature_(std::to_string(std::this_thread::get_id()) + "-" + std::to_string(time(NULL))), 
+        labels_(labels) {
+    std::sort(labels_.begin(), labels_.end());
 
-  void start() override {
+    netOptions_.usec_sleep_when_no_msg = 1000000;
+    netOptions_.usec_resend_when_no_msg = -1;
+    // netOptions_.msec_sleep_when_no_msg = 2000;
+    // netOptions_.msec_resend_when_no_msg = 2000;
+    netOptions_.verbose = false;
+    ctrl_client_.reset(new msg::Client(netOptions_));
+
     auto receiver = [&](const std::string& recv_msg) -> int64_t {
       // Get data
       json j = json::parse(recv_msg);
@@ -105,47 +72,45 @@ class RemoteReceiver : public GCInterface {
 
       assert(j["port"].size() == kPortPerClient);
 
-      auto netOptions = msg::getNetOptions(this->options(), netOptions_);
+      // Compute an intersection of j["labels"] and our labels. 
+      std::vector<std::string> final_labels;
+      std::set_intersection(j["labels"].begin(), j["labels"].end(), labels_.begin(), labels_.end(), 
+          std::back_inserter(final_labels));
+
+      auto netOptions = netOptions_;
       netOptions.usec_sleep_when_no_msg = 1000;
       netOptions.usec_resend_when_no_msg = 10;
       // netOptions.msec_sleep_when_no_msg = 2000;
       // netOptions.msec_resend_when_no_msg = 2000;
-      netOptions.verbose = false;
 
+      j_["labels"] = final_labels;
       for (size_t i = 0; i < kPortPerClient; ++i) {
         netOptions.port = j["port"][i];
-        clients_[i]->start(j["signature"], netOptions);
+        clients_.emplace_back(new _Client(netOptions));
+        clients_.back()->start(final_labels, send_q_, recv_q_);
+        j_["client_identity"].push_back(clients_.back()->identity());
       }
+      j_["port"] = j["port"];
+
       return -1;
     };
 
     auto sender = [&]() {
-      return "";
+      return j_.dump();
     };
 
     ctrl_client_->setCallbacks(sender, receiver);
     ctrl_client_->start();
   }
 
- protected:
-  void initClients(RecvFunc recv_func) {
-    for (size_t i = 0; i < kPortPerClient; ++i) {
-      clients_.emplace_back(new BatchReceiverInstance(recv_func));
-    }
-  }
-
-  size_t getNumClients() const { return clients_.size(); }
-
-  void addReplyMsg(int client_idx, int message_idx, std::string &&msg) {
-    clients_[client_idx]->getReplyMsgs().add(message_idx, std::move(msg));
-  } 
-
  private:
-  std::unique_ptr<msg::Client> ctrl_client_;
-  std::vector<std::unique_ptr<BatchReceiverInstance>> clients_;
-
   const msg::Options netOptions_;
+
+  std::unique_ptr<msg::Client> ctrl_client_;
+  std::vector<std::unique_ptr<_Client>> clients_;
+
+  json j_;
 };
 
-} // namespace remote
-} // namespace elf
+} // remote
+} // elf
