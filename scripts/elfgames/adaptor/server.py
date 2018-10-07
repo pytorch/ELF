@@ -29,7 +29,8 @@ def main():
     model = model_loader.load_model(GC.params)
     env["mi"].add_model("model", model, opt=True)
 
-    GC.reg_callback("train", trainer.train)
+    # GC.reg_callback("train", trainer.train)
+    GC.reg_callback("train", None)
 
     if GC.reg_has_callback("actor"):
         args = env["game"].options
@@ -45,6 +46,8 @@ def main():
         sampler=env["sampler"],
         mi=env["mi"],
         rl_method=env["method"])
+
+    print("About to run")
 
     runner.setup(GC, episode_summary=trainer.episode_summary, \
             episode_start=trainer.episode_start)

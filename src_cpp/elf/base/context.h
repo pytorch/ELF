@@ -299,7 +299,7 @@ class Collectors {
       return std::make_pair<int, int>(collectors_.size(), 0);
     else
       return std::make_pair<int, int>(
-          (int)collectors_.size(), (int)it->second.num_recv);
+          (int)collectors_.size(), (int)it->second.indices_in_collectors.size());
   }
 
   SharedMemData& allocateSharedMem(
@@ -345,9 +345,17 @@ class Collectors {
     return collectors_[idx]->smem();
   }
 
+  SharedMem& pickSMem(const std::string &label, std::mt19937 *rng) {
+    auto it = smem2keys_.find(label);
+    assert(it != smem2keys_.end());
+    const auto &indices = it->second.indices_in_collectors;
+    int idx = (*rng)() % indices.size();
+    return getSMem(indices[idx]);
+  }
+
  private:
   struct _KeyInfo {
-    int num_recv = 0;
+    std::vector<int> indices_in_collectors;
     std::vector<std::string> keys;
   };
 
@@ -358,7 +366,7 @@ class Collectors {
   void addKeys(const std::string& label, const std::vector<std::string>& keys) {
     _KeyInfo& info = smem2keys_[label];
     info.keys = keys;
-    info.num_recv++;
+    info.indices_in_collectors.push_back(collectors_.size());
   }
 };
 

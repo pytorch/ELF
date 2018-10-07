@@ -87,14 +87,6 @@ class EnvSender : public remote::RemoteSender {
  public:
   EnvSender(const Options& options, const msg::Options& net) 
     : remote::RemoteSender(options, net, remote::RAND_ONE) { 
-    // [TODO] For now we need to register different type manually. 
-    factory_.regType<float>();
-    factory_.regType<double>();
-    factory_.regType<int64_t>();
-    factory_.regType<int32_t>();
-    factory_.regType<uint64_t>();
-    factory_.regType<uint32_t>();
-
     reply_idx_ = addQueue();
   }
 
@@ -102,24 +94,17 @@ class EnvSender : public remote::RemoteSender {
     input_keys_ = input_keys;
   }
 
-  void setSMem(const std::string &label, 
-               const std::unordered_map<std::string, PointerInfo> &data) {
-    SharedMemOptions opts(label, 1);
-    opts.setIdx(0);
-    opts.setLabelIdx(0);
+  SharedMemData& allocateSharedMem(
+      const SharedMemOptions& options,
+      const std::vector<std::string>& keys) {
+    assert(smem_data_ == nullptr);
+    SharedMemOptions options2 = options;
+    options2.setIdx(0);
+    options2.setLabelIdx(reply_idx_);
 
-    // We construct a dummy f here.
-    std::unordered_map<std::string, AnyP> anyps;
-
-    fs_.clear();
-    for (const auto &item : data) {
-      fs_.emplace_back(factory_.generate(item.second.type, item.first));
-      AnyP anyp(*fs_.back());
-      anyp.setData(item.second);
-      anyps.insert(make_pair(item.first, anyp));
-    }
-
-    smem_data_.reset(new SharedMemData(opts, anyps));
+    smem_data_.reset(new SharedMemData(options2, extractor_.getAnyP(keys)));
+    smem_data_->setEffectiveBatchSize(1);
+    return *smem_data_;
   }
 
   void sendAndWaitReply() {
@@ -129,21 +114,24 @@ class EnvSender : public remote::RemoteSender {
     SMemToJson(*smem_data_, input_keys_, j);
 
     // std::cout << "sendToClient" << std::endl;
-
     sendToClient(j.dump());
+
     std::string reply;
     getFromClient(reply_idx_, &reply);
+
     // std::cout << ", got reply_j: "<< std::endl;
     SMemFromJson(json::parse(reply), *smem_data_);
     // std::cout << ", after parsing smem: "<< std::endl;
     // after that all the tensors should contain the reply. 
   }
 
- private:
-  FuncMapFactory factory_;
-  std::set<std::string> input_keys_;
+  Extractor &getExtractor() {
+    return extractor_;
+  }
 
-  std::vector<std::unique_ptr<FuncMapBase>> fs_;
+ private:
+  Extractor extractor_;
+  std::set<std::string> input_keys_;
   std::unique_ptr<SharedMemData> smem_data_;
   int reply_idx_ = -1;
 };
@@ -226,6 +214,7 @@ class SharedMemRemote : public SharedMem {
   }
 
   void start() override {
+      // std::cout << "SharedMemRemote start..." << std::endl;
       // We need to have a (or one per sample) remote_smem_ and a local smem_
       // Note that all remote_smem_ shared memory with smem_.
       remote_smem_.clear();
@@ -244,18 +233,19 @@ class SharedMemRemote : public SharedMem {
       }
   }
 
-  void push(const std::string& msg) {
-    q_.push(msg);
+  void push(const json &j) {
+    q_.push(j);
   }
 
   void waitBatchFillMem() override {
-    std::string msg;
+    json j;
+
     do {
-      q_.pop(&msg);
+      q_.pop(&j);
       // std::cout << "smem info: " << smem_.info() << std::endl;
       // std::cout << "remote_smem info: " << remote_smem_[next_remote_smem_].info() << std::endl;
       auto &curr_smem = remote_smem_[next_remote_smem_++];
-      SMemFromJson(json::parse(msg), curr_smem);
+      SMemFromJson(j, curr_smem);
       cum_batchsize_ += curr_smem.getEffectiveBatchSize(); 
     } while (next_remote_smem_ < (int)remote_smem_.size());
 
@@ -275,8 +265,14 @@ class SharedMemRemote : public SharedMem {
       stats_->recordRelease(smem_.getEffectiveBatchSize());
     }
 
+    // std::cout << "Input_keys: ";
+    // for (const auto &key : input_keys_) std::cout << key << ", ";
+    // std::cout << std::endl;
+
     for (const auto &remote : remote_smem_) {
       json j;
+
+      // std::cout << "About to reply: remote_smem info: " << remote.info() << std::endl;
       SMemToJsonExclude(remote, input_keys_, j);
       // Notify that we should send the content in remote back.
       reply_recv_(remote.getSharedMemOptionsC().getLabelIdx(), j.dump());
@@ -291,7 +287,7 @@ class SharedMemRemote : public SharedMem {
   int next_remote_smem_ = 0;
   int cum_batchsize_ = 0;
 
-  remote::Queue<std::string> q_;
+  remote::Queue<json> q_;
   std::set<std::string> input_keys_{"s", "hash"};
   ReplyRecvFunc reply_recv_ = nullptr;
   Stats *stats_ = nullptr;
@@ -307,11 +303,11 @@ class BatchReceiver : public remote::RemoteReceiver {
     collectors_.reset(new Collectors);
 
     auto recv_func = [&](const std::string &msg) {
-      int idx = rng_() % collectors_->size();
-      // std::cout << timestr() << ", Forward data to " << idx << "/" <<
-      //     collectors_->size() << std::endl;
-      dynamic_cast<SharedMemRemote&>(collectors_->getSMem(idx))
-          .push(msg);
+      json j = json::parse(msg);
+
+      // [TODO] not a good design.. we should not know j["opts"]["recv_options"]["label"]
+      dynamic_cast<SharedMemRemote&>(
+          collectors_->pickSMem(j["opts"]["recv_options"]["label"], &rng_)).push(j);
     };
 
     initClients(recv_func);

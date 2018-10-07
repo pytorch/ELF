@@ -33,10 +33,30 @@ class Loader(object):
         GC.setMode(elf.RECV_ENTRY)
         batchsize = opt.batchsize
 
+        print("Batchsize: %d" % batchsize)
+
+        width = 210 // 2
+        height = 160 // 2
+
+        e = GC.getExtractor()
+        
+        e.addField_float("s", batchsize, [batchsize, 3, height, width])
+        e.addField_uint32_t("a", batchsize, [batchsize, 1])
+        e.addField_float("V", batchsize, [batchsize])
+        e.addField_float("pi", batchsize, [batchsize, 4])
+        e.addField_float("last_r", batchsize, [batchsize])
+
+        print(e.info())
+
+        params = {
+           "input_dim" : width * height * 3,
+           "num_action" : 4
+        }
+
         desc = {}
         desc["actor"] = dict(
-            input=["s"],
-            reply=["a", "V"],
+            input=["s", "last_r"],
+            reply=["pi", "a", "V"],
             batchsize=batchsize,
         )
         desc["train"] = dict(
@@ -45,14 +65,17 @@ class Loader(object):
             batchsize=batchsize,
         )
 
+        print("Init GC Wrapper")
+
         return GCWrapper(
             GC,
             None,
             batchsize,
             desc,
-            num_recv=8,
+            num_recv=2,
             default_gpu=(self.options.gpu
                          if (self.options.gpu is not None and self.options.gpu >= 0)
                          else None),
-            use_numpy=False)
+            use_numpy=False, 
+            params=params)
 

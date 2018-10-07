@@ -51,7 +51,7 @@ class RemoteSenderInstance {
     auto replier = [&](const std::string& identity, std::string* reply_msg) {
       (void)identity;
       // Send request
-      // std::cout << timestr() << ", Send request .." << std::endl;
+      // std::cout << "Wait message .." << std::endl;
       return q_.pop(reply_msg, std::chrono::milliseconds(0));
     };
 
@@ -106,21 +106,22 @@ class RemoteSenderInstances {
     RemoteSenderInstance *q = nullptr;
 
     while (server_ids_.empty()) {
-      std::cout << "No server available, wait for 10s" << std::endl;
-      std::this_thread::sleep_for(std::chrono::seconds(10));
+      std::cout << "No server available, wait for 1s" << std::endl;
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
     // std::cout << "get a server to send ... " << std::endl;
     //
+    int idx;
     switch (pattern_) {
       case RAND_ONE:
         {
           std::lock_guard<std::mutex> lock(mutex_);
-          int idx = rng_() % server_ids_.size();
+          idx = rng_() % server_ids_.size();
           q = servers_[server_ids_[idx]].get();
         }
 
-        // std::cout << "sending message ... " << std::endl;
+        // std::cout << "sending message ... idx = " << idx << std::endl;
         assert(q);
         q->push(msg);
         break;
@@ -162,13 +163,14 @@ class ReplyQs {
   }
 
   void push(const std::string &msg) {
-    // std::cout << timestr() << ", Get reply... about to parse" << std::endl;
+    // std::cout << elf_utils::now() << ", Get reply... about to parse" << std::endl;
     json j = json::parse(msg);
+    if (j.size() == 0) return;
 
-    // std::cout << timestr() << "Get reply... #record: " << j.size() <<
-    // std::endl;
+    // std::cout << elf_utils::now() << "Get reply... #record: " << j.size() << std::endl;
     for (const auto& jj : j) {
       if (checkSignature(jj)) {
+        // std::cout << "Send to Q " << jj["idx"] << std::endl;
         reply_qs_[jj["idx"]]->push(jj["content"]);
       }
     }

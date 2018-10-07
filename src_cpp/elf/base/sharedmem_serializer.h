@@ -100,7 +100,11 @@ void to_json(json& j, const AnyP& anyp) {
 void from_json(const json& j, AnyP& anyp) {
   assert(j["name"] == anyp.field().getName());
   assert(j["type_size"] == anyp.field().getSizeOfType());
-  assert(j["size_byte"] == anyp.getByteSize());
+  if (j["size_byte"] != anyp.getByteSize()) {
+    std::cout << "j[\"size_byte\"] = " << j["size_byte"] 
+              << " != anyp.getByteSize(): " << anyp.getByteSize() << std::endl;
+    assert(false);
+  }
 
   std::string content = base64_decode(j["p"]);
   assert(j["size_byte"] == content.size());
@@ -128,6 +132,11 @@ void from_json(const json& j, AnyP& anyp) {
 
 // SharedMem
 inline void SMemToJson(const SharedMemData& smem, const std::set<std::string> &keys, json& j) {
+  if (keys.empty()) {
+    std::cout << "Input keys are empty!" << std::endl;
+    assert(false);
+  }
+
   j["opts"] = smem.getSharedMemOptionsC();
   for (const auto& p : smem.GetMem()) {
     if (keys.find(p.first) != keys.end()) {
@@ -136,6 +145,14 @@ inline void SMemToJson(const SharedMemData& smem, const std::set<std::string> &k
     }
   }
   j["batchsize"] = smem.getEffectiveBatchSize();
+
+  if (j.find("mem") == j.end()) {
+    std::cout << "No mem entry! none of the keys are available! #key: " << keys.size() << ": ";
+    for (const auto &key : keys) std::cout << key << ", ";
+    std::cout << std::endl;
+    assert(false);
+  }
+
   // std::cout << "to_json: effective batchsize: " << j["batchsize"] <<
   // std::endl;
 }
@@ -143,10 +160,19 @@ inline void SMemToJson(const SharedMemData& smem, const std::set<std::string> &k
 inline void SMemToJsonExclude(const SharedMemData& smem, const std::set<std::string> &exclude_keys, json& j) {
   j["opts"] = smem.getSharedMemOptionsC();
   for (const auto& p : smem.GetMem()) {
-    if (exclude_keys.find(p.first) == exclude_keys.end())
+    if (exclude_keys.find(p.first) == exclude_keys.end()) {
+      // std::cout << "Saving " << p.first << ", anyp = " << p.second.info() << std::endl;
       j["mem"][p.first] = p.second;
+    }
   }
   j["batchsize"] = smem.getEffectiveBatchSize();
+
+  if (j.find("mem") == j.end()) {
+    std::cout << "No mem entry! no key is available! #exclude_key: " << exclude_keys.size() << ": ";
+    for (const auto &key : exclude_keys) std::cout << key << ", ";
+    std::cout << std::endl;
+    assert(false);
+  }
   // std::cout << "to_json: effective batchsize: " << j["batchsize"] <<
   // std::endl;
 }

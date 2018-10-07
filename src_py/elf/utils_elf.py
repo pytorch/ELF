@@ -74,57 +74,91 @@ class NameConverter:
             raise NotImplementedError
         return info
 
-
-class EnvWrapper(object):
-    def __init__(self):
-        opt = elf.Options()
-        net_opt = elf.NetOptions()
-        self.wrapper = elf.EnvSender(opt, net_opt)
-        self.converter = NameConverter()
-
-    def setEnv(self, env):
-        self.env = env
-
-    def run(self, state_size, action_size, transpose=False):
-        print("State_size: " + str(state_size))
-        print("Action_size: " + str(action_size))
-
-        if transpose:
-            state_size = state_size[::-1]
-
-        mem_s = np.zeros((1, *state_size), dtype=np.float32)
-        info_s = self.converter.getInfo(mem_s)
-        mem_a = np.zeros((1, *action_size), dtype=np.int32)
-        info_a = self.converter.getInfo(mem_a)
-
-        mem_last_r = np.zeros((1), dtype=np.float32)
-        info_last_r = self.converter.getInfo(mem_last_r)
-
-        self.wrapper.setSMem("actor", { "s" : info_s, "a" : info_a, "last_r" : info_last_r })
-        self.wrapper.setInputKeys(set(["s", "last_r"]))
-
-        def process(v):
-            if not transpose: 
-                return v
-            
-            axis_order = list(range(len(state_size) - 1, -1, -1))
-            return np.transpose(v, axes=axis_order)
-
-        mem_s[:] = process(self.env.reset())
-        mem_last_r[:] = 0
-        terminal = False
-        while not terminal:
-            self.wrapper.sendAndWaitReply()
-            next_s, mem_last_r[:], terminal, _ = self.env.step(mem_a)
-            mem_s[:] = process(next_s)
-
-
 class Allocator(object):
     ''' A wrapper class for batch data'''
-    def __init__(self):
+    def __init__(self, GC, game_obj, batchsize, spec, batchdim=0, histdim=None, 
+            use_numpy=False, default_gpu=None, num_recv=1):
         self.converter = NameConverter()
-        
-    def _alloc(self, p, gpu, use_numpy=True):
+
+        self.GC = GC
+        self.game_obj = game_obj
+        self.batchdim = batchdim
+        self.histdim = histdim
+
+        self.batches = []
+        self.name2idx = defaultdict(lambda: list())
+        self.idx2name = dict()
+
+        for name, v in spec.items():
+            #print("%s: %s" % (name, v))
+            # TODO this might not good since it changes the input.
+            if "input" not in v or v["input"] is None:
+                v["input"] = []
+
+            if "reply" not in v or v["reply"] is None:
+                v["reply"] = []
+
+            this_batchsize = v.get("batchsize", batchsize)
+            this_gpu = v.get("gpu", default_gpu)
+
+            keys = list(set(v["input"] + v["reply"]))
+            #print("SharedMem: \"%s\", keys: %s" % (name, str(keys)))
+
+            smem_opts = elf.SharedMemOptions(name, this_batchsize)
+            smem_opts.setTimeout(v.get("timeout_usec", 0))
+
+            for _ in range(num_recv):
+                smem = GC.allocateSharedMem(smem_opts, keys)
+                spec = dict((
+                    self._alloc(
+                        smem[field], field, this_gpu, use_numpy=use_numpy)
+                    for field in keys
+                ))
+
+                # Split spec.
+                spec_input = {key: spec[key] for key in v["input"]}
+                spec_reply = {key: spec[key] for key in v["reply"]}
+
+                self.batches.append(
+                    dict(input=spec_input, reply=spec_reply, gpu=this_gpu))
+
+                idx = smem.getSharedMemOptions().idx()
+                self.name2idx[name].append(idx)
+                self.idx2name[idx] = name
+
+    def __getitem__(self, key):
+        return [self.batches[idx] for idx in self.name2idx[key]]
+
+    def getInputBatch(self, idx, batchsize):
+        picked = self._makebatch(self.batches[idx]["input"]).first_k(batchsize)
+        gpu = self.batches[idx]["gpu"]
+        if gpu is not None:
+            picked = picked.cpu2gpu(gpu)
+        picked.batchsize = batchsize
+        picked.gpu = gpu
+
+        return picked
+
+    def getReplyBatch(self, idx, batchsize):
+        if self.batches[idx]["reply"] is not None:
+            sel_reply = self._makebatch(
+                self.batches[idx]["reply"]).first_k(batchsize)
+
+            sel_reply.gpu = self.batches[idx]["gpu"]
+        else:
+            sel_reply = None
+        return sel_reply
+
+    def _makebatch(self, key_array):
+        return Batch(
+            _GC=self.GC,
+            _game_obj=self.game_obj,
+            _batchdim=self.batchdim,
+            _histdim=self.histdim,
+            **key_array)
+
+    def _alloc(self, p, py_name, gpu, use_numpy=True):
+        assert p is not None, f"{py_name} is not found!"
         name = p.field().name()
         type_name = p.field().type_name()
         sz = p.field().sz().vec()
@@ -153,51 +187,6 @@ class Allocator(object):
         p.setData(info)
 
         return name, v
-
-    def spec2batches(self, ctx, batchsize, spec, default_gpu, use_numpy=False, num_recv=1):
-        batch_spec = []
-        name2idx = defaultdict(lambda: list())
-        idx2name = dict()
-
-        for name, v in spec.items():
-            #print("%s: %s" % (name, v))
-            # TODO this might not good since it changes the input.
-            if "input" not in v or v["input"] is None:
-                v["input"] = []
-
-            if "reply" not in v or v["reply"] is None:
-                v["reply"] = []
-
-            this_batchsize = v.get("batchsize", batchsize)
-            this_gpu = v.get("gpu", default_gpu)
-
-            keys = list(set(v["input"] + v["reply"]))
-            #print("SharedMem: \"%s\", keys: %s" % (name, str(keys)))
-
-            smem_opts = elf.SharedMemOptions(name, this_batchsize)
-            smem_opts.setTimeout(v.get("timeout_usec", 0))
-
-            for _ in range(num_recv):
-                smem = ctx.allocateSharedMem(smem_opts, keys)
-                spec = dict((
-                    self._alloc(
-                        smem[field], this_gpu, use_numpy=use_numpy)
-                    for field in keys
-                ))
-
-                # Split spec.
-                spec_input = {key: spec[key] for key in v["input"]}
-                spec_reply = {key: spec[key] for key in v["reply"]}
-
-                batch_spec.append(
-                    dict(input=spec_input, reply=spec_reply, gpu=this_gpu))
-
-                idx = smem.getSharedMemOptions().idx()
-                name2idx[name].append(idx)
-                idx2name[idx] = name
-
-        return batch_spec, name2idx, idx2name
-
 
 def tensor_slice(t, dim, b, e=None):
     if e is None:
@@ -421,19 +410,15 @@ class GCWrapper:
         '''
 
         # TODO Make a unified argument server and remove ``params``
-        self.allocator = Allocator()
-        self.batches, self.name2idx, self.idx2name = self.allocator.spec2batches(
-            GC, batchsize, spec,
+        self.allocator = Allocator(GC, game_obj, batchsize, spec,
+            batchdim=batchdim, histdim=histdim,
             use_numpy=use_numpy, default_gpu=default_gpu, num_recv=num_recv)
-        self.batchdim = batchdim
-        self.histdim = histdim
         self.params = params
         self.GC = GC
-        self.game_obj = game_obj
         self._cb = {}
 
     def reg_has_callback(self, key):
-        return key in self.name2idx
+        return key in self.allocator.name2idx
 
     def reg_callback_if_exists(self, key, cb):
         if self.reg_has_callback(key):
@@ -453,28 +438,20 @@ class GCWrapper:
               The callback function has the signature
               ``cb(input_batch, input_batch_gpu, reply_batch)``.
         '''
-        if key not in self.name2idx:
+        if key not in self.allocator.name2idx:
             raise ValueError("Callback[%s] is not in the specification" % key)
         if cb is None:
             print("Warning: Callback[%s] is registered to None" % key)
 
-        for idx in self.name2idx[key]:
+        for idx in self.allocator.name2idx[key]:
             # print("Register " + str(cb) + " at idx: %d" % idx)
             self._cb[idx] = cb
         return True
 
-    def _makebatch(self, key_array):
-        return Batch(
-            _GC=self.GC,
-            _game_obj=self.game_obj,
-            _batchdim=self.batchdim,
-            _histdim=self.histdim,
-            **key_array)
-
     def _call(self, smem, *args, **kwargs):
         idx = smem.getSharedMemOptions().idx()
-        # print("smem idx: %d, label: %s" % (idx, self.idx2name[idx]))
-        # print(self.name2idx)
+        # print("smem idx: %d, label: %s" % (idx, self.allocator.idx2name[idx]))
+        # print(self.allocator.name2idx)
         if idx not in self._cb:
             raise ValueError("smem.idx[%d] is not in callback functions" % idx)
 
@@ -484,30 +461,21 @@ class GCWrapper:
         batchsize = smem.effective_batchsize()
         assert batchsize > 0
 
-        picked = self._makebatch(self.batches[idx]["input"]).first_k(batchsize)
-        gpu = self.batches[idx]["gpu"]
-        if gpu is not None:
-            picked = picked.cpu2gpu(gpu)
+        picked = self.allocator.getInputBatch(idx, batchsize)
 
         # Save the infos structure, if people want to have access to state
         # directly, they can use infos.s[i], which is a state pointer.
         picked.smem = smem
-        picked.batchsize = batchsize
         picked.max_batchsize = smem.getSharedMemOptions().batchsize()
-        picked.gpu = gpu
 
         # Get the reply array
-        if self.batches[idx]["reply"] is not None:
-            sel_reply = self._makebatch(
-                self.batches[idx]["reply"]).first_k(batchsize)
-        else:
-            sel_reply = None
+        sel_reply = self.allocator.getReplyBatch(idx, batchsize)
 
         reply = self._cb[idx](picked, *args, **kwargs)
         # If reply is meaningful, send them back.
         if isinstance(reply, dict) and sel_reply is not None:
-            if gpu is not None:
-                with torch.cuda.device(gpu):
+            if sel_reply.gpu is not None:
+                with torch.cuda.device(sel_reply.gpu):
                     keys_extra, keys_missing = sel_reply.copy_from(reply)
             else:
                 keys_extra, keys_missing = sel_reply.copy_from(reply)
@@ -523,7 +491,7 @@ class GCWrapper:
 
     def _check_callbacks(self):
         # Check whether all callbacks are assigned properly.
-        for key, indices in self.name2idx.items():
+        for key, indices in self.allocator.name2idx.items():
             for idx in indices:
                 if idx not in self._cb:
                     raise ValueError(
@@ -569,3 +537,56 @@ class GCWrapper:
             self.stop()
             sys.exit(0)
         signal.signal(signal.SIGINT, signal_handler)
+
+
+class EnvWrapper(object):
+    def __init__(self):
+        opt = elf.Options()
+        net_opt = elf.NetOptions()
+        net_opt.port = 5566
+
+        self.wrapper = elf.EnvSender(opt, net_opt)
+        self.converter = NameConverter()
+
+    def setEnv(self, env):
+        self.env = env
+
+    def run(self):
+        state_size = self.env.getStateSize()
+        action_size = self.env.getActionSize()
+        num_action = self.env.getNumAction()
+
+        print("State_size: " + str(state_size))
+        print("Action_size: " + str(action_size))
+
+        batchsize = 1
+
+        e = self.wrapper.getExtractor()
+        e.addField_float("s", batchsize, [batchsize] + list(state_size))
+        e.addField_uint32_t("a", batchsize, [batchsize] + list(action_size))
+        e.addField_float("pi", batchsize, [batchsize, num_action])
+        e.addField_float("last_r", batchsize, [batchsize, 1])
+        e.addField_float("V", batchsize, [batchsize, 1])
+        
+        print(e.info())
+
+        desc = dict()
+        desc["actor"] = dict(input=["s", "last_r"], reply=["pi", "a", "V"])
+
+        self.allocator = Allocator(self.wrapper, None, batchsize, desc,
+            use_numpy=True, default_gpu=None, num_recv=1)
+        self.wrapper.setInputKeys(set(desc["actor"]["input"]))
+
+        mem_s = self.allocator["actor"][0]["input"]["s"]
+        mem_last_r = self.allocator["actor"][0]["input"]["last_r"]
+        mem_a = self.allocator["actor"][0]["reply"]["a"]
+
+        mem_s[:] = self.env.reset()
+        mem_last_r[:] = 0
+        terminal = False
+        while not terminal:
+            self.wrapper.sendAndWaitReply()
+            print(mem_a)
+            next_s, mem_last_r[:], terminal, _ = self.env.step(mem_a)
+            mem_s[:] = next_s
+

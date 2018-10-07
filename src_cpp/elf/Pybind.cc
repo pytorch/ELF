@@ -44,6 +44,13 @@ inline std::string version() {
 #undef TOSTRING
 }
 
+struct ExtractorWrapper {
+  ExtractorWrapper(elf::Extractor &ee) : e(&ee) {}
+  std::string info() const { return e->info(); }
+
+  elf::Extractor *e = nullptr;
+};
+
 void register_common_func(pybind11::module& m) {
   namespace py = pybind11;
 
@@ -53,6 +60,7 @@ void register_common_func(pybind11::module& m) {
   using elf::FuncMapBase;
   using elf::SharedMemData;
   using elf::SharedMemOptions;
+  using elf::Extractor;
   using elf::Size;
   using elf::Waiter;
 
@@ -97,6 +105,20 @@ void register_common_func(pybind11::module& m) {
       .def("sz", &FuncMapBase::getSize, ref)
       .def("type_name", &FuncMapBase::getTypeName)
       .def("type_size", &FuncMapBase::getSizeOfType);
+
+#define EXTRACTOR_ADD(type_name) \
+      .def("addField_" #type_name, [](ExtractorWrapper &e, const std::string &key, int batchsize, const std::vector<int>& sz) { e.e->addField<type_name>(key).addExtents(batchsize, elf::Size(sz)); })
+
+  py::class_<ExtractorWrapper>(m, "Extractor")
+      .def("info", &ExtractorWrapper::info)
+      EXTRACTOR_ADD(float)
+      EXTRACTOR_ADD(int32_t)
+      EXTRACTOR_ADD(uint32_t)
+      EXTRACTOR_ADD(int64_t)
+      EXTRACTOR_ADD(uint64_t)
+      ;
+
+#undef EXTRACTOR_ADD
 
   m.def("version", &version);
 }
@@ -151,7 +173,9 @@ void register_game(pybind11::module& m) {
           &GCInterface::step,
           py::arg("success") = comm::SUCCESS,
           py::call_guard<py::gil_scoped_release>())
-      .def("allocateSharedMem", &GCInterface::allocateSharedMem, ref);
+      .def("allocateSharedMem", &GCInterface::allocateSharedMem, ref)
+      .def("getExtractor", [](GCInterface &gc) { return ExtractorWrapper(gc.getExtractor()); })
+      ;
 
   py::class_<GameContext, GCInterface>(m, "GameContext")
       .def(py::init<const Options&>());
@@ -168,7 +192,10 @@ void register_game(pybind11::module& m) {
       .def(py::init<const Options&, const NetOptions&>())
       .def("sendAndWaitReply", &EnvSender::sendAndWaitReply)
       .def("setInputKeys", &EnvSender::setInputKeys, ref)
-      .def("setSMem", &EnvSender::setSMem, ref);
+      .def("allocateSharedMem", &EnvSender::allocateSharedMem, ref)
+      .def("getExtractor", [](EnvSender &e) { return ExtractorWrapper(e.getExtractor()); })
+      ;
+
 }
 
 } // namespace

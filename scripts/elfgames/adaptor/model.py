@@ -33,18 +33,23 @@ class MyModel(Model):
         input_dim = params["input_dim"]
         num_action = params["num_action"]
 
-        self.trunk = nn.Linear(input_dim, input_dim)
-        self.pi_linear = nn.Linear(input_dim, num_action)
-        self.value_linear = nn.Linear(input_dim, 1)
+        latent_dim = 200
+
+        self.trunk = nn.Linear(input_dim, latent_dim)
+        self.pi_linear = nn.Linear(latent_dim, num_action)
+        self.value_linear = nn.Linear(latent_dim, 1)
 
         # Softmax as the final layer
         self.logsoftmax = nn.LogSoftmax(dim=1)
         self.tanh = nn.Tanh()
 
+        self.input_dim = input_dim
+        self.latent_dim = latent_dim
+
     def forward(self, x):
         s = self._var(x["s"])
 
-        s = self.trunk(s)
+        s = self.trunk(s.view(-1, self.input_dim))
         s = self.relu(s)
         
         pi = self.pi_linear(s)

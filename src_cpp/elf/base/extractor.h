@@ -233,26 +233,6 @@ class FuncMapT : public FuncMapBase {
   }
 };
 
-class FuncMapFactory {
- public:
-  template <typename T>
-  void regType() {
-    gen_[TypeNameT<T>::name()] = [](const std::string &name) {
-      return std::unique_ptr<FuncMapBase>(new FuncMapT<T>(name));
-    };
-  }
-
-  std::unique_ptr<FuncMapBase> generate(const std::string &type_name, const std::string &field_name) {
-    auto it = gen_.find(type_name);
-    assert(it != gen_.end());
-    return it->second(field_name);
-  }
-
- private:
-  using GenFunc = std::function<std::unique_ptr<FuncMapBase> (const std::string &)>;
-  std::unordered_map<std::string, GenFunc> gen_;
-};
-
 template <typename T>
 struct FieldsT {
  public:
@@ -412,14 +392,11 @@ class AnyP {
   }
 
   void setStride(const Size& stride) {
-    // Only check if f_ has the stride constraint.
-    if (f_.getSize().size() > 0) {
-      elf_utils::check(stride.size() == f_.getSize().size());
+    elf_utils::check(stride.size() == f_.getSize().size());
 
-      Size default_stride = f_.getSize().getContinuousStrides(f_.getSizeOfType());
-      for (size_t i = 0; i < f_.getSize().size(); ++i) {
-        elf_utils::check(default_stride[i] <= stride[i]);
-      }
+    Size default_stride = f_.getSize().getContinuousStrides(f_.getSizeOfType());
+    for (size_t i = 0; i < f_.getSize().size(); ++i) {
+      elf_utils::check(default_stride[i] <= stride[i]);
     }
 
     stride_ = stride;
