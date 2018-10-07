@@ -181,15 +181,15 @@ void register_game(pybind11::module& m) {
       .def(py::init<const Options&>());
 
   py::class_<BatchSender, GameContext>(m, "BatchSender")
-      .def(py::init<const Options&, const NetOptions&>())
+      //.def(py::init<const Options&, const NetOptions&>())
       .def("setRemoteLabels", &BatchSender::setRemoteLabels);
 
   py::class_<BatchReceiver, GCInterface>(m, "BatchReceiver")
-      .def(py::init<const Options&, const NetOptions&>())
+      //.def(py::init<const Options&, const NetOptions&>())
       .def("setMode", &BatchReceiver::setMode);
 
   py::class_<EnvSender>(m, "EnvSender")
-      .def(py::init<const Options&, const NetOptions&>())
+      //.def(py::init<const Options&, const NetOptions&>())
       .def("sendAndWaitReply", &EnvSender::sendAndWaitReply)
       .def("setInputKeys", &EnvSender::setInputKeys, ref)
       .def("allocateSharedMem", &EnvSender::allocateSharedMem, ref)

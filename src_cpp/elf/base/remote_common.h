@@ -63,7 +63,7 @@ class MsgSingle {
     for (const auto &p : msg_q_) {
       const auto &label = p.first;
       std::string msg;
-      while (p.second->pop(&msg, 0)) {
+      while (p.second->pop(&msg, std::chrono::milliseconds(0))) {
         j[label].push_back(msg);
       }
     }
@@ -77,8 +77,7 @@ class MsgSingle {
 
 class MsgQ {
  public:
-  MsgQ(const std::vector<std::string>& labels) 
-    : rng_(time(NULL)) {}
+  MsgQ() : rng_(time(NULL)) {}
 
   MsgSingle &addQ(const std::string &identity, const std::vector<std::string> &labels) {
     std::lock_guard<std::mutex> locker(mutex_);
@@ -89,8 +88,8 @@ class MsgQ {
       label2identities_[label].push_back(identity);
     }
 
-    info.first->reset(new MsgSingle(labels));
-    return *info.first;
+    info.first->second.reset(new MsgSingle(labels));
+    return *info.first->second;
   }
 
   MsgSingle &operator[](const std::string &identity) {
@@ -100,13 +99,13 @@ class MsgQ {
     return *it->second;
   }
 
-  std::string sample(const std::string &label) const {
+  std::string sample(const std::string &label) {
     std::string id;
-    auto f = [&id](const std::vector<std::string> &identities) {
+    auto f = [this, &id](const std::vector<std::string> &identities) {
         int idx = rng_() % identities.size();
         id = identities[idx];
         return true;
-    }
+    };
 
     _call_when_label_available(label, f);
     return id;
@@ -121,14 +120,14 @@ class MsgQ {
 
       for (int idx : indices) {
         const auto &idd = identities[idx];
-        if (msg_qs_[idd].retrieve(label, msg, 0)) {
+        if (msg_qs_[idd]->retrieve(label, msg, std::chrono::milliseconds(0))) {
           id = idd;
           return true;
         } 
       }
       std::this_thread::sleep_for(std::chrono::microseconds(10));
       return false;
-    }
+    };
 
     _call_when_label_available(label, f);
     return id;
@@ -136,22 +135,24 @@ class MsgQ {
 
  private:
   mutable std::mutex mutex_;
-  std::mt19937 rng_;
+  mutable std::mt19937 rng_;
 
   std::unordered_map<std::string, std::vector<std::string>> label2identities_;
   std::unordered_map<std::string, std::unique_ptr<MsgSingle>> msg_qs_;
 
   void _call_when_label_available(const std::string &label, std::function<bool (const std::vector<std::string> &)> f) {
     while (true) {
-      std::lock_guard<std::mutex> locker(mutex_);
-      auto it = label2identities_.find(label);
-      if (it == label2identities_.end() || it->second.empty()) {
-        locker.release();
+      std::vector<std::string> identities;
+      {
+        std::lock_guard<std::mutex> locker(mutex_);
+        auto it = label2identities_.find(label);
+        if (it != label2identities_.end()) identities = it->second;
+      }
+
+      if (identities.empty()) {
         std::cout << "No identities with label = " << label << " yet, waiting ..." << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(1));
       } else {
-        auto identities = it->second;
-        locker.release();
         if (f(identities)) break;
       }
     }
@@ -175,7 +176,7 @@ class Interface {
   }
 
   // Get message from a given identity. Block if no message. 
-  void recv(const std::string &label, std::string *msg, const std:string& identity) {
+  void recv(const std::string &label, std::string *msg, const std::string& identity) {
     recv_q_[identity].retrieve(label, msg);
   }
 

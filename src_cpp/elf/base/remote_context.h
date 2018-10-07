@@ -66,7 +66,7 @@ class BatchSender : public GameContext {
         remote_comm_.sendToEligible(label, j.dump(), &identity);
 
         std::string reply;
-        remote_comm_.get(label, &reply, identity);
+        remote_comm_.recv(label, &reply, identity);
         // std::cout << ", got reply_j: "<< std::endl;
         SMemFromJson(json::parse(reply), *smem_data);
         // std::cout << ", after parsing smem: "<< std::endl;
@@ -86,7 +86,7 @@ private:
 // Directly send data to remote. 
 class EnvSender {
  public:
-  EnvSender(const Options& options, remote::Interface &remote_comm) 
+  EnvSender(remote::Interface &remote_comm) 
     : remote_comm_(remote_comm) { 
   }
 
@@ -114,12 +114,12 @@ class EnvSender {
     SMemToJson(*smem_data_, input_keys_, j);
 
     // std::cout << "sendToClient" << std::endl;
-    const std::string &label = smem_data->getSharedMemOptions().getLabel(); 
+    const std::string &label = smem_data_->getSharedMemOptions().getLabel(); 
     std::string identity;
     remote_comm_.sendToEligible(label, j.dump(), &identity);
 
     std::string reply;
-    remote_comm_.get(label, &reply, identity);
+    remote_comm_.recv(label, &reply, identity);
 
     // std::cout << ", got reply_j: "<< std::endl;
     SMemFromJson(json::parse(reply), *smem_data_);
@@ -244,7 +244,7 @@ class SharedMemRemote : public SharedMem {
     const auto& opt = smem_.getSharedMemOptions();
     do {
       std::string identity, msg;
-      remote_comm_.getFromEligible(opt.getLabel(), &msg, &identity);
+      remote_comm_.recvFromEligible(opt.getLabel(), &msg, &identity);
 
       // std::cout << "smem info: " << smem_.info() << std::endl;
       // std::cout << "remote_smem info: " << remote_smem_[next_remote_smem_].info() << std::endl;

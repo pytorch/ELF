@@ -15,8 +15,7 @@ namespace remote {
 
 class _Client {
  public:
-   _Client(const elf::shared::Options &netOptions)
-      : send_q_(send_q), recv_q_(recv_q) {
+   _Client(const elf::shared::Options &netOptions) {
      client_.reset(new msg::Client(netOptions));
    }
 
@@ -53,9 +52,7 @@ class _Client {
 class Clients : public Interface {
  public:
   Clients(const shared::Options &netOptions, const std::vector<std::string> &labels) 
-      : netOptions_(netOptions), 
-        signature_(std::to_string(std::this_thread::get_id()) + "-" + std::to_string(time(NULL))), 
-        labels_(labels) {
+      : netOptions_(netOptions), labels_(labels) {
     std::sort(labels_.begin(), labels_.end());
 
     netOptions_.usec_sleep_when_no_msg = 1000000;
@@ -73,9 +70,14 @@ class Clients : public Interface {
       assert(j["port"].size() == kPortPerClient);
 
       // Compute an intersection of j["labels"] and our labels. 
+      std::unordered_map<std::string, int> tmp_counts;
+      for (const auto &label : j["labels"]) tmp_counts[label] ++;
+      for (const auto &label : labels_) tmp_counts[label] ++;
+
       std::vector<std::string> final_labels;
-      std::set_intersection(j["labels"].begin(), j["labels"].end(), labels_.begin(), labels_.end(), 
-          std::back_inserter(final_labels));
+      for (const auto &p : tmp_counts) 
+        if (p.second == 2) 
+          final_labels.push_back(p.first);
 
       auto netOptions = netOptions_;
       netOptions.usec_sleep_when_no_msg = 1000;
@@ -104,7 +106,8 @@ class Clients : public Interface {
   }
 
  private:
-  const msg::Options netOptions_;
+  shared::Options netOptions_;
+  std::vector<std::string> labels_;
 
   std::unique_ptr<msg::Client> ctrl_client_;
   std::vector<std::unique_ptr<_Client>> clients_;

@@ -58,9 +58,7 @@ class _Server {
 class Servers : public Interface {
  public:
   Servers(const elf::shared::Options &netOptions, const std::vector<std::string> &labels) 
-    : netOptions_(netOptions), 
-      signature_(std::to_string(std::this_thread::get_id()) + "-" + std::to_string(time(NULL))), 
-      labels_(labels) {
+    : netOptions_(netOptions), labels_(labels) {
     std::sort(labels_.begin(), labels_.end());
 
     netOptions_.usec_sleep_when_no_msg = 10;
@@ -80,7 +78,6 @@ class Servers : public Interface {
 
       json info;
       info["valid"] = true;
-      info["server_identity"] = signature_;
       info["labels"] = labels_;
       for (int i = 0; i < kPortPerClient; ++i) {
         info["port"].push_back(netOptions_.port + i); 
@@ -116,11 +113,12 @@ class Servers : public Interface {
   }
 
  private:
-  const elf::shared::Options netOptions_;
-  const std::string signature_;
+  shared::Options netOptions_;
 
   std::unique_ptr<msg::Server> ctrl_server_;
   std::vector<std::unique_ptr<_Server>> servers_;
+
+  std::vector<std::string> labels_;
 
   std::set<std::string> ctrl_identities_;
 };
