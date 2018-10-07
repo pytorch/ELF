@@ -587,7 +587,7 @@ class EnvWrapper(object):
         terminal = False
         while not terminal:
             self.wrapper.sendAndWaitReply()
-            print(mem_a)
+            # print(mem_a)
             next_s, mem_last_r[:], terminal, _ = self.env.step(mem_a)
             mem_s[:] = next_s
 

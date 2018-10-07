@@ -288,12 +288,19 @@ class AnyP {
  public:
   AnyP(const FuncMapBase& f) : f_(f) {}
 
-  AnyP(const AnyP& anyp) : f_(anyp.f_), stride_(anyp.stride_), p_(anyp.p_) {}
+  AnyP(const AnyP& anyp) 
+    : f_(anyp.f_), stride_(anyp.stride_), p_(anyp.p_), is_sliced_(anyp.is_sliced_) {}
 
   int LinearIdx(std::initializer_list<int> l) const {
     int res = 0;
     int i = 0;
+
     for (int idx : l) {
+      if (is_sliced_ && i == 0 && (idx < 0 || idx >= 1)) {
+        std::cout << "AnyP is sliced and the first index is out of bound!" << std::endl;
+        elf_utils::check(false);
+      }
+
       if (i >= (int)f_.getSize().size()) {
         std::cout << "i >= #dim: " << i << ">= " 
           << f_.getSize().size() << std::endl;
@@ -318,7 +325,8 @@ class AnyP {
 
   size_t getByteSize() const {
     elf_utils::check(!stride_.vec().empty());
-    return stride_[0] * f_.getBatchSize();
+    if (is_sliced_) return stride_[0];
+    else return stride_[0] * f_.getBatchSize();
   }
 
   void setData(const PointerInfo &info) {
@@ -358,16 +366,18 @@ class AnyP {
   }
 
   AnyP getSlice(int l) const {
+    assert(! is_sliced_);
     AnyP anyp(f_);
     anyp.p_ = p_ + LinearIdx({l});
     anyp.stride_ = stride_;
+    anyp.is_sliced_ = true;
     return anyp;
   }
 
   std::string info() const {
     std::stringstream ss;
     ss << "Ptr: 0x" << std::hex << (void*)p_ 
-       << std::dec << ", Field: " << f_.info();
+       << std::dec << ", sliced: " << is_sliced_ << ", Field: " << f_.info();
     return ss.str();
   }
 
@@ -385,6 +395,7 @@ class AnyP {
   const FuncMapBase& f_;
   Size stride_;
   unsigned char* p_ = nullptr;
+  bool is_sliced_ = false;
 
   template <typename T>
   bool check() const {

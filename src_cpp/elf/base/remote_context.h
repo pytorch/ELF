@@ -228,6 +228,7 @@ class SharedMemRemote : public SharedMem {
           // std::cout << "RECV_ENTRY" << std::endl;
           for (int i = 0; i < smem_.getSharedMemOptions().getBatchSize(); ++i) {
             remote_smem_.emplace_back(smem_.copySlice(i));
+            std::cout << "smem info: " << remote_smem_.back().info() << std::endl;
           }
           break;
       }
