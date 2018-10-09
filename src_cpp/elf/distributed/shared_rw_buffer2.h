@@ -61,7 +61,7 @@ class Writer {
  public:
   // Constructor.
   Writer(const Options& opt) : rng_(time(NULL)), options_(opt) {
-    identity_ = options_.identity + "-" + get_id(rng_);
+    identity_ = options_.identity + "-" + std::to_string(options_.port) + "-" + get_id(rng_);
     sender_.reset(new elf::distri::ZMQSender(
         identity_, options_.addr, options_.port, options_.use_ipv6));
   }

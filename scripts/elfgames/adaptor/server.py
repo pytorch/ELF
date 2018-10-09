@@ -30,7 +30,7 @@ def main():
     env["mi"].add_model("model", model, opt=True)
 
     # GC.reg_callback("train", trainer.train)
-    GC.reg_callback("train", None)
+    # GC.reg_callback("train", None)
 
     if GC.reg_has_callback("actor"):
         args = env["game"].options

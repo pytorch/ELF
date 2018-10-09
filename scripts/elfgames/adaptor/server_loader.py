@@ -29,7 +29,8 @@ class Loader(object):
         opt.loadFromArgs("", self.option_map.getOptionSpec())
         net_opt.loadFromArgs("", self.option_map.getOptionSpec())
 
-        GC = elf.BatchReceiver(opt, net_opt)
+        self.rs = elf.RemoteServers(elf.getNetOptions(opt, net_opt), ["actor", "train"])
+        GC = elf.BatchReceiver(opt, self.rs)
         GC.setMode(elf.RECV_ENTRY)
         batchsize = opt.batchsize
 
@@ -59,11 +60,13 @@ class Loader(object):
             reply=["pi", "a", "V"],
             batchsize=batchsize,
         )
+        '''
         desc["train"] = dict(
             input=["s"],
             reply=[],
             batchsize=batchsize,
         )
+        '''
 
         print("Init GC Wrapper")
 
@@ -72,7 +75,7 @@ class Loader(object):
             None,
             batchsize,
             desc,
-            num_recv=2,
+            num_recv=1,
             default_gpu=(self.options.gpu
                          if (self.options.gpu is not None and self.options.gpu >= 0)
                          else None),

@@ -82,7 +82,10 @@ class MsgQ {
   MsgSingle &addQ(const std::string &identity, const std::vector<std::string> &labels) {
     std::lock_guard<std::mutex> locker(mutex_);
     auto info = msg_qs_.insert(make_pair(identity, nullptr));
-    assert(! info.second);
+    if (! info.second) {
+      std::cout << "addQ: identity " << identity << " has already been added!" << std::endl;
+      assert(false);
+    }
 
     for (const auto &label : labels) {
       label2identities_[label].push_back(identity);

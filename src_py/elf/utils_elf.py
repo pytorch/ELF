@@ -545,8 +545,9 @@ class EnvWrapper(object):
         opt = elf.Options()
         net_opt = elf.NetOptions()
         net_opt.port = 5566
+        self.rc = elf.RemoteClients(elf.getNetOptions(opt, net_opt), ["actor"])
 
-        self.wrapper = elf.EnvSender(opt, net_opt)
+        self.wrapper = elf.EnvSender(self.rc)
         self.converter = NameConverter()
 
     def setEnv(self, env):

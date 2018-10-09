@@ -126,18 +126,21 @@ void register_common_func(pybind11::module& m) {
 void register_remote(pybind11::module &m) {
   namespace py = pybind11;
 
-  using elf::shared::Options;
   using elf::remote::Interface;
   using elf::remote::Servers;
   using elf::remote::Clients;
 
+  py::class_<elf::shared::Options>(m, "RemoteOptions");
+
+  m.def("getNetOptions", &elf::msg::getNetOptions);
+
   py::class_<Interface>(m, "RemoteInterface");
 
   py::class_<Servers, Interface>(m, "RemoteServers")
-    .def(py::init<const Options &, const std::vector<std::string> &>());
+    .def(py::init<const elf::shared::Options &, const std::vector<std::string> &>());
 
   py::class_<Clients, Interface>(m, "RemoteClients")
-    .def(py::init<const Options &, const std::vector<std::string> &>());
+    .def(py::init<const elf::shared::Options &, const std::vector<std::string> &>());
 }
 
 void register_game(pybind11::module& m) {
