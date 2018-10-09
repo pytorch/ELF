@@ -123,6 +123,23 @@ void register_common_func(pybind11::module& m) {
   m.def("version", &version);
 }
 
+void register_remote(pybind11::module &m) {
+  namespace py = pybind11;
+
+  using elf::shared::Options;
+  using elf::remote::Interface;
+  using elf::remote::Servers;
+  using elf::remote::Clients;
+
+  py::class_<Interface>(m, "RemoteInterface");
+
+  py::class_<Servers, Interface>(m, "RemoteServers")
+    .def(py::init<const Options &, const std::vector<std::string> &>());
+
+  py::class_<Clients, Interface>(m, "RemoteClients")
+    .def(py::init<const Options &, const std::vector<std::string> &>());
+}
+
 void register_game(pybind11::module& m) {
   namespace py = pybind11;
 
@@ -181,15 +198,15 @@ void register_game(pybind11::module& m) {
       .def(py::init<const Options&>());
 
   py::class_<BatchSender, GameContext>(m, "BatchSender")
-      //.def(py::init<const Options&, const NetOptions&>())
+      .def(py::init<const Options&, elf::remote::Interface &>())
       .def("setRemoteLabels", &BatchSender::setRemoteLabels);
 
   py::class_<BatchReceiver, GCInterface>(m, "BatchReceiver")
-      //.def(py::init<const Options&, const NetOptions&>())
+      .def(py::init<const Options&, elf::remote::Interface &>())
       .def("setMode", &BatchReceiver::setMode);
 
   py::class_<EnvSender>(m, "EnvSender")
-      //.def(py::init<const Options&, const NetOptions&>())
+      .def(py::init<elf::remote::Interface &>())
       .def("sendAndWaitReply", &EnvSender::sendAndWaitReply)
       .def("setInputKeys", &EnvSender::setInputKeys, ref)
       .def("allocateSharedMem", &EnvSender::allocateSharedMem, ref)
@@ -215,6 +232,7 @@ void registerPy(pybind11::module& m) {
   elf::ai::tree_search::registerPy(m_mcts);
 
   register_game(m);
+  register_remote(m);
 }
 
 } // namespace elf
