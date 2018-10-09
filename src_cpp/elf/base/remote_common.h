@@ -8,7 +8,7 @@ namespace remote {
 static constexpr int kPortPerClient = 2;
 
 template <typename T>
-using Queue = elf::concurrency::ConcurrentQueueMoodyCamel<T>;
+using Queue = elf::concurrency::ConcurrentQueueMoodyCamelNoCheck<T>;
 
 inline std::string timestr() {
   return std::to_string(elf_utils::msec_since_epoch_from_now());
@@ -153,7 +153,7 @@ class MsgQ {
       }
 
       if (identities.empty()) {
-        std::cout << "No identities with label = " << label << " yet, waiting ..." << std::endl;
+        // std::cout << "No identities with label = " << label << " yet, waiting ..." << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(1));
       } else {
         if (f(identities)) break;

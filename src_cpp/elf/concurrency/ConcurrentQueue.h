@@ -111,6 +111,29 @@ class ConcurrentQueueMoodyCamel {
 };
 
 template <typename T>
+class ConcurrentQueueMoodyCamelNoCheck {
+ public:
+  using value_type = T;
+
+  void push(const T& value) {
+    q_.enqueue(value);
+  }
+
+  void pop(T* value) {
+    q_.wait_dequeue(*value);
+  }
+
+  template <typename Rep, typename Period>
+  bool pop(T* value, std::chrono::duration<Rep, Period> timeout) {
+    return q_.wait_dequeue_timed(*value, timeout);
+  }
+
+ private:
+  using QueueT = moodycamel::BlockingConcurrentQueue<T>;
+  QueueT q_;
+};
+
+template <typename T>
 class ConcurrentQueueTBB {
  public:
   using value_type = T;

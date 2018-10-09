@@ -60,13 +60,11 @@ class Loader(object):
             reply=["pi", "a", "V"],
             batchsize=batchsize,
         )
-        '''
         desc["train"] = dict(
             input=["s"],
             reply=[],
             batchsize=batchsize,
         )
-        '''
 
         print("Init GC Wrapper")
 
@@ -75,7 +73,7 @@ class Loader(object):
             None,
             batchsize,
             desc,
-            num_recv=1,
+            num_recv=8,
             default_gpu=(self.options.gpu
                          if (self.options.gpu is not None and self.options.gpu >= 0)
                          else None),
