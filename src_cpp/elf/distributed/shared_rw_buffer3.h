@@ -145,8 +145,9 @@ class Server : public Base {
         receiver_(opt.port, opt.use_ipv6),
         rng_(time(NULL)) {}
 
-  void setCallbacks(ProcessFunc proc_func, ReplyFunc replier = nullptr) {
+  void setCallbacks(ProcessFunc proc_func, ReplyFunc replier = nullptr, ProcessFunc ctrl_func = nullptr) {
     proc_func_ = proc_func;
+    ctrl_func_ = ctrl_func;
     replier_ = replier;
   }
 
@@ -163,6 +164,9 @@ class Server : public Base {
 
   ProcessFunc proc_func_ = nullptr;
   ReplyFunc replier_ = nullptr;
+
+  // Get called when the server first get data from the client. 
+  ProcessFunc ctrl_func_ = nullptr;
 
   // Current identity;
   std::string curr_identity_;
@@ -189,6 +193,9 @@ class Server : public Base {
       return -1;
 
     if (curr_title_ == "ctrl") {
+      if (ctrl_func_ != nullptr) {
+        ctrl_func_(curr_identity_, *msg);
+      }
       client_size_++;
       if (options_.verbose) {
         std::cout << elf_utils::now() << " Ctrl from " << curr_identity_ << "["
@@ -234,7 +241,12 @@ class Client : public Base {
         "Writer info: {}, send ctrl with timestamp {} ",
         writer_->info(),
         currTimestamp);
-    writer_->Ctrl(std::to_string(currTimestamp));
+
+    auto msg = 
+      netOptions.hello_message.size() > 0 ?
+        netOptions.hello_message : 
+        std::to_string(currTimestamp); 
+    writer_->Ctrl(msg);
   }
 
   std::string identity() const {

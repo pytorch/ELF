@@ -6,6 +6,7 @@ namespace elf {
 namespace remote {
 
 static constexpr int kPortPerClient = 2;
+static constexpr int kPortPerServer = 4;
 
 template <typename T>
 using Queue = elf::concurrency::ConcurrentQueueMoodyCamelNoCheck<T>;
@@ -98,7 +99,10 @@ class MsgQ {
   MsgSingle &operator[](const std::string &identity) {
     std::lock_guard<std::mutex> locker(mutex_);
     auto it = msg_qs_.find(identity);
-    assert(it != msg_qs_.end());
+    if (it == msg_qs_.end()) {
+      std::cout << "MsgSingle: Cannot find " << identity << std::endl;
+      assert(false);
+    }
     return *it->second;
   }
 

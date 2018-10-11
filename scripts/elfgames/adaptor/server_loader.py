@@ -73,7 +73,7 @@ class Loader(object):
             None,
             batchsize,
             desc,
-            num_recv=8,
+            num_recv=1,
             default_gpu=(self.options.gpu
                          if (self.options.gpu is not None and self.options.gpu >= 0)
                          else None),

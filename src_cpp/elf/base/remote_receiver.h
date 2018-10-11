@@ -60,7 +60,14 @@ class Clients : public Interface {
     // netOptions_.msec_sleep_when_no_msg = 2000;
     // netOptions_.msec_resend_when_no_msg = 2000;
     netOptions_.verbose = false;
+
+    {
+      json j;
+      j["labels"] = labels_;
+      netOptions_.hello_message = j.dump();
+    }
     ctrl_client_.reset(new msg::Client(netOptions_));
+    netOptions_.hello_message = "";
 
     auto receiver = [&](const std::string& recv_msg) -> int64_t {
       // Get data
@@ -69,36 +76,24 @@ class Clients : public Interface {
 
       assert(j["port"].size() == kPortPerClient);
 
-      // Compute an intersection of j["labels"] and our labels. 
-      std::unordered_map<std::string, int> tmp_counts;
-      for (const auto &label : j["labels"]) tmp_counts[label] ++;
-      for (const auto &label : labels_) tmp_counts[label] ++;
-
-      std::vector<std::string> final_labels;
-      for (const auto &p : tmp_counts) 
-        if (p.second == 2) 
-          final_labels.push_back(p.first);
-
       auto netOptions = netOptions_;
       netOptions.usec_sleep_when_no_msg = 1000;
       netOptions.usec_resend_when_no_msg = 10;
       // netOptions.msec_sleep_when_no_msg = 2000;
       // netOptions.msec_resend_when_no_msg = 2000;
 
-      j_["labels"] = final_labels;
       for (size_t i = 0; i < kPortPerClient; ++i) {
         netOptions.port = j["port"][i];
+        netOptions.identity = j["client_identity"][i];
+        netOptions.no_prefix_on_identity = true;
         clients_.emplace_back(new _Client(netOptions));
-        clients_.back()->start(final_labels, send_q_, recv_q_);
-        j_["client_identity"].push_back(clients_.back()->identity());
+        clients_.back()->start(j["labels"], send_q_, recv_q_);
       }
-      j_["port"] = j["port"];
-
       return -1;
     };
 
     auto sender = [&]() {
-      return j_.dump();
+      return "";
     };
 
     ctrl_client_->setCallbacks(sender, receiver);
@@ -111,8 +106,6 @@ class Clients : public Interface {
 
   std::unique_ptr<msg::Client> ctrl_client_;
   std::vector<std::unique_ptr<_Client>> clients_;
-
-  json j_;
 };
 
 } // remote

@@ -41,6 +41,10 @@ struct Options {
   int64_t usec_sleep_when_no_msg = 10000000;
   std::string identity;
 
+  bool no_prefix_on_identity = false;
+  // hello message from client to server, default is "".
+  std::string hello_message;
+
   std::string info() const {
     std::stringstream ss;
     ss << "[" << identity << "] ";
@@ -60,8 +64,12 @@ struct Options {
 class Writer {
  public:
   // Constructor.
-  Writer(const Options& opt) : rng_(time(NULL)), options_(opt) {
-    identity_ = options_.identity + "-" + std::to_string(options_.port) + "-" + get_id(rng_);
+  Writer(const Options& opt) 
+    : rng_(time(NULL)), options_(opt) {
+    identity_ = options_.identity;
+    if (! opt.no_prefix_on_identity) {
+      identity_ += "-" + std::to_string(options_.port) + "-" + get_id(rng_);
+    }
     sender_.reset(new elf::distri::ZMQSender(
         identity_, options_.addr, options_.port, options_.use_ipv6));
   }

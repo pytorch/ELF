@@ -58,7 +58,7 @@ class _Server {
 class Servers : public Interface {
  public:
   Servers(const elf::shared::Options &netOptions, const std::vector<std::string> &labels) 
-    : netOptions_(netOptions), labels_(labels) {
+    : netOptions_(netOptions), rng_(time(NULL)), labels_(labels) {
     std::sort(labels_.begin(), labels_.end());
 
     netOptions_.usec_sleep_when_no_msg = 10;
@@ -70,17 +70,54 @@ class Servers : public Interface {
     // netOptions.msec_resend_when_no_msg = 2000;
     // netOptions.verbose = true;
     ctrl_server_.reset(new msg::Server(netOptions_));
-    netOptions_.port ++;
+    const int base_port = netOptions_.port + 1;
+    for (int i = 0; i < kPortPerServer; ++i) {
+      netOptions_.port = base_port + i;
+      servers_.emplace_back(new _Server(netOptions_, send_q_, recv_q_));
+    }
+    netOptions_.port = base_port; 
+
+    auto controller = [&](const std::string& identity, const std::string& msg) {
+      json j = json::parse(msg);
+      // std::cout << j << std::endl;
+      std::vector<std::string> labels = getIntersect(labels_, j["labels"]);
+
+      // Final labels. 
+      std::lock_guard<std::mutex> lock(mutex_);
+      identities_[identity].labels = labels;
+      return true;
+    };
 
     // Setup ctrl_server_
     auto replier = [&](const std::string& identity, std::string* reply_msg) {
-      if (ctrl_identities_.find(identity) != ctrl_identities_.end()) return false;
+      std::vector<std::string> labels;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto &client = identities_[identity]; 
+        if (! client.new_client) return false;
+        labels = client.labels;
+      }
 
       json info;
       info["valid"] = true;
-      info["labels"] = labels_;
+      info["labels"] = labels;
+      int start_port = rng_() % kPortPerServer;
       for (int i = 0; i < kPortPerClient; ++i) {
-        info["port"].push_back(netOptions_.port + i); 
+        int curr_port = netOptions_.port + start_port; 
+
+        const std::string id = identity + "_" + std::to_string(curr_port) + "_" + std::to_string(rng_() % 10000);
+        send_q_.addQ(id, labels);
+        recv_q_.addQ(id, labels);
+
+        info["client_identity"].push_back(id);
+        info["port"].push_back(curr_port); 
+        start_port = (start_port + 1) % kPortPerServer;
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto &client = identities_[identity]; 
+        client.new_client = false;
       }
 
       *reply_msg = info.dump();
@@ -88,39 +125,47 @@ class Servers : public Interface {
     };
 
     auto proc = [&](const std::string& identity, const std::string& recv_msg) {
-      if (recv_msg.empty()) return true;
-      if (ctrl_identities_.find(identity) != ctrl_identities_.end()) return true;
-
-      json j = json::parse(recv_msg);
-
-      // Final labels. 
-      std::vector<std::string> final_labels = j["labels"]; 
-
-      auto netOptions = netOptions_;
-      for (int i = 0; i < kPortPerClient; ++i) {
-        send_q_.addQ(j["client_identity"][i], final_labels);
-        recv_q_.addQ(j["client_identity"][i], final_labels);
-        netOptions.port = j["port"][i];
-        servers_.emplace_back(new _Server(netOptions, send_q_, recv_q_));
-      }
-      ctrl_identities_.insert(identity);
-
+      (void)identity;
+      (void)recv_msg;
       return true;
     };
 
-    ctrl_server_->setCallbacks(proc, replier);
+    ctrl_server_->setCallbacks(proc, replier, controller);
     ctrl_server_->start();
   }
 
  private:
   shared::Options netOptions_;
 
+  std::mt19937 rng_;
+
   std::unique_ptr<msg::Server> ctrl_server_;
   std::vector<std::unique_ptr<_Server>> servers_;
 
   std::vector<std::string> labels_;
 
-  std::set<std::string> ctrl_identities_;
+  struct IdentityInfo {
+    bool new_client = true;
+    std::vector<std::string> labels;
+  };
+
+  std::mutex mutex_;
+  std::unordered_map<std::string, IdentityInfo> identities_;
+
+  static std::vector<std::string> getIntersect(
+        const std::vector<std::string> &labels1, 
+        const std::vector<std::string> &labels2) {
+      // Compute an intersection of j["labels"] and our labels. 
+      std::unordered_map<std::string, int> tmp_counts;
+      for (const auto &label : labels1) tmp_counts[label] ++;
+      for (const auto &label : labels2) tmp_counts[label] ++;
+
+      std::vector<std::string> final_labels;
+      for (const auto &p : tmp_counts) 
+        if (p.second == 2) 
+          final_labels.push_back(p.first);
+      return final_labels;
+  }
 };
 
 } // namespace remote
