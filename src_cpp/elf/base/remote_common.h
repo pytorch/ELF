@@ -17,49 +17,56 @@ inline std::string timestr() {
 
 using json = nlohmann::json;
 
-class MsgSingle {
+class SendSingleInterface {
+ public:
+  virtual void add(const std::string &label, const std::string &msg) {
+    (void)label;
+    (void)msg;
+  }
+
+  virtual std::string dumpClear() = 0;
+};
+
+class RecvSingleInterface {
+ public:
+  virtual void retrieve(const std::string &label, std::string *msg) {
+    (void)label;
+    (void)msg;
+  }
+  virtual bool retrieveNow(const std::string &label, std::string *msg) { 
+    (void)label;
+    (void)msg;
+    return false; 
+  }
+  virtual void parseAdd(const std::string &s) = 0;
+};
+
+class SingleQBase {
  public:
   using Q = Queue<std::string>;
 
-  MsgSingle(const std::vector<std::string> &labels) { 
+  SingleQBase(const std::vector<std::string> &labels) { 
     for (const auto &label : labels) {
       msg_q_[label].reset(new Q);
     }
   }
 
-  void add(const std::string &label, const std::string &msg) {
+ protected:
+  std::unordered_map<std::string, std::unique_ptr<Q>> msg_q_; 
+};
+
+class SendSingle : public SendSingleInterface, public SingleQBase {
+ public:
+  SendSingle(const std::vector<std::string> &labels) 
+    : SingleQBase(labels) {}
+
+  void add(const std::string &label, const std::string &msg) override {
     auto it = msg_q_.find(label);
     assert(it != msg_q_.end());
     it->second->push(msg);
   }
 
-  void retrieve(const std::string &label, std::string *msg) {
-    auto it = msg_q_.find(label);
-    assert(it != msg_q_.end());
-    it->second->pop(msg);
-  }
-
-  template< class Rep, class Period >
-  bool retrieve(const std::string &label, std::string *msg, 
-      const std::chrono::duration<Rep, Period>& t) {
-    auto it = msg_q_.find(label);
-    assert(it != msg_q_.end());
-    return it->second->pop(msg, t);
-  }
-
-  void parseAdd(const std::string &s) {
-    json j = json::parse(s);
-    for (const auto &p : msg_q_) {
-      const auto &label = p.first;
-
-      if (j.find(label) == j.end()) continue;
-      for (const auto &jj : j[label]) {
-        p.second->push(jj);
-      }
-    }
-  }
-
-  std::string dumpClear() {
+  std::string dumpClear() override {
     json j;
     for (const auto &p : msg_q_) {
       const auto &label = p.first;
@@ -71,16 +78,46 @@ class MsgSingle {
     
     return j.dump();
   }
-
- private:
-  std::unordered_map<std::string, std::unique_ptr<Q>> msg_q_; 
 };
 
-class MsgQ {
+class RecvSingle : public RecvSingleInterface, public SingleQBase {
  public:
-  MsgQ() : rng_(time(NULL)) {}
+  RecvSingle(const std::vector<std::string> &labels) 
+    : SingleQBase(labels) {} 
 
-  MsgSingle &addQ(const std::string &identity, const std::vector<std::string> &labels) {
+  void retrieve(const std::string &label, std::string *msg) override {
+    auto it = msg_q_.find(label);
+    assert(it != msg_q_.end());
+    it->second->pop(msg);
+  }
+
+  bool retrieveNow(const std::string &label, std::string *msg) override {
+    auto it = msg_q_.find(label);
+    assert(it != msg_q_.end());
+    return it->second->pop(msg, std::chrono::milliseconds(0));
+  }
+
+  void parseAdd(const std::string &s) override {
+    json j = json::parse(s);
+    for (const auto &p : msg_q_) {
+      const auto &label = p.first;
+
+      if (j.find(label) == j.end()) continue;
+      for (const auto &jj : j[label]) {
+        p.second->push(jj);
+      }
+    }
+  }
+};
+
+template <typename T>
+class QBase { 
+ public:
+  using Ls = std::vector<std::string>; 
+
+  QBase() : rng_(time(NULL)) {}
+  T &addQ(const std::string &identity, const Ls &labels, 
+      std::function<std::unique_ptr<T> (const Ls &)> gen) {
     std::lock_guard<std::mutex> locker(mutex_);
     auto info = msg_qs_.insert(make_pair(identity, nullptr));
     if (! info.second) {
@@ -92,64 +129,30 @@ class MsgQ {
       label2identities_[label].push_back(identity);
     }
 
-    info.first->second.reset(new MsgSingle(labels));
+    info.first->second = gen(labels);
     return *info.first->second;
   }
 
-  MsgSingle &operator[](const std::string &identity) {
+  T &operator[](const std::string &identity) {
     std::lock_guard<std::mutex> locker(mutex_);
     auto it = msg_qs_.find(identity);
     if (it == msg_qs_.end()) {
-      std::cout << "MsgSingle: Cannot find " << identity << std::endl;
+      std::cout << "QBase: Cannot find " << identity << std::endl;
       assert(false);
     }
     return *it->second;
   }
 
-  std::string sample(const std::string &label) {
-    std::string id;
-    auto f = [this, &id](const std::vector<std::string> &identities) {
-        int idx = rng_() % identities.size();
-        id = identities[idx];
-        return true;
-    };
-
-    _call_when_label_available(label, f);
-    return id;
-  }
-
-  std::string recvFromLabel(const std::string &label, std::string *msg) {
-    std::string id;
-    auto f = [this, &id, &label, msg](const std::vector<std::string> &identities) {
-      std::vector<int> indices(identities.size());
-      for (size_t i = 0; i < identities.size(); i++) indices[i] = i;
-      std::shuffle(indices.begin(), indices.end(), rng_);
-
-      for (int idx : indices) {
-        const auto &idd = identities[idx];
-        if (msg_qs_[idd]->retrieve(label, msg, std::chrono::milliseconds(0))) {
-          id = idd;
-          return true;
-        } 
-      }
-      std::this_thread::sleep_for(std::chrono::microseconds(10));
-      return false;
-    };
-
-    _call_when_label_available(label, f);
-    return id;
-  }
-
- private:
+ protected:
   mutable std::mutex mutex_;
   mutable std::mt19937 rng_;
 
-  std::unordered_map<std::string, std::vector<std::string>> label2identities_;
-  std::unordered_map<std::string, std::unique_ptr<MsgSingle>> msg_qs_;
+  std::unordered_map<std::string, Ls> label2identities_;
+  std::unordered_map<std::string, std::unique_ptr<T>> msg_qs_;
 
-  void _call_when_label_available(const std::string &label, std::function<bool (const std::vector<std::string> &)> f) {
+  void _call_when_label_available(const std::string &label, std::function<bool (const Ls &)> f) {
     while (true) {
-      std::vector<std::string> identities;
+      Ls identities;
       {
         std::lock_guard<std::mutex> locker(mutex_);
         auto it = label2identities_.find(label);
@@ -163,6 +166,50 @@ class MsgQ {
         if (f(identities)) break;
       }
     }
+  }
+};
+
+class SendQ : public QBase<SendSingleInterface> {
+ public:
+  using Ls = typename QBase<SendSingleInterface>::Ls;
+
+  std::string sample(const std::string &label) {
+    std::string id;
+    auto f = [this, &id](const Ls &identities) {
+        int idx = rng_() % identities.size();
+        id = identities[idx];
+        return true;
+    };
+
+    _call_when_label_available(label, f);
+    return id;
+  }
+};
+
+class RecvQ : public QBase<RecvSingleInterface> {
+ public:
+  using Ls = typename QBase<RecvSingleInterface>::Ls;
+
+  std::string recvFromLabel(const std::string &label, std::string *msg) {
+    std::string id;
+    auto f = [this, &id, &label, msg](const Ls &identities) {
+      std::vector<int> indices(identities.size());
+      for (size_t i = 0; i < identities.size(); i++) indices[i] = i;
+      std::shuffle(indices.begin(), indices.end(), rng_);
+
+      for (int idx : indices) {
+        const auto &idd = identities[idx];
+        if (msg_qs_[idd]->retrieveNow(label, msg)) {
+          id = idd;
+          return true;
+        } 
+      }
+      std::this_thread::sleep_for(std::chrono::microseconds(10));
+      return false;
+    };
+
+    _call_when_label_available(label, f);
+    return id;
   }
 };
 
@@ -193,8 +240,8 @@ class Interface {
   }
 
  protected:
-  MsgQ send_q_;
-  MsgQ recv_q_;
+  SendQ send_q_;
+  RecvQ recv_q_;
 };
 
 } // namespace remote

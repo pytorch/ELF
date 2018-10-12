@@ -28,7 +28,7 @@ namespace remote {
 
 class _Server {
  public:
-  _Server(const elf::shared::Options& netOptions, MsgQ &send_q, MsgQ &recv_q) 
+  _Server(const elf::shared::Options& netOptions, SendQ &send_q, RecvQ &recv_q) 
     : send_q_(send_q), recv_q_(recv_q) { 
     server_.reset(new msg::Server(netOptions));
 
@@ -51,12 +51,14 @@ class _Server {
 
  private:
   std::unique_ptr<msg::Server> server_;
-  MsgQ &send_q_;
-  MsgQ &recv_q_;
+  SendQ &send_q_;
+  RecvQ &recv_q_;
 };
 
 class Servers : public Interface {
  public:
+  using Ls = std::vector<std::string>;
+
   Servers(const elf::shared::Options &netOptions, const std::vector<std::string> &labels) 
     : netOptions_(netOptions), rng_(time(NULL)), labels_(labels) {
     std::sort(labels_.begin(), labels_.end());
@@ -106,8 +108,8 @@ class Servers : public Interface {
         int curr_port = netOptions_.port + start_port; 
 
         const std::string id = identity + "_" + std::to_string(curr_port) + "_" + std::to_string(rng_() % 10000);
-        send_q_.addQ(id, labels);
-        recv_q_.addQ(id, labels);
+        send_q_.addQ(id, labels, [](const Ls &labels) { return std::make_unique<SendSingle>(labels); });
+        recv_q_.addQ(id, labels, [](const Ls &labels) { return std::make_unique<RecvSingle>(labels); });
 
         info["client_identity"].push_back(id);
         info["port"].push_back(curr_port); 

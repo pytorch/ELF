@@ -15,14 +15,16 @@ namespace remote {
 
 class _Client {
  public:
+   using Ls = std::vector<std::string>;
+   
    _Client(const elf::shared::Options &netOptions) {
      client_.reset(new msg::Client(netOptions));
    }
 
-   void start(const std::vector<std::string>& labels, MsgQ &send_q, MsgQ &recv_q) { 
+   void start(const Ls& labels, SendQ &send_q, RecvQ &recv_q) { 
      auto id = identity();
-     send_q_ = &send_q.addQ(id, labels);
-     recv_q_ = &recv_q.addQ(id, labels);
+     send_q_ = &send_q.addQ(id, labels, [](const Ls &labels) { return std::make_unique<SendSingle>(labels); });
+     recv_q_ = &recv_q.addQ(id, labels, [](const Ls &labels) { return std::make_unique<RecvSingle>(labels); });
           
      auto receiver = [&](const std::string& recv_msg) -> int64_t {
        // Get data
@@ -43,8 +45,8 @@ class _Client {
 
  private:
    std::unique_ptr<msg::Client> client_;
-   MsgSingle *send_q_ = nullptr;
-   MsgSingle *recv_q_ = nullptr;
+   SendSingleInterface *send_q_ = nullptr;
+   RecvSingleInterface *recv_q_ = nullptr;
 };
 
 // A lot of msg::Client. 
