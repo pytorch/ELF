@@ -67,12 +67,17 @@ class Loader(object):
             raise "No such mode: " + mode
 
         batchsize = getattr(self.options, "common.base.batchsize")
+        self.netOptions = elf.getNetOptions(opt.common.base, opt.common.net)
 
         if self.options.distri_mode == "server":
-            GC = elf.BatchSender(opt.common.base, opt.common.net)
+            self.remote_server = elf.RemoteServers(self.netOptions, ["actor_black"])
+            GC = elf.BatchSender(opt.common.base, self.remote_server)
             GC.setRemoteLabels(set(["actor_black"]))
         else:
-            GC = elf.BatchReceiver(opt.common.base, opt.common.net)
+            self.remote_client = elf.RemoteClients(self.netOptions, ["actor_black"])
+            GC = elf.BatchReceiver(opt.common.base, self.remote_client)
+            GC.setMode(elf.RECV_SMEM)
+            
         game_obj = go.Client(opt)
         game_obj.setGameContext(GC)
         params = game_obj.getParams()
@@ -104,7 +109,7 @@ class Loader(object):
             game_obj,
             batchsize,
             desc,
-            num_recv=128,
+            num_recv=16,
             default_gpu=(self.options.gpu
                          if (self.options.gpu is not None and self.options.gpu >= 0)
                          else None),

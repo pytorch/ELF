@@ -70,6 +70,22 @@ class BatchSender : public GameContext {
         // std::cout << ", got reply_j: "<< std::endl;
         SMemFromJson(json::parse(reply), *smem_data);
         // std::cout << ", after parsing smem: "<< std::endl;
+        //
+        /*
+        const AnyP *anyp = smem_data->get("hash");
+        const AnyP *anyp2 = smem_data->get("rhash");
+        assert(anyp != nullptr);
+        assert(anyp2 != nullptr);
+
+        for (size_t i = 0; i < smem_data->getEffectiveBatchSize(); ++i) {
+          uint64_t r1 = *anyp->getAddress<uint64_t>(i);
+          uint64_t r2 = *anyp2->getAddress<uint64_t>(i);
+          if (r1 != r2) {
+            std::cout << " hash: " << r1 << " != " << r2 << std::endl;
+          }
+        }
+        */
+        //
         return comm::SUCCESS;
       };
     }
