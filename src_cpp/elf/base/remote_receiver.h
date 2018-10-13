@@ -23,8 +23,8 @@ class _Client {
 
    void start(const Ls& labels, SendQ &send_q, RecvQ &recv_q) { 
      auto id = identity();
-     send_q_ = &send_q.addQ(id, labels, [](const Ls &labels) { return std::make_unique<SendSingle>(labels); });
-     recv_q_ = &recv_q.addQ(id, labels, [](const Ls &labels) { return std::make_unique<RecvSingle>(labels); });
+     send_q_ = &send_q.addQ(id, labels);
+     recv_q_ = &recv_q.addQ(id, labels);
           
      auto receiver = [&](const std::string& recv_msg) -> int64_t {
        // Get data

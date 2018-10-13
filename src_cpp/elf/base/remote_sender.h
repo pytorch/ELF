@@ -108,8 +108,8 @@ class Servers : public Interface {
         int curr_port = netOptions_.port + start_port; 
 
         const std::string id = identity + "_" + std::to_string(curr_port) + "_" + std::to_string(rng_() % 10000);
-        send_q_.addQ(id, labels, [](const Ls &labels) { return std::make_unique<SendSingle>(labels); });
-        recv_q_.addQ(id, labels, [](const Ls &labels) { return std::make_unique<RecvSingle>(labels); });
+        send_q_.addQ(id, labels);
+        recv_q_.addQ(id, labels);
 
         info["client_identity"].push_back(id);
         info["port"].push_back(curr_port); 

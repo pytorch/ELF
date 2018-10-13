@@ -114,10 +114,14 @@ template <typename T>
 class QBase { 
  public:
   using Ls = std::vector<std::string>; 
+  using Gen = std::function<std::unique_ptr<T> (const Ls &)>;
 
-  QBase() : rng_(time(NULL)) {}
-  T &addQ(const std::string &identity, const Ls &labels, 
-      std::function<std::unique_ptr<T> (const Ls &)> gen) {
+  QBase() : rng_(time(NULL)) { }
+  void setGen(Gen gen) { gen_ = gen; }
+
+  T &addQ(const std::string &identity, const Ls &labels) {
+    assert(gen_ != nullptr);
+    
     std::lock_guard<std::mutex> locker(mutex_);
     auto info = msg_qs_.insert(make_pair(identity, nullptr));
     if (! info.second) {
@@ -129,7 +133,7 @@ class QBase {
       label2identities_[label].push_back(identity);
     }
 
-    info.first->second = gen(labels);
+    info.first->second = gen_(labels);
     return *info.first->second;
   }
 
@@ -146,6 +150,8 @@ class QBase {
  protected:
   mutable std::mutex mutex_;
   mutable std::mt19937 rng_;
+
+  Gen gen_ = nullptr;
 
   std::unordered_map<std::string, Ls> label2identities_;
   std::unordered_map<std::string, std::unique_ptr<T>> msg_qs_;
@@ -171,7 +177,9 @@ class QBase {
 
 class SendQ : public QBase<SendSingleInterface> {
  public:
-  using Ls = typename QBase<SendSingleInterface>::Ls;
+  using Super = QBase<SendSingleInterface>; 
+  using Ls = typename Super::Ls;
+  using Gen = typename Super::Gen;
 
   std::string sample(const std::string &label) {
     std::string id;
@@ -188,7 +196,9 @@ class SendQ : public QBase<SendSingleInterface> {
 
 class RecvQ : public QBase<RecvSingleInterface> {
  public:
-  using Ls = typename QBase<RecvSingleInterface>::Ls;
+  using Super = QBase<RecvSingleInterface>; 
+  using Ls = typename Super::Ls;
+  using Gen = typename Super::Gen;
 
   std::string recvFromLabel(const std::string &label, std::string *msg) {
     std::string id;
@@ -215,7 +225,15 @@ class RecvQ : public QBase<RecvSingleInterface> {
 
 class Interface {
  public:
-  Interface() {} 
+  Interface() {
+    auto gen_send = [](const SendQ::Ls &labels) { return std::make_unique<SendSingle>(labels); };
+    auto gen_recv = [](const RecvQ::Ls &labels) { return std::make_unique<RecvSingle>(labels); };
+    setSendGen(gen_send);
+    setRecvGen(gen_recv);
+  } 
+
+  void setSendGen(SendQ::Gen gen) { send_q_.setGen(gen); }
+  void setRecvGen(RecvQ::Gen gen) { recv_q_.setGen(gen); }
 
   // Send message to a given identity. 
   void send(const std::string &label, const std::string &msg, const std::string& identity) {
