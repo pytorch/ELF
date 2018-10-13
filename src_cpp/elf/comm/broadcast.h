@@ -71,6 +71,11 @@ struct WaitOptions {
        << "][min_bs=" << min_batchsize << "]";
     return ss.str();
   }
+
+  friend bool operator==(const WaitOptions &op1, const WaitOptions &op2) {
+    return op1.batchsize == op2.batchsize && op1.timeout_usec == op2.timeout_usec 
+      && op1.min_batchsize == op2.min_batchsize;
+  }
 };
 
 template <

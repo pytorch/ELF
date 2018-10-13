@@ -308,6 +308,10 @@ struct RecvOptions {
       int timeout_usec = 0,
       int min_batchsize = 0)
       : label(label), wait_opt(batchsize, timeout_usec, min_batchsize) {}
+
+  friend bool operator==(const RecvOptions &op1, const RecvOptions &op2) {
+    return op1.label == op2.label && op1.wait_opt == op2.wait_opt;
+  }
 };
 
 ///

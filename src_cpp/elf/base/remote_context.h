@@ -17,6 +17,7 @@
 #include <set>
 #include <vector>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 
 #include "elf/base/sharedmem_serializer.h"
@@ -36,6 +37,19 @@ class BatchSender : public GameContext {
  public:
   BatchSender(const Options& options, remote::Interface &remote_comm) 
     : GameContext(options), remote_comm_(remote_comm) {
+
+     auto f = [&]() {
+       std::string reply, label, identity;
+       SharedMemOptions opts("", 1);
+        while (true) {
+          remote_comm_.recvFromAll(&label, &reply, &identity);
+          // std::cout << "got reply: "<< reply << std::endl;
+          json j = json::parse(reply);
+          from_json(j["opts"], opts);
+          getQ(opts).push(j);
+        }
+     };
+     q_thread_.reset(new std::thread(f));
   }
 
   void setRemoteLabels(const std::set<std::string>& remote_labels) {
@@ -58,17 +72,18 @@ class BatchSender : public GameContext {
     } else {
       // Send to the client and wait for its response.
       func = [&](SharedMemData* smem_data) {
+        const SharedMemOptions &opts = smem_data->getSharedMemOptions();
         json j;
         SMemToJson(*smem_data, input_keys_, j);
 
-        const std::string &label = smem_data->getSharedMemOptions().getLabel(); 
+        const std::string &label = opts.getLabel(); 
         std::string identity;
         remote_comm_.sendToEligible(label, j.dump(), &identity);
 
-        std::string reply;
-        remote_comm_.recv(label, &reply, identity);
+        auto &q = getQ(opts);
+        q.pop(&j);
         // std::cout << ", got reply_j: "<< std::endl;
-        SMemFromJson(json::parse(reply), *smem_data);
+        SMemFromJson(j, *smem_data);
         // std::cout << ", after parsing smem: "<< std::endl;
         //
         /*
@@ -90,13 +105,24 @@ class BatchSender : public GameContext {
       };
     }
 
-    return getCollectorContext()->allocateSharedMem(options, keys, func);
+    SharedMemData &smem_data = getCollectorContext()->allocateSharedMem(options, keys, func);
+    q_[smem_data.getSharedMemOptions()].reset(new remote::Queue<json>());
+
+    return smem_data;
   }
 
 private:
   remote::Interface &remote_comm_;
   std::set<std::string> remote_labels_;
   std::set<std::string> input_keys_ {"s", "hash"};
+  
+  std::unique_ptr<std::thread> q_thread_;
+  std::unordered_map<SharedMemOptions, std::unique_ptr<remote::Queue<json>>> q_;
+  remote::Queue<json> &getQ(const SharedMemOptions &opts) {
+    auto it = q_.find(opts);
+    assert(it != q_.end());
+    return *it->second;
+  }
 };
 
 // Directly send data to remote. 

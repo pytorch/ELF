@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <functional>
 
 #include "elf/comm/comm.h"
 #include "elf/concurrency/ConcurrentQueue.h"
@@ -111,6 +112,11 @@ class SharedMemOptions {
     }
 
     return ss.str();
+  }
+
+  friend bool operator==(const SharedMemOptions &op1, const SharedMemOptions &op2) {
+    return op1.idx_ == op2.idx_ && op1.label_idx_ == op2.label_idx_ &&
+      op1.type_ == op2.type_ && op1.options_ == op2.options_;
   }
 
  private:
@@ -387,3 +393,20 @@ using BatchServer = typename BatchComm::Server;
 using BatchMessage = typename BatchComm::Message;
 
 } // namespace elf
+
+namespace std
+{
+  template<> struct hash<elf::SharedMemOptions>
+  {
+    typedef elf::SharedMemOptions argument_type;
+    typedef std::size_t result_type;
+    result_type operator()(argument_type const& s) const noexcept
+    {
+      result_type const h1 ( std::hash<int>{}(s.getIdx()) );
+      result_type const h2 ( std::hash<int>{}(s.getLabelIdx()) );
+      result_type const h3 ( std::hash<std::string>{}(s.getLabel()) );
+      return h1 ^ (h2 << 1) ^ (h3 << 2); // or use boost::hash_combine (see Discussion)
+    }
+  };
+}
+
