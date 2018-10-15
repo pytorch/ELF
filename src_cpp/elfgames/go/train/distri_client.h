@@ -14,7 +14,7 @@ class ThreadedWriterCtrl : public ThreadedCtrlBase {
       const ContextOptions& contextOptions,
       const GameOptions& options)
       : ThreadedCtrlBase(ctrl, 0),
-        logger_(elf::logging::getLogger(
+        logger_(elf::logging::getIndexedLogger(
             "elfgames::go::train::ThreadedWriterCtrl-",
             "")) {
     elf::shared::Options netOptions = getNetOptions(contextOptions, options);
@@ -111,7 +111,7 @@ struct GuardedRecords {
  public:
   GuardedRecords(const std::string& identity)
       : records_(identity),
-        logger_(elf::logging::getLogger(
+        logger_(elf::logging::getIndexedLogger(
             "elfgames::go::train::GuardedRecords",
             "")) {}
 
@@ -279,7 +279,7 @@ class Client {
       elf::GameClient* client)
       : contextOptions_(contextOptions),
         options_(options),
-        logger_(elf::logging::getLogger("Client-", "")) {
+        logger_(elf::logging::getIndexedLogger("Client-", "")) {
     dispatcher_.reset(new ThreadedDispatcher(ctrl_, contextOptions.num_games));
     dispatcher_callback_.reset(
         new DispatcherCallback(dispatcher_.get(), client));

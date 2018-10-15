@@ -26,8 +26,9 @@ class GoGameBase {
         _game_idx(game_idx),
         _options(options),
         _context_options(context_options),
-        _logger(
-            elf::logging::getLogger("elfgames::go::common::GoGameBase-", "")) {
+        _logger(elf::logging::getIndexedLogger(
+            "elfgames::go::common::GoGameBase-",
+            "")) {
     if (options.seed == 0) {
       _seed = elf_utils::get_seed(
           game_idx ^ std::hash<std::string>{}(context_options.job_id));

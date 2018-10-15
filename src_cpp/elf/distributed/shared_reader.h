@@ -164,8 +164,9 @@ class ReaderQueuesT {
   ReaderQueuesT(const RQCtrl& reader_ctrl)
       : min_size_satisfied_(false),
         parity_sizes_(2, 0),
-        logger_(
-            elf::logging::getLogger("elf::distributed::ReaderQueuesT-", "")) {
+        logger_(elf::logging::getIndexedLogger(
+            "elf::distributed::ReaderQueuesT-",
+            "")) {
     // Make sure this is an even number.
     assert(reader_ctrl.num_reader % 2 == 0);
     min_size_per_queue_ = reader_ctrl.ctrl.queue_min_size;

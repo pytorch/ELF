@@ -31,7 +31,7 @@ class GameContext {
   GameContext(const ContextOptions& contextOptions, const GameOptions& options)
       : contextOptions_(contextOptions),
         goFeature_(options),
-        logger_(elf::logging::getLogger("GameContext-", "")) {
+        logger_(elf::logging::getIndexedLogger("GameContext-", "")) {
     context_.reset(new elf::Context);
 
     // Only works for online setting.

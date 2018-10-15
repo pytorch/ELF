@@ -471,7 +471,8 @@ class ClassFieldT;
 //
 class Extractor {
  public:
-  Extractor() : logger_(elf::logging::getLogger("elf::base::Extractor-", "")) {}
+  Extractor()
+      : logger_(elf::logging::getIndexedLogger("elf::base::Extractor-", "")) {}
 
   template <typename T>
   FuncMapT<T>& addField(const std::string& key) {
@@ -579,7 +580,8 @@ class ClassFieldT {
 
   ClassFieldT(Extractor* ext)
       : ext_(ext),
-        logger_(elf::logging::getLogger("elf::base::ClassFieldT-", "")) {}
+        logger_(elf::logging::getIndexedLogger("elf::base::ClassFieldT-", "")) {
+  }
 
   template <typename T>
   ClassField& addFunction(

@@ -13,7 +13,7 @@ class DispatcherCallback {
  public:
   DispatcherCallback(ThreadedDispatcher* dispatcher, elf::GameClient* client)
       : client_(client),
-        logger_(elf::logging::getLogger(
+        logger_(elf::logging::getIndexedLogger(
             "elfgames::go::common::DispatcherCallback-",
             "")) {
     using std::placeholders::_1;

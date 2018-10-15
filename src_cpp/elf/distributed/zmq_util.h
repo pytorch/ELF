@@ -80,8 +80,9 @@ class SegmentedRecv {
  public:
   SegmentedRecv(zmq::socket_t& socket)
       : socket_(socket),
-        logger_(
-            elf::logging::getLogger("elf::distributed::SegmentedRecv-", "")) {}
+        logger_(elf::logging::getIndexedLogger(
+            "elf::distributed::SegmentedRecv-",
+            "")) {}
 
   /*
   void recvBlocked(size_t n, std::vector<std::string>* p_msgs) {
@@ -179,7 +180,7 @@ class SegmentedRecv {
 class SameThreadChecker {
  public:
   SameThreadChecker()
-      : logger_(elf::logging::getLogger(
+      : logger_(elf::logging::getIndexedLogger(
             "elf::distributed::SameThreadChecker-",
             "")) {
     id_ = std::this_thread::get_id();
@@ -210,7 +211,9 @@ class ZMQReceiver : public SameThreadChecker {
  public:
   ZMQReceiver(int port, bool use_ipv6)
       : context_(1),
-        logger_(elf::logging::getLogger("elf::distributed::ZMQReceiver-", "")) {
+        logger_(elf::logging::getIndexedLogger(
+            "elf::distributed::ZMQReceiver-",
+            "")) {
     broker_.reset(new zmq::socket_t(context_, ZMQ_ROUTER));
     if (use_ipv6) {
       int ipv6 = 1;
@@ -286,7 +289,9 @@ class ZMQSender : public SameThreadChecker {
       int port,
       bool use_ipv6)
       : context_(1),
-        logger_(elf::logging::getLogger("elf::distributed::ZMQSender-", "")) {
+        logger_(elf::logging::getIndexedLogger(
+            "elf::distributed::ZMQSender-",
+            "")) {
     sender_.reset(new zmq::socket_t(context_, ZMQ_DEALER));
     if (use_ipv6) {
       int ipv6 = 1;

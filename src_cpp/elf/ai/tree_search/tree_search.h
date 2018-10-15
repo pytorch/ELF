@@ -70,7 +70,7 @@ class TreeSearchSingleThreadT {
   TreeSearchSingleThreadT(int thread_id, const TSOptions& options)
       : threadId_(thread_id),
         options_(options),
-        logger_(elf::logging::getLogger(
+        logger_(elf::logging::getIndexedLogger(
             "elf::ai::tree_search::TreeSearchSingleThreadT-",
             "")) {
     if (options_.verbose) {
@@ -334,8 +334,9 @@ class TreeSearchT {
   TreeSearchT(const TSOptions& options, std::function<Actor*(int)> actor_gen)
       : options_(options),
         stopSearch_(false),
-        logger_(
-            elf::logging::getLogger("elf::ai::tree_search::TreeSearchT-", "")) {
+        logger_(elf::logging::getIndexedLogger(
+            "elf::ai::tree_search::TreeSearchT-",
+            "")) {
     for (int i = 0; i < options.num_threads; ++i) {
       treeSearches_.emplace_back(new TreeSearchSingleThread(i, options_));
       actors_.emplace_back(actor_gen(i));

@@ -200,7 +200,8 @@ class Context {
  public:
   using GameCallback = std::function<void(int game_idx, GameClient*)>;
 
-  Context() : logger_(elf::logging::getLogger("elf::base::Context-", "")) {
+  Context()
+      : logger_(elf::logging::getIndexedLogger("elf::base::Context-", "")) {
     // Wait for the derived class to add entries to extractor_.
     server_ = comm_.getServer();
     client_.reset(new GameClient(&comm_, this));

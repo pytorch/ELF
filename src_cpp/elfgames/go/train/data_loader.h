@@ -58,7 +58,7 @@ class DataInterface {
 class DataOnlineLoader {
  public:
   DataOnlineLoader(const elf::shared::Options& net_options)
-      : logger_(elf::logging::getLogger(
+      : logger_(elf::logging::getIndexedLogger(
             "elfgames::go::train::DataOnlineLoader-",
             "")) {
     auto curr_timestamp = time(NULL);

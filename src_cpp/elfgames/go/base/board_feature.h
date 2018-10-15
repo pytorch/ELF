@@ -66,8 +66,9 @@ class BoardFeature {
       : s_(s),
         _rot(rot),
         _flip(flip),
-        logger_(
-            elf::logging::getLogger("elfgames::go::base::BoardFeature-", "")) {}
+        logger_(elf::logging::getIndexedLogger(
+            "elfgames::go::base::BoardFeature-",
+            "")) {}
   BoardFeature(const GoState& s) : s_(s), _rot(NONE), _flip(false) {}
 
   static BoardFeature RandomShuffle(const GoState& s, std::mt19937* rng) {

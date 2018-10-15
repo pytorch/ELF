@@ -33,8 +33,9 @@ class ModelPerf {
       const ModelPair& p)
       : options_(options),
         curr_pair_(p),
-        logger_(
-            elf::logging::getLogger("elfgames::go::train::ModelPerf-", "")) {
+        logger_(elf::logging::getIndexedLogger(
+            "elfgames::go::train::ModelPerf-",
+            "")) {
     const size_t cushion = 5;
     const size_t max_request_per_layer = mgr.getExpectedNumEval() / 2;
     const size_t num_request = options.eval_num_games / 2 + cushion;
@@ -225,8 +226,9 @@ class EvalSubCtrl {
  public:
   EvalSubCtrl(const GameOptions& options, const TSOptions& mcts_options)
       : options_(options),
-        logger_(
-            elf::logging::getLogger("elfgames::go::train::EvalSubCtrl-", "")) {
+        logger_(elf::logging::getIndexedLogger(
+            "elfgames::go::train::EvalSubCtrl-",
+            "")) {
     // [TODO]: A bit hacky, we need to have a better way for this.
     mcts_opt_ = mcts_options;
     mcts_opt_.alg_opt.unexplored_q_zero = false;

@@ -36,7 +36,8 @@ class GameContext {
 
   GameContext(const ContextOptions& contextOptions, const GameOptions& options)
       : goFeature_(options),
-        logger_(elf::logging::getLogger("elfgames::go::GameContext-", "")) {
+        logger_(
+            elf::logging::getIndexedLogger("elfgames::go::GameContext-", "")) {
     context_.reset(new elf::Context);
 
     int numGames = contextOptions.num_games;
