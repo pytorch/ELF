@@ -21,8 +21,9 @@ class ThreadedDispatcherT : public ThreadedCtrlBase {
   ThreadedDispatcherT(Ctrl& ctrl, int num_games)
       : ThreadedCtrlBase(ctrl, 500),
         num_games_(num_games),
-        logger_(
-            elf::logging::getLogger("elf::base::ThreadedDispatcherT-", "")) {}
+        logger_(elf::logging::getIndexedLogger(
+            "elf::base::ThreadedDispatcherT-",
+            "")) {}
 
   void Start(ServerReply replier, ServerFirstSend first_send = nullptr) {
     server_replier_ = replier;

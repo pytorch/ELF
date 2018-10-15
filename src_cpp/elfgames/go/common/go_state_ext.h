@@ -39,8 +39,9 @@ struct GoStateExt {
         _last_value(0.0),
         _resign_check(options.resign_thres, options.resign_prob_never),
         _options(options),
-        _logger(
-            elf::logging::getLogger("elfgames::go::common::GoStateExt-", "")) {
+        _logger(elf::logging::getIndexedLogger(
+            "elfgames::go::common::GoStateExt-",
+            "")) {
     restart();
   }
 
@@ -263,7 +264,7 @@ class GoStateExtOffline {
       : _game_idx(game_idx),
         _bf(_state),
         _options(options),
-        _logger(elf::logging::getLogger(
+        _logger(elf::logging::getIndexedLogger(
             "elfgames::go::common::GoStateExtOffline-",
             "")) {}
 

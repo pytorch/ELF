@@ -51,8 +51,9 @@ class ThreadedCtrl : public ThreadedCtrlBase {
         options_(options),
         client_(client),
         rng_(time(NULL)),
-        logger_(
-            elf::logging::getLogger("elfgames::go::train::ThreadedCtrl-", "")) {
+        logger_(elf::logging::getIndexedLogger(
+            "elfgames::go::train::ThreadedCtrl-",
+            "")) {
     selfplay_.reset(new SelfPlaySubCtrl(options, mcts_opt));
     eval_.reset(new EvalSubCtrl(options, mcts_opt));
 
@@ -242,8 +243,9 @@ class TrainCtrl : public DataInterface {
       : ctrl_(ctrl),
         rng_(time(NULL)),
         selfplay_record_("tc_selfplay"),
-        logger_(
-            elf::logging::getLogger("elfgames::go::train::TrainCtrl-", "")) {
+        logger_(elf::logging::getIndexedLogger(
+            "elfgames::go::train::TrainCtrl-",
+            "")) {
     // Register sender for python thread.
     elf::shared::RQCtrl rq_ctrl;
     rq_ctrl.num_reader = options.num_reader;

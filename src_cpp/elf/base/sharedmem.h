@@ -133,7 +133,7 @@ class SharedMem {
       const std::unordered_map<std::string, AnyP>& mem)
       : opts_(smem_opts),
         mem_(mem),
-        logger_(elf::logging::getLogger("elf::base::SharedMem-", "")) {
+        logger_(elf::logging::getIndexedLogger("elf::base::SharedMem-", "")) {
     opts_.setIdx(idx);
   }
 

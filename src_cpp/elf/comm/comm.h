@@ -327,7 +327,7 @@ class CommT : public CommInternalT<
         : CommInternal::Client(pp),
           pp_(pp),
           rng_(time(NULL)),
-          logger_(elf::logging::getLogger("elf::comm::Client-", "")) {}
+          logger_(elf::logging::getIndexedLogger("elf::comm::Client-", "")) {}
 
     ReplyStatus sendWait(Data data, const std::vector<std::string>& labels) {
       return CommInternal::Client::sendWait(

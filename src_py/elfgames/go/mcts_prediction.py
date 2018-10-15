@@ -12,10 +12,6 @@ from elf.options import auto_import_options, PyOptionSpec
 from rlpytorch.trainer.timer import RLTimer
 
 
-_logger_factory = logging.IndexedLoggerFactory(
-    lambda name: logging.stderr_color_mt(name))
-
-
 class MCTSPrediction(object):
     @classmethod
     def get_option_spec(cls):
@@ -30,7 +26,7 @@ class MCTSPrediction(object):
     def __init__(self, option_map):
         self.policy_loss = nn.KLDivLoss().cuda()
         self.value_loss = nn.MSELoss().cuda()
-        self.logger = _logger_factory.makeLogger(
+        self.logger = logging.getIndexedLogger(
             'elfgames.go.MCTSPrediction-', '')
         self.timer = RLTimer()
 

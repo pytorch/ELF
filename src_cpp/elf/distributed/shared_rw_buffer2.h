@@ -59,7 +59,8 @@ class Writer {
   Writer(const Options& opt)
       : rng_(time(NULL)),
         options_(opt),
-        logger_(elf::logging::getLogger("elf::distributed::Writer-", "")) {
+        logger_(
+            elf::logging::getIndexedLogger("elf::distributed::Writer-", "")) {
     identity_ = options_.identity + "-" + get_id(rng_);
     sender_.reset(new elf::distri::ZMQSender(
         identity_, options_.addr, options_.port, options_.use_ipv6));
@@ -151,7 +152,8 @@ class Reader {
         db_name_(filename),
         rng_(time(NULL)),
         done_(false),
-        logger_(elf::logging::getLogger("elf::distributed::Reader-", "")) {}
+        logger_(
+            elf::logging::getIndexedLogger("elf::distributed::Reader-", "")) {}
 
   void startReceiving(
       ProcessFunc proc_func,

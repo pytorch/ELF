@@ -21,8 +21,9 @@
 class GameStats {
  public:
   GameStats()
-      : _logger(
-            elf::logging::getLogger("elfgames::go::common::GameStats-", "")) {}
+      : _logger(elf::logging::getIndexedLogger(
+            "elfgames::go::common::GameStats-",
+            "")) {}
 
   void feedMoveRanking(int ranking) {
     std::lock_guard<std::mutex> lock(_mutex);

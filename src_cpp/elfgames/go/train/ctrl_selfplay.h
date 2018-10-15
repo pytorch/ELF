@@ -170,7 +170,7 @@ struct SelfPlayRecord {
   SelfPlayRecord(int ver, const GameOptions& options)
       : ver_(ver),
         options_(options),
-        logger_(elf::logging::getLogger(
+        logger_(elf::logging::getIndexedLogger(
             "elfgames::go::train::SelfPlayRecord-",
             "")) {
     std::string selfplay_prefix =
@@ -333,7 +333,7 @@ class SelfPlaySubCtrl {
             options.resign_thres,
             options.resign_thres_lower_bound,
             options.resign_thres_upper_bound),
-        logger_(elf::logging::getLogger(
+        logger_(elf::logging::getIndexedLogger(
             "elfgames::go::train::SelfPlaySubCtrl-",
             "")) {}
 
