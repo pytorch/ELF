@@ -4,6 +4,7 @@
 #include <thread>
 #include <vector>
 
+#include "game.h"
 #include "elf/base/game_context.h"
 
 using namespace std;
@@ -14,28 +15,6 @@ using Client = elf::GameClient;
 using Extractor = elf::Extractor;
 using Options = elf::Options;
 
-struct State {
-  int id;
-  int value;
-  int seq;
-  int reply;
-
-  State() {}
-  State(const State&) = delete;
-
-  void dumpState(int *state) const {
-    // Dump the last n state.
-    // cout << "Dump state for id=" << id << ", seq=" << seq << endl;
-    *state = value;
-  }
-
-  void loadReply(const int* a) {
-    // cout << "[" << hex << this << dec << "] load reply for id=" << id << ",
-    // seq=" << seq << ", a=" << *a << endl;
-    reply = *a;
-  }
-};
-
 class Game {
  public:
   Game(int idx,
@@ -44,32 +23,17 @@ class Game {
       : idx_(idx),
         batch_target_(batch_target),
         client_(client) {
-          s_.seq = 0;
       }
 
   void OnAct(elf::game::Base* /*base*/) {
     // client_->oo() << "Starting sending thread " << idx_;
     // mt19937 rng(idx_);
-    s_.id = idx_;
-    s_.value = idx_ + s_.seq;
-
-    // client_->oo() << "client " << idx_ << " sends #" << j << "...";
+    w_.setIdx(idx_);
 
     elf::FuncsWithState funcs =
-      client_->BindStateToFunctions({batch_target_}, &s_);
-
-    if (client_->sendWait({batch_target_}, &funcs) == comm::SUCCESS) {
-      if (s_.reply != 2 * (idx_ + s_.seq) + 1) {
-        std::cout << "Error: [" << hex << &s_ << dec << "] client "
-          << idx_ << " return from #" << s_.seq
-          << ", value: " << s_.value
-          << ", reply = " << s_.reply;
-      }
-    } else {
-      // std::cout << "client " << idx_ << " return from #" << j << "
-      // failed.";
-    }
-    s_.seq ++;
+      client_->BindStateToFunctions({batch_target_}, &w_);
+    bool success = (client_->sendWait({batch_target_}, &funcs) == comm::SUCCESS);
+    w_.step(success);
   }
 
  private:
@@ -77,7 +41,7 @@ class Game {
   std::string batch_target_;
   Client* client_;
 
-  State s_;
+  game::World w_;
 };
 
 class MyContext {
@@ -94,10 +58,10 @@ class MyContext {
 
     e.addField<int>("value")
         .addExtents(batchsize, {batchsize, 1})
-        .addFunction<State>(&State::dumpState);
+        .addFunction<game::World>(&game::getStateFeature);
     e.addField<int>("reply")
         .addExtents(batchsize, {batchsize})
-        .addFunction<State>(&State::loadReply);
+        .addFunction<game::World>(&game::setReply);
 
     using std::placeholders::_1;
 
