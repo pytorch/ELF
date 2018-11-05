@@ -74,18 +74,13 @@ add_subdirectory(
     src_cpp/elf
     ${CMAKE_CURRENT_BINARY_DIR}/elf)
 
+# TODO move them to examples/
 # ELF games
-
 add_subdirectory(
     src_cpp/elfgames/go
     ${CMAKE_CURRENT_BINARY_DIR}/elfgames/go)
 
 # Tutorials
-
-add_subdirectory(
-    src_cpp/elfgames/tutorial
-    ${CMAKE_CURRENT_BINARY_DIR}/elfgames/tutorial)
-
 add_subdirectory(
     src_cpp/elfgames/tutorial_distri
     ${CMAKE_CURRENT_BINARY_DIR}/elfgames/tutorial_distri)
