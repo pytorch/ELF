@@ -14,10 +14,10 @@ set(ELF_SOURCES
     options/Pybind.cc
 )
 
-set(ELF_TEST_SOURCES
-    options/OptionMapTest.cc
-    options/OptionSpecTest.cc
-)
+# set(ELF_TEST_SOURCES
+#     options/OptionMapTest.cc
+#     options/OptionSpecTest.cc
+# )
 
 # Main ELF library
 
@@ -40,7 +40,7 @@ target_link_libraries(elf PUBLIC
 # Tests
 
 enable_testing()
-add_cpp_tests(test_cpp_elf_ elf ${ELF_TEST_SOURCES})
+# add_cpp_tests(test_cpp_elf_ elf ${ELF_TEST_SOURCES})
 
 # Python bindings
 
