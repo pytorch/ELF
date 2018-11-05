@@ -3,8 +3,6 @@
 #include <iostream>
 #include <iomanip>
 
-namespace {
-
 struct State {
   int id;
   int value;
@@ -27,8 +25,6 @@ struct State {
   }
 };
 
-} // internal namespace. 
-
 namespace game {
 
 class World {
@@ -44,7 +40,8 @@ class World {
          std::cout << "Error: [" << std::hex << &s_ << std::dec << "] client "
            << s_.id << " return from #" << s_.seq
            << ", value: " << s_.value
-           << ", reply = " << s_.reply;
+           << ", reply = " << s_.reply 
+           << std::endl;
        }
      } else {
        // std::cout << "client " << idx_ << " return from #" << j << "
