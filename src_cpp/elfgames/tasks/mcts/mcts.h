@@ -11,8 +11,9 @@
 #include <iostream>
 
 #include "elf/ai/tree_search/mcts.h"
-#include "elf/logging/IndexedLoggerFactory.h"
-#include "elfgames/go/mcts/ai.h"
+#include "elfgames/tasks/mcts/ai.h"
+
+#define UNUSED(expr) do { (void)(expr); } while (0)
 
 struct MCTSActorParams {
   std::string actor_name;
@@ -23,7 +24,7 @@ struct MCTSActorParams {
   // can be used).
   int64_t required_version = -1;
   bool remove_pass_if_dangerous = true;
-  bool rotation_flip = true;
+  bool rotation_flip = false;
   float komi = 7.5;
 
   std::string info() const {
@@ -39,15 +40,13 @@ struct MCTSActorParams {
 class MCTSActor {
  public:
   using Action = Coord;
-  using State = GoState;
+  using State = StateForChouFleur;
   using NodeResponse = elf::ai::tree_search::NodeResponseT<Coord>;
 
   enum PreEvalResult { EVAL_DONE, EVAL_NEED_NN };
 
   MCTSActor(elf::GameClient* client, const MCTSActorParams& params)
-      : params_(params),
-        rng_(params.seed),
-        logger_(elf::logging::getIndexedLogger("elfgames::go::mcts::MCTSActor-", "")) {
+      : params_(params), rng_(params.seed) {
     ai_.reset(new AI(client, {params_.actor_name}));
   }
 
@@ -69,10 +68,14 @@ class MCTSActor {
 
   // batch evaluate.
   void evaluate(
-      const std::vector<const GoState*>& states,
+      const std::vector<const StateForChouFleur*>& states,
       std::vector<NodeResponse>* p_resps) {
+    std::cout << ("here, tasks/mcts launches a batch evaluation.") << std::endl;
     if (states.empty())
+    {
+      std::cout << "and returning because empty" << std::endl;
       return;
+    }
 
     if (oo_ != nullptr)
       *oo_ << "Evaluating batch state. #states: " << states.size() << std::endl;
@@ -84,6 +87,7 @@ class MCTSActor {
     std::vector<size_t> sel_indices;
 
     for (size_t i = 0; i < states.size(); i++) {
+      std::cout << "states" << i << "/" << states.size() << std::endl;
       assert(states[i] != nullptr);
       PreEvalResult res = pre_evaluate(*states[i], &resps[i]);
       if (res == EVAL_NEED_NN) {
@@ -92,16 +96,19 @@ class MCTSActor {
       }
     }
 
-    if (sel_bfs.empty())
+    if (sel_bfs.empty()) {
+      std::cout << " bfs empty" << std::endl;
       return;
-
-    std::vector<GoReply> replies;
-    for (size_t i = 0; i < sel_bfs.size(); ++i) {
-      replies.emplace_back(sel_bfs[i]);
     }
 
+    std::vector<ChouFleurReply> replies;
+    for (size_t i = 0; i < sel_bfs.size(); ++i) {
+      std::cout << "bfs" << i << "/" << sel_bfs.size() << std::endl;
+      replies.emplace_back(sel_bfs[i]);
+    }
+    std::cout << " ok bfs" << std::endl;
     // Get all pointers.
-    std::vector<GoReply*> p_replies;
+    std::vector<ChouFleurReply*> p_replies;
     std::vector<const BoardFeature*> p_bfs;
 
     for (size_t i = 0; i < sel_bfs.size(); ++i) {
@@ -109,34 +116,42 @@ class MCTSActor {
       p_replies.push_back(&replies[i]);
     }
 
+    std::cout << " ok replies" << std::endl;
+    // cout << "About to send situation to " << params_.actor_name << endl;
+    // cout << s.showBoard() << endl;
     if (!ai_->act_batch(p_bfs, p_replies)) {
-      logger_->info("act unsuccessful! ");
+      std::cout << "act unsuccessful! " << std::endl;
     } else {
+      //std::cout << "act successful!" << std::endl;
       for (size_t i = 0; i < sel_indices.size(); i++) {
+        std::cout << "postnnresults" << i << "/" << sel_indices.size() << std::endl;
         post_nn_result(replies[i], &resps[sel_indices[i]]);
       }
     }
+   std::cout << ("here, tasks/mcts launches a batch evaluation.       ----       END") << std::endl;
   }
 
-  void evaluate(const GoState& s, NodeResponse* resp) {
+  void evaluate(const StateForChouFleur& s, NodeResponse* resp) {
     if (oo_ != nullptr)
       *oo_ << "Evaluating state at " << std::hex << &s << std::dec << std::endl;
-
+    std::cout << ("evaluating a state, evaluate(.,., client side")  << std::endl;
     // if terminated(), get results, res = done
     // else res = EVAL_NEED_NN
     PreEvalResult res = pre_evaluate(s, resp);
 
     if (res == EVAL_NEED_NN) {
       BoardFeature bf = get_extractor(s);
-      // GoReply struct initialization
+      // ChouFleurReply struct initialization
       // members containing:
       // Coord c, vector<float> pi, float v;
-      GoReply reply(bf);
+      ChouFleurReply reply(bf);
+      // cout << "About to send situation to " << params_.actor_name << endl;
+      // cout << s.showBoard() << endl;
 
       // AI-Client will run a one-step neural network
       if (!ai_->act(bf, &reply)) {
         // This happens when the game is about to end,
-        logger_->info("act unsuccessful! ");
+        std::cout << "act unsuccessful! " << std::endl;
       } else {
         // call pi2response()
         // action will be inv-transformed
@@ -144,12 +159,14 @@ class MCTSActor {
       }
     }
 
+    std::cout << ("evaluating a state, evaluate(.,., client side           END") << std::endl;
     if (oo_ != nullptr)
       *oo_ << "Finish evaluating state at " << std::hex << &s << std::dec
            << std::endl;
   }
 
-  bool forward(GoState& s, Coord a) {
+  bool forward(StateForChouFleur& s, Coord a) {
+    std::cout << " mcts forward " << std::endl;
     return s.forward(a);
   }
 
@@ -157,7 +174,7 @@ class MCTSActor {
     ai_->setID(id);
   }
 
-  float reward(const GoState& /*s*/, float value) const {
+  float reward(const StateForChouFleur& /*s*/, float value) const {
     return value;
   }
 
@@ -167,33 +184,30 @@ class MCTSActor {
   std::ostream* oo_ = nullptr;
   std::mt19937 rng_;
 
- private:
-  std::shared_ptr<spdlog::logger> logger_;
-
-  BoardFeature get_extractor(const GoState& s) {
+  BoardFeature get_extractor(const StateForChouFleur& s) {
     // RandomShuffle: static
     // All extractor will go through a
     // random symmetry
-    if (params_.rotation_flip)
+    /*if (params_.rotation_flip)    FIXME: we don't have to do rotations in the general setting, right ? PROBABLY OK
       return BoardFeature::RandomShuffle(s, &rng_);
-    else
+    else*/
       return BoardFeature(s);
   }
 
-  PreEvalResult pre_evaluate(const GoState& s, NodeResponse* resp) {
-    resp->q_flip = s.nextPlayer() == S_WHITE;
+  PreEvalResult pre_evaluate(const StateForChouFleur& s, NodeResponse* resp) {
+    resp->q_flip = s.nextPlayer() == 2; // S_WHITE;  FIXME: S_WHITE =2, right ? PROBABLY OK
 
     if (s.terminated()) {
       if (oo_ != nullptr) {
         *oo_ << "Terminal state at " << s.getPly() << " Use TT evaluator"
              << std::endl;
-        *oo_ << "Moves[" << s.getAllMoves().size()
-             << "]: " << s.getAllMovesString() << std::endl;
+/*        *oo_ << "Moves[" << s.getAllMoves().size()
+             << "]: " << s.getAllMovesString() << std::endl;*/
         *oo_ << s.showBoard() << std::endl;
       }
-      float final_value = s.evaluate(params_.komi);
+      float final_value = s.evaluate();
       if (oo_ != nullptr)
-        *oo_ << "Terminal state. Get raw score (no komi): " << final_value
+        *oo_ << "Terminal state. Get raw score." << final_value
              << std::endl;
       resp->value = final_value > 0 ? 1.0 : -1.0;
       // No further action.
@@ -204,13 +218,13 @@ class MCTSActor {
     }
   }
 
-  void post_nn_result(const GoReply& reply, NodeResponse* resp) {
+  void post_nn_result(const ChouFleurReply& reply, NodeResponse* resp) {
     if (params_.required_version >= 0 &&
         reply.version != params_.required_version) {
       const std::string msg = "model version " + std::to_string(reply.version) +
           " and required version " + std::to_string(params_.required_version) +
           " are not consistent";
-      logger_->error(msg);
+      std::cout << msg << std::endl;
       throw std::runtime_error(msg);
     }
 
@@ -218,16 +232,16 @@ class MCTSActor {
       *oo_ << "Got information from neural network" << std::endl;
     resp->value = reply.value;
 
-    const GoState& s = reply.bf.state();
+    const StateForChouFleur& s = reply.bf.state();
 
-    bool pass_enabled = s.getPly() >= params_.ply_pass_enabled;
-    if (params_.remove_pass_if_dangerous) {
+    bool pass_enabled = s.getPly() >= params_.ply_pass_enabled;  // FIXME this should always be False, for a game without pass ?
+    /*if (params_.remove_pass_if_dangerous) {
       remove_pass_if_dangerous(s, &pass_enabled);
-    }
+    }*/
     pi2response(reply.bf, reply.pi, pass_enabled, &resp->pi, oo_);
   }
 
-  void remove_pass_if_dangerous(const GoState& s, bool* pass_enabled) {
+ /* void remove_pass_if_dangerous(const StateForChouFleur& s, bool* pass_enabled) {
     // [TODO] Hack here. The bot never pass first, if the pass leads to an
     // immediate loss..
     if (*pass_enabled && s.lastMove() != M_PASS) {
@@ -237,7 +251,7 @@ class MCTSActor {
         *pass_enabled = false;
       }
     }
-  }
+  }*/
 
   static void normalize(std::vector<std::pair<Coord, float>>* output_pi) {
     assert(output_pi != nullptr);
@@ -257,8 +271,8 @@ class MCTSActor {
       bool pass_enabled,
       std::vector<std::pair<Coord, float>>* output_pi,
       std::ostream* oo = nullptr) {
-    const GoState& s = bf.state();
-
+    const StateForChouFleur& s = bf.state();
+    UNUSED(pass_enabled);
     if (oo != nullptr) {
       *oo << "In get_last_pi, #move returned " << pi.size() << std::endl;
       *oo << s.showBoard() << std::endl << std::endl;
@@ -303,15 +317,15 @@ class MCTSActor {
         break;
       const data_type& v = output_pi->at(i);
       // Check whether this move is right.
-      bool valid = (v.first == M_PASS && pass_enabled) ||
-          (v.first != M_PASS && s.checkMove(v.first));
+      bool valid = /*(v.first == M_PASS && pass_enabled) ||
+          (v.first != M_PASS && */ s.checkMove(v.first);
       if (valid) {
         tmp.push_back(v);
       }
 
       if (oo != nullptr) {
-        *oo << "Predict [" << i << "][" << coord2str(v.first) << "]["
-            << coord2str2(v.first) << "][" << v.first << "] " << v.second;
+        *oo << "Predict [" << i << "][" << /*coord2str(v.first) << "]["
+            << coord2str2(v.first) << "][" <<*/ v.first << "] " << v.second;
         if (valid)
           *oo << " added" << std::endl;
         else
@@ -319,10 +333,10 @@ class MCTSActor {
       }
       i++;
     }
-    if (tmp.empty() && !pass_enabled) {
+/*    if (tmp.empty() && !pass_enabled) {
       // Add pass if there is no valid move.
       tmp.push_back(std::make_pair(M_PASS, 1.0));
-    }
+    }*/
     *output_pi = tmp;
     normalize(output_pi);
     if (oo != nullptr)
@@ -346,9 +360,9 @@ struct ActorTrait<MCTSActor> {
 } // namespace ai
 } // namespace elf
 
-class MCTSGoAI : public elf::ai::tree_search::MCTSAI_T<MCTSActor> {
+class MCTSChouFleurAI : public elf::ai::tree_search::MCTSAI_T<MCTSActor> {
  public:
-  MCTSGoAI(
+  MCTSChouFleurAI(
       const elf::ai::tree_search::TSOptions& options,
       std::function<MCTSActor*(int)> gen)
       : elf::ai::tree_search::MCTSAI_T<MCTSActor>(options, gen) {}
@@ -365,6 +379,7 @@ class MCTSGoAI : public elf::ai::tree_search::MCTSAI_T<MCTSActor> {
   elf::ai::tree_search::MCTSPolicy<Coord> getMCTSPolicy() const {
     const auto& result = getLastResult();
     auto policy = result.mcts_policy;
+    // cout << policy.info() << endl;
     policy.normalize();
     return policy;
   }

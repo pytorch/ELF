@@ -23,7 +23,7 @@ ChouFleurGameSelfPlay::ChouFleurGameSelfPlay(
       dispatcher_(dispatcher),
       notifier_(notifier),
       _state_ext(game_idx, options),
-      logger_(elf::logging::getLogger(
+      logger_(elf::logging::getIndexedLogger(
           "elfgames::go::ChouFleurGameSelfPlay-" + std::to_string(game_idx) + "-",
           "")) {}
 

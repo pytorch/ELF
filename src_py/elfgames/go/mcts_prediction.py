@@ -12,6 +12,10 @@ from elf.options import auto_import_options, PyOptionSpec
 from rlpytorch.trainer.timer import RLTimer
 
 
+_logger_factory = logging.IndexedLoggerFactory(
+    lambda name: logging.stderr_color_mt(name))
+
+
 class MCTSPrediction(object):
     @classmethod
     def get_option_spec(cls):
@@ -26,12 +30,13 @@ class MCTSPrediction(object):
     def __init__(self, option_map):
         self.policy_loss = nn.KLDivLoss().cuda()
         self.value_loss = nn.MSELoss().cuda()
-        self.logger = logging.getIndexedLogger(
+        self.logger = _logger_factory.makeLogger(
             'elfgames.go.MCTSPrediction-', '')
         self.timer = RLTimer()
 
     def update(self, mi, batch, stats, use_cooldown=False, cooldown_count=0):
         ''' Update given batch '''
+        print("MCTSprediction.update")     # FIXME
         self.timer.restart()
         if use_cooldown:
             if cooldown_count == 0:
