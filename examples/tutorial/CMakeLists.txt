@@ -31,10 +31,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/json/include)
 add_subdirectory(
     ../../third_party/pybind11
     ${CMAKE_CURRENT_BINARY_DIR}/pybind11)
-#find_package(TBB REQUIRED tbb)  # Need to find_package in parent scope
 
 # Source files
-
 set(ELFGAMES_TUTORIAL_SOURCES
     dummy.cc
 )
@@ -42,12 +40,8 @@ set(ELFGAMES_TUTORIAL_SOURCES
 # Main Tutorial library
 
 add_library(elfgames_tutorial ${ELFGAMES_TUTORIAL_SOURCES})
-#target_link_libraries(elfgames_tutorial PUBLIC
-#    elf
-#)
 
 # Python bindings
-
 pybind11_add_module(_elfgames_tutorial pybind_module.cc)
 target_link_libraries(_elfgames_tutorial PRIVATE
     elfgames_tutorial
