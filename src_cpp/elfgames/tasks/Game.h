@@ -250,8 +250,8 @@ class StateForChouFleur : public State {
 
 
 // let us implement Draughts. This is a class compatible with Elf2, to be filled
-// so that we can play with Scan.
-// I assume below that Scan has a class for Board and a class for Actions. An
+// so that we can play with the AI.
+// I assume below that the AI has a class for Board and a class for Actions. An
 // action is an "entire" action, including the several jumps that an action can
 // include.
 class StateForDraughts;
@@ -279,7 +279,7 @@ class ActionForDraughts : public Action {
   ActionForDraughts(Action& action):Action(action) {}
 
  protected:
-  // TODO here we should have an object of the Scan class for actions.
+  // TODO here we should have an object of the the AI class for actions.
 
 };
 
@@ -295,7 +295,7 @@ class StateForDraughts : public State {
 
   // This function initializes the board at its original state.
   void Initialize() {
-    // TODO draughts this should initialize the Scan board.
+    // TODO draughts this should initialize the the AI board.
     _status = 1; // because at draughts White plays first.
     _features.resize(200); // 50 locations, and 4
     _moves.clear();
@@ -304,7 +304,7 @@ class StateForDraughts : public State {
     // (black, white, black
     // king, white king).
 
-    // TODO here we should use Scan's implementation of Board for:
+    // TODO here we should use the AI's implementation of Board for:
     // 1. generating the list of legal actions.
     // 2. storing them in our this->_actions with the correct i_ for each
     //    (i.e. _actions[i]._i = i, this is just indexing).
@@ -313,7 +313,7 @@ class StateForDraughts : public State {
   // The action just decreases the distance and swaps the turn to play.
   void ApplyAction(__attribute__((unused)) const Action& action) {
     // TODO draughts: we should update:
-    // 1. the Scan board object.
+    // 1. the the AI board object.
     // 2. the _features vector: for black:
     //  _features[i] should be 1 if square i is black
     //  _features[50+i] should be 1 if square i is white
@@ -339,11 +339,11 @@ class StateForDraughts : public State {
 
   // For this trivial example we just compare to random play.
   void DoGoodAction() {
-    // TODO this should request a good action as suggest by Scan and apply
+    // TODO this should request a good action as suggest by the AI and apply
     // this->ApplyAction accordingly.
     // This will not be used during the learning, but for checking that the
     // learning provides
-    // an improvement that can decently be included in Scan.
+    // an improvement that can decently be included in the AI.
   }
 
 };
