@@ -1,9 +1,9 @@
 .PHONY: all
-all: elf elfgames/go
+all: elf elfgames/go elfgames/tasks
 
 .PHONY: clean
 clean:
-rm -rf build/
+	rm -rf build/
 
 .PHONY: test
 test: test_cpp
