@@ -23,8 +23,8 @@ make -j
 #sleep 1
 ./letustest_client.sh &
 
-sleep 20 
+#sleep 20 
 
-./allkill.sh
+#./allkill.sh
 wait
 
