@@ -17,8 +17,8 @@ make -j
 ./letustest.sh 
 #sleep 1
 
-# Below, once per client.
-#./letustest_check.sh &
+# Below, once per client: this launches something for checking how much we win against the baseline.
+./letustest_check.sh &
 
 #sleep 1
 ./letustest_client.sh &
