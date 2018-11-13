@@ -59,7 +59,7 @@ class MCTSAI_T : public AI_T<typename Actor::State, typename Actor::Action> {
   bool act(const State& s, Action* a) override {
     align_state(s);
 
-    if (options_.verbose_time||1) {
+    if (options_.verbose_time) {
       elf_utils::MyClock clock;
       clock.restart();
 

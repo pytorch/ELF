@@ -70,7 +70,7 @@ class MCTSActor {
   void evaluate(
       const std::vector<const StateForChouFleur*>& states,
       std::vector<NodeResponse>* p_resps) {
-    std::cout << ("here, tasks/mcts launches a batch evaluation.") << std::endl;
+    //std::cout << ("here, tasks/mcts launches a batch evaluation.") << std::endl;
     if (states.empty())
     {
       std::cout << "and returning because empty" << std::endl;
@@ -87,7 +87,7 @@ class MCTSActor {
     std::vector<size_t> sel_indices;
 
     for (size_t i = 0; i < states.size(); i++) {
-      std::cout << "states" << i << "/" << states.size() << std::endl;
+      //std::cout << "states" << i << "/" << states.size() << std::endl;
       assert(states[i] != nullptr);
       PreEvalResult res = pre_evaluate(*states[i], &resps[i]);
       if (res == EVAL_NEED_NN) {
@@ -97,16 +97,16 @@ class MCTSActor {
     }
 
     if (sel_bfs.empty()) {
-      std::cout << " bfs empty" << std::endl;
+      //std::cout << " bfs empty" << std::endl;
       return;
     }
 
     std::vector<ChouFleurReply> replies;
     for (size_t i = 0; i < sel_bfs.size(); ++i) {
-      std::cout << "bfs" << i << "/" << sel_bfs.size() << std::endl;
+      //std::cout << "bfs" << i << "/" << sel_bfs.size() << std::endl;
       replies.emplace_back(sel_bfs[i]);
     }
-    std::cout << " ok bfs" << std::endl;
+    //std::cout << " ok bfs" << std::endl;
     // Get all pointers.
     std::vector<ChouFleurReply*> p_replies;
     std::vector<const BoardFeature*> p_bfs;
@@ -116,7 +116,7 @@ class MCTSActor {
       p_replies.push_back(&replies[i]);
     }
 
-    std::cout << " ok replies" << std::endl;
+    //std::cout << " ok replies" << std::endl;
     // cout << "About to send situation to " << params_.actor_name << endl;
     // cout << s.showBoard() << endl;
     if (!ai_->act_batch(p_bfs, p_replies)) {
@@ -124,17 +124,17 @@ class MCTSActor {
     } else {
       //std::cout << "act successful!" << std::endl;
       for (size_t i = 0; i < sel_indices.size(); i++) {
-        std::cout << "postnnresults" << i << "/" << sel_indices.size() << std::endl;
+        //std::cout << "postnnresults" << i << "/" << sel_indices.size() << std::endl;
         post_nn_result(replies[i], &resps[sel_indices[i]]);
       }
     }
-   std::cout << ("here, tasks/mcts launches a batch evaluation.       ----       END") << std::endl;
+   //std::cout << ("here, tasks/mcts launches a batch evaluation.       ----       END") << std::endl;
   }
 
   void evaluate(const StateForChouFleur& s, NodeResponse* resp) {
     if (oo_ != nullptr)
       *oo_ << "Evaluating state at " << std::hex << &s << std::dec << std::endl;
-    std::cout << ("evaluating a state, evaluate(.,., client side")  << std::endl;
+    //std::cout << ("evaluating a state, evaluate(.,., client side")  << std::endl;
     // if terminated(), get results, res = done
     // else res = EVAL_NEED_NN
     PreEvalResult res = pre_evaluate(s, resp);
@@ -159,14 +159,14 @@ class MCTSActor {
       }
     }
 
-    std::cout << ("evaluating a state, evaluate(.,., client side           END") << std::endl;
+    //std::cout << ("evaluating a state, evaluate(.,., client side           END") << std::endl;
     if (oo_ != nullptr)
       *oo_ << "Finish evaluating state at " << std::hex << &s << std::dec
            << std::endl;
   }
 
   bool forward(StateForChouFleur& s, Coord a) {
-    std::cout << " mcts forward " << std::endl;
+    //std::cout << " mcts forward " << std::endl;
     return s.forward(a);
   }
 
@@ -224,7 +224,7 @@ class MCTSActor {
       const std::string msg = "model version " + std::to_string(reply.version) +
           " and required version " + std::to_string(params_.required_version) +
           " are not consistent";
-      std::cout << msg << std::endl;
+      //std::cout << msg << std::endl;
       throw std::runtime_error(msg);
     }
 

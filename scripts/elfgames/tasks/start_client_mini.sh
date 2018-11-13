@@ -26,7 +26,7 @@ stdbuf -o 0 -e 0 python -v ./selfplay.py \
     --no_check_loaded_options0    --no_check_loaded_options1 \
     --replace_prefix0 resnet.module,resnet init_conv.module,init_conv\
     --replace_prefix1 resnet.module,resnet init_conv.module,init_conv\
-    --resign_thres 0.1    --selfplay_timeout_usec 10 \
+    --resign_thres 0.1    --selfplay_timeout_usec 50 \
     --server_id myserver --use_mcts \
     --use_fp160 --use_fp161 \
     --use_mcts_ai2 --verbose

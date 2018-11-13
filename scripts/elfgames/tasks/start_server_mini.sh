@@ -13,7 +13,7 @@ rm ../../../log.log
 
 save=./myserver game=elfgames.tasks.game model=df_kl model_file=elfgames.tasks.df_model3 \
     stdbuf -o 0 -e 0 python -u ./train.py \
-    --mode train    --batchsize 1 \
+    --mode train    --batchsize 10 \
     --num_games 1 --keys_in_reply V \
     --T 1    --use_data_parallel \
     --num_minibatch 1000    --num_episode 1000000 \

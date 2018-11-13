@@ -73,8 +73,8 @@ class Action {
 class State {
  public:
   State() {_hash=-7;_xsize.resize(3);_actionSize.resize(3);}
-  virtual void Initialize() { std::cout << " OTG-Initialize" << std::endl; exit(-1); }
-  virtual void ApplyAction(__attribute__((unused)) const Action& action) { std::cout << "OTG-ApplyAction" << std::endl; exit(-1); }
+  virtual void Initialize() { /*std::cout << " OTG-Initialize" << std::endl;*/ exit(-1); }
+  virtual void ApplyAction(__attribute__((unused)) const Action& action) { /*std::cout << "OTG-ApplyAction" << std::endl;*/ exit(-1); }
   virtual const std::vector<Action*>& GetLegalActions() const { return _actions; }
   bool checkMove(const unsigned short& c) const { return c < _actions.size(); }
   unsigned long int GetHash() const { return _hash; }
@@ -90,8 +90,14 @@ class State {
   // 2: draw.
   // 3: black has won.
   // 4: white has won.
-  int GetStatus() const { return _status; };
-  bool terminated() const { return _status > 1; };
+  int GetStatus() const {
+    if (_status == 3) {std::cout << "blackwon" << std::endl;}
+    if (_status == 4) {std::cout << "whitewon" << std::endl;}
+  return _status; };
+  bool terminated() const {
+    if (_status == 3) {std::cout << "blackwon" << std::endl;}
+    if (_status == 4) {std::cout << "whitewon" << std::endl;}
+  return _status > 1; };
   float getFinalValue() const { return evaluate(); }
   // Returns a pointer to GetXSize x GetYSize x GetZSize float, input for the
   // NN.
@@ -106,11 +112,11 @@ class State {
   int GetYActionSize() const {return _actionSize[1];}
   int GetZActionSize() const {return _actionSize[2];}
   virtual void DoGoodAction() {
-    std::cout << "OTG-DoGoodAction" << std::endl;
+    //std::cout << "OTG-DoGoodAction" << std::endl;
     exit(-1);
   }
   bool moves_since(size_t* next_move_number, std::vector<Coord>* moves) const {
-    std::cout << "OTG-moves_since" << std::endl;
+    //std::cout << "OTG-moves_since" << std::endl;
     if (*next_move_number > _moves.size()) {
       // The move number is not right.
       return false;
@@ -126,12 +132,12 @@ class State {
   int nextPlayer() const {
     if (_status == 0) return 1; // S_BLACK  FIXME
     if (_status == 1) return 2; // S_WHITE  FIXME dirty hack, I do not use S_WHITE because common.h not included
-    std::cout << "OTG-nextplayer crashes " << _status << std::endl;
+    //std::cout << "OTG-nextplayer crashes " << _status << std::endl;
     return 0;
   }
   virtual int getPly() const { return -1; }
   bool forward(const Action& action) {
-    std::cout << "OTG-forwarda" << action.GetHash() << std::endl;
+    //std::cout << "OTG-forwarda" << action.GetHash() << std::endl;
     // maybe we should check legality here in bool forward(Coord) ? FIXME
     ApplyAction(action);
 	 /* void *array[10];
@@ -149,7 +155,7 @@ class State {
     return true;  // FIXME forward always return true ?
   }
   bool forward(const unsigned short& coord) {
-    std::cout << "OTG-forwardb" << coord << std::endl;
+    //std::cout << "OTG-forwardb" << coord << std::endl;
     _moves.push_back(coord);
     return forward(*GetLegalActions()[coord]);
   }
@@ -158,7 +164,7 @@ class State {
     Initialize();
   }
   int _GetStatus() const { // for compatibility, don't worry...
-    std::cout << "OTG-_getStatus" << std::endl;
+    //std::cout << "OTG-_getStatus" << std::endl;
     return GetStatus();
   }
   // end of the helper functions that you might ignore.
@@ -244,7 +250,7 @@ class StateForChouFleur : public State {
   // The action just decreases the distance and swaps the turn to play.
   void ApplyAction(const Action& action) {
     if (_hash < action.GetHash()) { _hash = 0; } else { _hash -= action.GetHash();}
-    std::cout << "OTGChouFleur ApplyAction" << _hash << std::endl;
+    //std::cout << "OTGChouFleur ApplyAction" << _hash << std::endl;
     if (_hash <= 0) {
       _status += 3;
     } else {
@@ -256,7 +262,7 @@ class StateForChouFleur : public State {
   // For this trivial example we just compare to random play. Ok, this is not really a good action.
   // By the way we need a good default DoGoodAction, e.g. one-ply at least. FIXME
   void DoGoodAction() {
-    std::cout << "OTGChouFleur DoGoodAction" << std::endl;
+    //std::cout << "OTGChouFleur DoGoodAction" << std::endl;
     std::bernoulli_distribution distribution(0.5);
     if (distribution(generator))
       ApplyAction(ActionForChouFleur(2));

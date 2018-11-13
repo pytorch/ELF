@@ -125,7 +125,7 @@ def main():
         def actor(batch, e, stat):
             reply = e.actor(batch)
             stat.feed(batch)
-            print("actor returns " + str(reply))
+            #print("actor returns " + str(reply))
             return reply
 
         GC.reg_callback(actor_name,

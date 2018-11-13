@@ -81,7 +81,7 @@ class TreeSearchSingleThreadT {
   }
 
   void notifyReady(int num_rollout) {
-    std::cout << "notifyreadynum_rollout" << num_rollout << std::endl;
+    //std::cout << "notifyreadynum_rollout" << num_rollout << std::endl;
     runInfoWhenStateReady_.push(num_rollout);
   }
 
@@ -94,7 +94,7 @@ class TreeSearchSingleThreadT {
     int num_rollout;
     runInfoWhenStateReady_.pop(&num_rollout);
 
-    std::cout << " ploploplo"<<std::endl;
+   // std::cout << " ploploplo"<<std::endl;
     Node* root = search_tree.getRootNode();
     if (root == nullptr || root->getStatePtr() == nullptr) {
       if (stop_search == nullptr || !stop_search->load()) {
@@ -104,23 +104,23 @@ class TreeSearchSingleThreadT {
     }
 
     _set_ostream(actor);
-    std::cout << "pliplipli" << std::endl;
+    //std::cout << "pliplipli" << std::endl;
     if (output_ != nullptr) {
       *output_ << "[run=" << run_id << "] " << actor.info() << std::endl
                << std::flush;
     }
-    std::cout << "rolloutstuff" << num_rollout << "," << options_.num_rollouts_per_batch << std::endl;
+   // std::cout << "rolloutstuff" << num_rollout << "," << options_.num_rollouts_per_batch << std::endl;
     for (int idx = 0;
          idx < num_rollout && (stop_search == nullptr || !stop_search->load());
          idx += options_.num_rollouts_per_batch) {
       // Start from the root and run one path
-	  if ((idx <10)||(idx%100 == 0)) {
-	  std::cout << " rollout " << idx << std::endl;}
+	  /*if ((idx <10)||(idx%100 == 0)) {
+	  std::cout << " rollout " << idx << std::endl;}*/
       batch_rollouts<Actor>(
           RunContext(run_id, idx, num_rollout), root, actor, search_tree);
-	  std::cout << " stopsearch=nullptr ==> " << (stop_search == nullptr) << ", not(stop_search->load)" << !stop_search->load() << std::endl;
+	  //std::cout << " stopsearch=nullptr ==> " << (stop_search == nullptr) << ", not(stop_search->load)" << !stop_search->load() << std::endl;
     }
-    std::cout << "plupluplu" << std::endl;
+    //std::cout << "plupluplu" << std::endl;
     if (output_ != nullptr) {
       *output_ << "[run=" << run_id << "] "
                << "Done" << std::endl
@@ -420,7 +420,7 @@ class TreeSearchT {
       root->enhanceExploration(
           options_.root_epsilon, options_.root_alpha, actors_[0]->rng());
     }
-    std::cout << " notifySearchesfromrun " << options_.num_rollouts_per_thread << std::endl;
+    //std::cout << " notifySearchesfromrun " << options_.num_rollouts_per_thread << std::endl;
     notifySearches(options_.num_rollouts_per_thread);
 
     // Wait until all tree searches are done.
@@ -476,7 +476,7 @@ class TreeSearchT {
 
   void notifySearches(int num_rollout) {
     for (size_t i = 0; i < treeSearches_.size(); ++i) {
-	  std::cout << " notifySearches_num_rollout " << num_rollout << std::endl;
+	  //std::cout << " notifySearches_num_rollout " << num_rollout << std::endl;
       treeSearches_[i]->notifyReady(num_rollout);
     }
   }

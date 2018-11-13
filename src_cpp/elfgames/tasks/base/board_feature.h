@@ -142,34 +142,34 @@ class BoardFeature {
     int xsize = s_.GetXActionSize();
     int ysize = s_.GetYActionSize();
     Action* a = s_.GetLegalActions()[m];
-    std::cout << "selected coord = " << m << std::endl;
+    //std::cout << "selected coord = " << m << std::endl;
     int64_t action = a->GetZ()*ysize*xsize + a->GetY()*xsize + a->GetX();
-    std::cout << "selected action = " << action << std::endl;
+    //std::cout << "selected action = " << action << std::endl;
     return action;
     //s_ is a StateForChouFleur and we return the index of the coord in GetLegalActions... not 1:1 though, FIXME
   }
   
   Coord action2Coord(int64_t action) const {
-   std::cout << " action2coord1 for action=" << action << std::endl;
+   //std::cout << " action2coord1 for action=" << action << std::endl;
    if (action < 0) { std::cout << "neg action!"<< std::endl;exit(-1); }
    //return static_cast<ActionForChouFleur>(*s_.GetLegalActions()[static_cast<int>(action)]);
    // FIXME: I just do the oppositote of coord2Actions above.
    int xsize = s_.GetXActionSize();
    int ysize = s_.GetYActionSize();
-   std::cout << " action2coord2 xsize=" << xsize << " ysize=" << ysize << std::endl;
+   //std::cout << " action2coord2 xsize=" << xsize << " ysize=" << ysize << std::endl;
 
    // slow version... for many games we should be able to do better.
    // FIXME: think carefully about what we are doing here.
    for (unsigned int a=0; a<s_.GetLegalActions().size(); a++) {
      Action * act = s_.GetLegalActions()[a];
-     std::cout << "legal action a = " << a << "---" << act->GetZ()*ysize*xsize + act->GetY()*xsize + act->GetX() <<std::endl;
+     //std::cout << "legal action a = " << a << "---" << act->GetZ()*ysize*xsize + act->GetY()*xsize + act->GetX() <<std::endl;
      if (act->GetZ()*ysize*xsize + act->GetY()*xsize + act->GetX() == action)
      {
-       std::cout << "validated" << a << std::endl;
+       //std::cout << "validated" << a << std::endl;
        return static_cast<Coord>(a);
      }
    }
-   std::cout << " action2coord3 BUG BUG BUG BUG" << std::endl;
+   //std::cout << " action2coord3 BUG BUG BUG BUG" << std::endl;
    exit(-1);
    //return static_cast<Coord>(action);
    /* if (action == -1 || action == BOARD_ACTION_PASS)

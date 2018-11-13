@@ -125,7 +125,7 @@ Coord ChouFleurGameSelfPlay::mcts_update_info(MCTSChouFleurAI* mcts_go_ai, Coord
 }
 
 void ChouFleurGameSelfPlay::finish_game(FinishReason reason) {
-  std::cout << ("client side ---- let us finish the game") << std::endl;
+  //std::cout << ("client side ---- let us finish the game") << std::endl;
   if (!_state_ext.currRequest().vers.is_selfplay() &&
       _options.cheat_eval_new_model_wins_half) {
     reason = FR_CHEAT_NEWER_WINS_HALF;
@@ -160,7 +160,7 @@ void ChouFleurGameSelfPlay::finish_game(FinishReason reason) {
   }
   // clear state, MCTS polices et.al.
   _state_ext.restart();
-  std::cout << ("client side ---- let us finish the game              END") << std::endl;
+  //std::cout << ("client side ---- let us finish the game              END") << std::endl;
 }
 
 void ChouFleurGameSelfPlay::setAsync() {
@@ -237,7 +237,7 @@ void ChouFleurGameSelfPlay::restart() {
 bool ChouFleurGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* reply) {
   if (*reply == RestartReply::UPDATE_COMPLETE)
     return false;
-  std::cout << ("on the client side --- OnReceive") << std::endl;
+  //std::cout << ("on the client side --- OnReceive") << std::endl;
   bool is_waiting = request.vers.wait();
   bool is_prev_waiting = _state_ext.currRequest().vers.wait();
 
@@ -261,7 +261,7 @@ bool ChouFleurGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* r
   // Then we need to reset everything.
   _state_ext.setRequest(request);
 
-  std::cout << ("on the client side --- OnReceive   END") << std::endl;
+  //std::cout << ("on the client side --- OnReceive   END") << std::endl;
   if (is_waiting) {
     *reply = RestartReply::ONLY_WAIT;
     return false;
@@ -385,7 +385,7 @@ void ChouFleurGameSelfPlay::act() {
       (player == S_BLACK && _options.black_use_dga);
   if (use_dga) {
      // we use the heuristic hard-coded in Game.h.
-     std::cout << "client side  ---  USE DO GOOD ACTION" << std::endl;
+     //std::cout << "client side  ---  USE DO GOOD ACTION" << std::endl;
      _state_ext.GetState().DoGoodAction();
   } else {
   bool use_policy_network_only =
@@ -397,21 +397,21 @@ void ChouFleurGameSelfPlay::act() {
   if (use_policy_network_only) {
     // Then we only use policy network to move.
     curr_ai->actPolicyOnly(s, &c);
-    std::cout << "side[" << elf::ai::tree_search::ActionTrait<Coord>::to_string(c) << "]" << std::endl;
+    //std::cout << "side[" << elf::ai::tree_search::ActionTrait<Coord>::to_string(c) << "]" << std::endl;
   } else {
-    std::cout << "client side: choose a move for the current board..."  << std::endl;
+    //std::cout << "client side: choose a move for the current board..."  << std::endl;
     curr_ai->act(s, &c);
-    std::cout << "client side: choose a move for the current board...[ " << elf::ai::tree_search::ActionTrait<Coord>::to_string(c)   << "]act"  << std::endl;
+    //std::cout << "client side: choose a move for the current board...[ " << elf::ai::tree_search::ActionTrait<Coord>::to_string(c)   << "]act"  << std::endl;
     c = mcts_make_diverse_move(curr_ai, c);
-    std::cout << "client side: choose a move for the current board...[ " << elf::ai::tree_search::ActionTrait<Coord>::to_string(c)   << "]diverse"  << std::endl;
-    std::cout <<"client side: choose a move for the current board...           END" << std::endl;
+    //std::cout << "client side: choose a move for the current board...[ " << elf::ai::tree_search::ActionTrait<Coord>::to_string(c)   << "]diverse"  << std::endl;
+    //std::cout <<"client side: choose a move for the current board...           END" << std::endl;
   }
-  std::cout << "[" << elf::ai::tree_search::ActionTrait<Coord>::to_string(c) << "]" << std::endl;
+  //std::cout << "[" << elf::ai::tree_search::ActionTrait<Coord>::to_string(c) << "]" << std::endl;
   //std::cout << ("client side: mcts_update_info")   << std::endl;
   c = mcts_update_info(curr_ai, c);
   //std::cout << ("client side: mcts_update_info                       END") << std::endl;
-if (show_board) { std::cout << " poufpouf"<<std::endl;}
-/*  if (show_board) */{    //FIXME overly verbose
+//if (show_board) { /*std::cout << " poufpouf"<<std::endl;*/}
+  if (show_board) { 
     logger_->info(
         "Current board:\n{}\n[{}] Propose move <{}>\n",
         s.showBoard(),

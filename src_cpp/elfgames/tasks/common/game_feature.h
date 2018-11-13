@@ -64,7 +64,7 @@ class ChouFleurFeature {
   }
 
   static void ReplyAction(ChouFleurReply& reply, const int64_t* action) {
-    std::cout << "ReplyAction" << std::endl;
+    //std::cout << "ReplyAction" << std::endl;
     switch ((SpecialActionType)*action) {
       case SA_RESIGN:
         reply.c = M_RESIGN;
@@ -81,7 +81,7 @@ class ChouFleurFeature {
       default:
         reply.c = reply.bf.action2Coord(*action);   // FIXME
     }
-    std::cout << "ReplyActionok " << reply.c << "}}" << std::endl;
+    //std::cout << "ReplyActionok " << reply.c << "}}" << std::endl;
   }
 
   static void ReplyVersion(ChouFleurReply& reply, const int64_t* ver) {
