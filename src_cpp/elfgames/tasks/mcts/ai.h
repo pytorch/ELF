@@ -30,10 +30,10 @@ template <>
 struct ActionTrait<Coord> {
  public:
   static std::string to_string(const Coord& c) {
-    UNUSED(c);
-    /*return "[" + coord2str2(c) + "][" + coord2str(c) + "][" +
-        std::to_string(c) + "]";*/
-    return "FIXME";
+ //   UNUSED(c);
+    return "[" + //coord2str2(c) + "][" + coord2str(c) + "][" +
+        std::to_string(c) + "]";
+   // return "FIXME";
   }
   static Coord default_value() {
     return M_INVALID;

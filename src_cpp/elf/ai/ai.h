@@ -40,12 +40,14 @@ class AI_T {
   // Given the current state, perform action and send the action to _a;
   // Return false if this procedure fails.
   virtual bool act(const S&, A*) {
+    std::cout << "WTF" << std::endl;
     return true;
   }
 
   virtual bool act_batch(
       const std::vector<const S*>& /*batch_s*/,
       const std::vector<A*>& /*batch_a*/) {
+    std::cout << "WTF2" << std::endl;
     return true;
   }
 

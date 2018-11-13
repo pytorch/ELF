@@ -3,11 +3,19 @@
 
 typedef unsigned short Coord;
 
+#include <execinfo.h>
 #include <iostream>
 #include <random>
 #include <vector>
 #include "time.h"
 #include <string>
+#include <cassert>
+
+#include <stdio.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
 //#include "base/common.h"
 
 /*****
@@ -126,6 +134,18 @@ class State {
     std::cout << "OTG-forwarda" << action.GetHash() << std::endl;
     // maybe we should check legality here in bool forward(Coord) ? FIXME
     ApplyAction(action);
+	 /* void *array[10];
+	    size_t size;
+
+		  // get void*'s for all entries on the stack
+		    size = backtrace(array, 10);
+
+			  // print out all the frames to stderr
+	//		    fprintf(stderr, "Error: signal %d:\n", sig);
+				  backtrace_symbols_fd(array, size, STDERR_FILENO);
+
+	assert(0);
+	*/
     return true;  // FIXME forward always return true ?
   }
   bool forward(const unsigned short& coord) {

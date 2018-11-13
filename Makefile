@@ -1,5 +1,5 @@
 .PHONY: all
-all: elf elfgames/go
+all: elf elfgames/go elfgames/tasks
 
 .PHONY: clean
 clean:

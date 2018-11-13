@@ -17,7 +17,7 @@ save=./myserver game=elfgames.tasks.game model=df_kl model_file=elfgames.tasks.d
     --num_games 1 --keys_in_reply V \
     --T 1    --use_data_parallel \
     --num_minibatch 1000    --num_episode 1000000 \
-    --mcts_threads 1    --mcts_rollout_per_thread 1 \
+    --mcts_threads 1    --mcts_rollout_per_thread 100 \
     --keep_prev_selfplay    --keep_prev_selfplay \
     --use_mcts     --use_mcts_ai2 \
     --mcts_persistent_tree    --mcts_use_prior \
