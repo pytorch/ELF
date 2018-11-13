@@ -250,7 +250,9 @@ class StateForChouFleur : public State {
   // The action just decreases the distance and swaps the turn to play.
   void ApplyAction(const Action& action) {
     if (_hash < action.GetHash()) { _hash = 0; } else { _hash -= action.GetHash();}
-    //std::cout << "OTGChouFleur ApplyAction" << _hash << std::endl;
+	/*if (_hash < 7 || _hash > 95) {
+    std::cout << "OTGChouFleur ApplyAction" << _hash << std::endl;
+	}*/
     if (_hash <= 0) {
       _status += 3;
     } else {

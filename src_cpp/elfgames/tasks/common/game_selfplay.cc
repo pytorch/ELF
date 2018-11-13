@@ -311,8 +311,10 @@ void ChouFleurGameSelfPlay::act() {
   const StateForChouFleur& s = _state_ext.state();
 
   if (_human_player != nullptr) {
+    std::cout << "we see a human" << std::endl;
     do {
       if (s.terminated()) {
+        std::cout << "there is a human in the loop ?" << std::endl;
         finish_game(FR_ILLEGAL);
         return;
       }
@@ -336,6 +338,7 @@ void ChouFleurGameSelfPlay::act() {
       }
       // Otherwise we forward.
       if (_state_ext.forward(reply.c)) {
+//         std::cout << "zehash forward" << _state_ext.state().GetHash();
        /* if (_state_ext.state().isTwoPass()) {
           // If the human opponent pass, we pass as well.
           finish_game(FR_TWO_PASSES);
@@ -351,18 +354,21 @@ void ChouFleurGameSelfPlay::act() {
   } else {
     // If re receive this, then we should not send games anymore
     // (otherwise the process never stops)
+//    std::cout << "zehash " << _state_ext.state().GetHash() << std::endl;
     if (client_->checkPrepareToStop()) {
       // [TODO] A lot of hack here. We need to fix it later.
       AI ai(client_, {"actor_black"});
       BoardFeature bf(s);
       ChouFleurReply reply(bf);
       ai.act(bf, &reply);
+//      std::cout << "zehash black ai act" << reply.c << std::endl;
 
       if (client_->DoStopGames())
         return;
 
       AI ai_white(client_, {"actor_white"});
       ai_white.act(bf, &reply);
+//      std::cout << "zehash white ai act" << reply.c << std::endl;
 
       elf::FuncsWithState funcs = client_->BindStateToFunctions(
           {"game_start"}, &_state_ext.currRequest().vers);
@@ -397,7 +403,7 @@ void ChouFleurGameSelfPlay::act() {
   if (use_policy_network_only) {
     // Then we only use policy network to move.
     curr_ai->actPolicyOnly(s, &c);
-    //std::cout << "side[" << elf::ai::tree_search::ActionTrait<Coord>::to_string(c) << "]" << std::endl;
+    std::cout << "side[" << elf::ai::tree_search::ActionTrait<Coord>::to_string(c) << "]" << std::endl;
   } else {
     //std::cout << "client side: choose a move for the current board..."  << std::endl;
     curr_ai->act(s, &c);
@@ -456,7 +462,8 @@ void ChouFleurGameSelfPlay::act() {
         ? FR_TWO_PASSES
         : s.getPly() >= BOARD_MAX_MOVE ? FR_MAX_STEP : FR_ILLEGAL;*/
     auto reason = 
-        s.getPly() >= 4000 ? FR_MAX_STEP : FR_ILLEGAL;   // FIXME FR_MAX_STEP if 4000 steps ?
+        s.getPly() >= 4000 ? FR_MAX_STEP : FR_RESIGN;   // FIXME FR_MAX_STEP if 4000 steps ?
+//        s.getPly() >= 4000 ? FR_MAX_STEP : FR_ILLEGAL;   // FIXME FR_MAX_STEP if 4000 steps ?
     finish_game(reason);
   }
 

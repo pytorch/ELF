@@ -19,6 +19,6 @@ cd scripts/elfgames/tasks
 touch log.log
 rm log.log
 ./start_server_mini.sh
-sleep 5
+#sleep 5
 #${ROOTDIR}/viewserverlog.sh
 cat ../../../log.log
