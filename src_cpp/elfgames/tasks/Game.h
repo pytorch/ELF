@@ -16,6 +16,9 @@ typedef unsigned short Coord;
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#define DISTANCE 18   // 17 solved, 20 unsolved
+
 //#include "base/common.h"
 
 /*****
@@ -36,7 +39,7 @@ this makes a difference.
  We provide an implementation of the ChouFleur game as an example.
  ChouFleur game (usually played with real distance and assuming here that your
 foot can decide between length 2 and length 3):
-  - we start at distance 100
+  - we start at distance DISTANCE
   - you remove 2 or 3
   - I remove 2 or 3
   - you remove 2 or 3
@@ -91,12 +94,8 @@ class State {
   // 3: black has won.
   // 4: white has won.
   int GetStatus() const {
-    if (_status == 3) {std::cout << "blackwon" << std::endl;}
-    if (_status == 4) {std::cout << "whitewon" << std::endl;}
   return _status; };
   bool terminated() const {
-    if (_status == 3) {std::cout << "blackwon" << std::endl;}
-    if (_status == 4) {std::cout << "whitewon" << std::endl;}
   return _status > 1; };
   float getFinalValue() const { return evaluate(); }
   // Returns a pointer to GetXSize x GetYSize x GetZSize float, input for the
@@ -227,7 +226,7 @@ class StateForChouFleur : public State {
  //   std::cout << "OTGChouFleur initialize" << std::endl;
     _xsize[0]=StateForChouFleurX;_xsize[1]=StateForChouFleurY;_xsize[2]=StateForChouFleurZ;  // the features are just one number between 0 and 1 (the distance, normalized).
     _actionSize[0]=2;_actionSize[1]=1;_actionSize[2]=1; // size of the output of the neural network; this should cover the positions of actions (above).
-    _hash = 100; // _hash is an unsigned int, it should be nearly unique.
+    _hash = DISTANCE; // _hash is an unsigned int, it should be nearly unique.
     _status = 0; // _status is described above, 0 means black plays:
   // 0: black to play.
   // 1: white to play.
@@ -237,7 +236,7 @@ class StateForChouFleur : public State {
 
     // _features is a vector representing the current state. It can (must...) be large for complex games; here just one number between 0 and 1.
     _features.resize(StateForChouFleurX*StateForChouFleurY*StateForChouFleurZ);  // trivial case in dimension 1.
-    _features[0] = float(_hash)/100.; // this is the worst representation I can imagine... brute force would be possible...
+    _features[0] = float(_hash)/DISTANCE; // this is the worst representation I can imagine... brute force would be possible...
     generator.seed(time(NULL));
   // There are two legal actions, 2 and 3.
     if (_actions.size() > 0) return;
@@ -258,7 +257,7 @@ class StateForChouFleur : public State {
     } else {
       _status = 1 - _status;
     }
-    _features[0] = float(_hash)/100.;
+    _features[0] = float(_hash)/DISTANCE;
   }
 
   // For this trivial example we just compare to random play. Ok, this is not really a good action.

@@ -4,6 +4,7 @@
 
 touch ../../../log.log
 
+sleep 1
 rm ../../../log.log
 # Copyright (c) 2018-present, Facebook, Inc.
 # All rights reserved.

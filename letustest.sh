@@ -16,9 +16,9 @@ PYTHONPATH=$PYTHONPATH:$ROOTDIR/elf/:$ROOTDIR/:$ROOTDIR/build/:$ROOTDIR/src_cpp/
 #make -j 2>&1 | grep -i20 error | head -n 37
 
 cd scripts/elfgames/tasks
-touch log.log
-rm log.log
+
 ./start_server_mini.sh
 #sleep 5
 #${ROOTDIR}/viewserverlog.sh
+sleep 1
 cat ../../../log.log

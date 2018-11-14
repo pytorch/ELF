@@ -73,7 +73,7 @@ class MCTSActor {
     //std::cout << ("here, tasks/mcts launches a batch evaluation.") << std::endl;
     if (states.empty())
     {
-      std::cout << "and returning because empty" << std::endl;
+      //std::cout << "and returning because empty" << std::endl;
       return;
     }
 
