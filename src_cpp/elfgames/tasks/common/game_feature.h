@@ -35,7 +35,7 @@ class ChouFleurFeature {
       _our_stone_plane = 0;
       _opponent_stone_plane = 1;*/
     }
-    _num_plane = 1;  // FIXME
+    _num_plane = 19;  // FIXME
   }
 
   // Inference part.

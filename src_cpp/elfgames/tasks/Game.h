@@ -206,7 +206,7 @@ class ActionForChouFleur : public Action {
 
 
 #define StateForChouFleurNumActions 2
-#define StateForChouFleurX 1
+#define StateForChouFleurX (DISTANCE+1)
 #define StateForChouFleurY 1
 #define StateForChouFleurZ 1
 class StateForChouFleur : public State {
@@ -236,7 +236,10 @@ class StateForChouFleur : public State {
 
     // _features is a vector representing the current state. It can (must...) be large for complex games; here just one number between 0 and 1.
     _features.resize(StateForChouFleurX*StateForChouFleurY*StateForChouFleurZ);  // trivial case in dimension 1.
-    _features[0] = float(_hash)/DISTANCE; // this is the worst representation I can imagine... brute force would be possible...
+//    _features[0] = float(_hash)/DISTANCE; // this is the worst representation I can imagine... brute force would be possible...
+	for (int i=0;i<DISTANCE+1;i++) {
+      _features[i] = (float(_hash) < float(i)) ? 1. : 0.;
+	}
     generator.seed(time(NULL));
   // There are two legal actions, 2 and 3.
     if (_actions.size() > 0) return;
@@ -257,7 +260,9 @@ class StateForChouFleur : public State {
     } else {
       _status = 1 - _status;
     }
-    _features[0] = float(_hash)/DISTANCE;
+	for (int i=0;i<DISTANCE+1;i++) {
+      _features[i] = (float(_hash) < float(i)) ? 1. : 0.;
+	}
   }
 
   // For this trivial example we just compare to random play. Ok, this is not really a good action.
