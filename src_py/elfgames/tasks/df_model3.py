@@ -202,8 +202,10 @@ class Model_PolicyValue(Model):
         self.resnet = GoResNet(option_map, params)
 
         if torch.cuda.is_available() and self.options.gpu is not None:
-            self.init_conv.cuda(self.options.gpu)
-            self.resnet.cuda(self.options.gpu)
+            #self.init_conv.cuda(self.options.gpu)  # FIXME
+            #self.resnet.cuda(self.options.gpu)   # FIXME
+            self.init_conv.cuda(0)
+            self.resnet.cuda(0)
 
         if self.options.use_data_parallel:
             if self.options.gpu is not None:
