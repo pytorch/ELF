@@ -186,15 +186,26 @@ class Model_PolicyValue(Model):
         #print("number of planes = " + str(last_planes))
         self.init_conv = self._conv_layer(last_planes)
         #print("self.options.dim=", self.options.dim)
-        self.pi_final_conv = self._conv_layer(self.options.dim, OUTSIZE, 1)#256, OUTSIZE)
+
+        self.pi_final_conv = self._conv_layer(self.options.dim, 50, 19)#256, OUTSIZE)
         self.value_final_conv = self._conv_layer(self.options.dim, 1, 1)
 
         d = OUTSIZE # FIXME self.board_size ** 2
 
         # Plus 1 for pass.
-        self.pi_linear = nn.Linear(OUTSIZE, d) #d * 2, d + 1)    # FIXME: at most 256 actions...
+        self.pi_linear = nn.Linear(50, OUTSIZE) #d * 2, d + 1)    # FIXME: at most 256 actions...
         self.value_linear1 = nn.Linear(1,256)  #(d, 256)
         self.value_linear2 = nn.Linear(256, 1)
+
+#        self.pi_final_conv = self._conv_layer(self.options.dim, OUTSIZE, 1)#256, OUTSIZE)
+#        self.value_final_conv = self._conv_layer(self.options.dim, 1, 1)
+#
+#        d = OUTSIZE # FIXME self.board_size ** 2
+#
+#        # Plus 1 for pass.
+#        self.pi_linear = nn.Linear(OUTSIZE, d) #d * 2, d + 1)    # FIXME: at most 256 actions...
+#        self.value_linear1 = nn.Linear(1,256)  #(d, 256)
+#        self.value_linear2 = nn.Linear(256, 1)
 
         # Softmax as the final layer
         self.logsoftmax = nn.LogSoftmax(dim=1)
@@ -331,7 +342,7 @@ class Model_PolicyValue(Model):
 
         pi = self.pi_final_conv(s)
         #print("forward6" + str(pi.size()))
-        pi = self.pi_linear(pi.view(-1, OUTSIZE ))    # This 256 is weird... we just take care of misalign, otherwise it's 2. FIXME
+        pi = self.pi_linear(pi.view(-1, 50))    # This 256 is weird... we just take care of misalign, otherwise it's 2. FIXME
         #print("forward7" + str(pi.size()))
         logpi = self.logsoftmax(pi)
         #print("forward8" + str(logpi.size()))
