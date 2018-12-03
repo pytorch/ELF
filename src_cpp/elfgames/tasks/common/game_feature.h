@@ -35,7 +35,7 @@ class ChouFleurFeature {
       _our_stone_plane = 0;
       _opponent_stone_plane = 1;*/
     }
-    _num_plane = StateForChouFleurX * StateForChouFleurY * StateForChouFleurZ;  // FIXME      // YOU MUST MODIFY THIS IF YOU MODIFY GAME.H / Game.h
+    _num_plane = StateForChouFleurX;// * StateForChouFleurY * StateForChouFleurZ;  // FIXME      // YOU MUST MODIFY THIS IF YOU MODIFY GAME.H / Game.h
   }
 
   // Inference part.
