@@ -7,7 +7,7 @@
 *.so
 build/
 __pycache__/
-
+Makefile
 # Random junk
 *.sw?
 *.db
