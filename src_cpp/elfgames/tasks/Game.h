@@ -199,19 +199,287 @@ class ActionForChouFleur : public Action {
   ActionForChouFleur():Action() {}
   // each action has a position (_x[0], _x[1], _x[2])
   // here for ChouFleur, there is (0, 0, 0) and (1, 0, 0), corresponding to steps 2 and 3 respectively.
-  ActionForChouFleur(int step):Action() { _x[0]=step-2;_x[1]=0;_x[2]=0;_hash=step;} // step is 2 or 3.
-  ActionForChouFleur(Action& action):Action(action) {}
+  //ActionForChouFleur(int step):Action() { _x[0]=step-2;_x[1]=0;_x[2]=0;_hash=step;} // step is 2 or 3.
+ ActionForChouFleur(int x, int y, int direction):Action() { _x[0]=x;_x[1]=y;_x[2]=direction;_hash= (x + y * 8) * 3 + direction;} // step i
+ ActionForChouFleur(Action& action):Action(action) {}
   // The action is in 0 0 0 or in 1 0 0.
 };
 
+const int White = 0;
+const int Black = 1;
+const int Empty = 2;
 
-#define StateForChouFleurNumActions 2
-#define StateForChouFleurX (DISTANCE+1)
-#define StateForChouFleurY 1
-#define StateForChouFleurZ 1
+const int Dx = 8;
+const int Dy = 8;
+
+const int MaxLegalMoves = 3 * Dx * 2;
+const int MaxPlayoutLength = 1000;
+
+const int MaxMoveNumber = 80 * 2 * 2 * (3 * Dx * Dy) + 1;
+
+class Move {
+ public :
+  int x, y, x1, y1, color;
+  int code;
+  
+  int numberPrevious () {
+    int c = 0;
+    if (color == White)
+      return c + 3 * (x + Dx * y) + x1 - x + 1;
+    else
+      return c + 3 * Dx * Dy + 3 * (x + Dx * y) + x1 - x + 1;
+  }
+
+  int number () {
+    int c = 0;
+    if (color == White)
+      return c + 3 * (x + Dx * y) + x1 - x + 1;
+    else
+      return c + 3 * Dx * Dy + 3 * (x + Dx * y) + x1 - x + 1;
+  }
+};
+
+#define StateForChouFleurNumActions 64 * 3
+#define StateForChouFleurX 2
+#define StateForChouFleurY 8
+#define StateForChouFleurZ 8
+
 class StateForChouFleur : public State {
  public:
-  StateForChouFleur():State() {
+  unsigned long long HashArray [2] [Dx] [Dy];
+  unsigned long long HashTurn;
+
+  int board [Dx] [Dy];
+  unsigned long long hash;
+  Move rollout [MaxPlayoutLength];
+  int length, turn;
+
+  void init () {
+    for (int i = 0; i < Dx; i++)
+      for (int j = 0; j < Dy; j++)
+        board [i] [j] = Empty;
+    for (int i = 0; i < 2; i++)
+      for (int j = 0; j < Dx; j++)
+        board [j] [i] = Black;
+    for (int i = Dy - 2; i < Dy; i++)
+      for (int j = 0; j < Dx; j++)
+	board [j] [i] = White;
+    hash = 0;
+    length = 0;
+    turn = White;
+    initHash ();
+  }
+
+  bool won (int color) {
+    if (color == White) {
+      for (int j = 0; j < Dx; j++)
+        if (board [j] [0] == White)
+          return true;
+      Move listeCoups [MaxLegalMoves];
+      int nb = legalMoves (Black, listeCoups);
+      if (nb == 0)
+	return true;
+    }
+    else {
+      for (int j = 0; j < Dx; j++)
+        if (board [j] [Dy - 1] == Black)
+          return true;
+      Move listeCoups [MaxLegalMoves];
+      int nb = legalMoves (White, listeCoups);
+      if (nb == 0)
+	return true;
+    }
+    return false;
+  }
+
+  bool terminal () {
+    //return won (Black) || won (White);                                                                                                      
+    for (int j = 0; j < Dx; j++)
+      if (board [j] [0] == White)
+        return true;
+    for (int j = 0; j < Dx; j++)
+      if (board [j] [Dy - 1] == Black)
+        return true;
+    Move listeCoups [MaxLegalMoves];
+    int nb = legalMoves (turn, listeCoups);
+    if (nb == 0)
+        return true;
+    return false;
+  }
+
+  int score () {
+    if (won (White))
+      return 1;
+    return 0;
+  }
+
+  float evaluation (int color) {
+    if (won (color))
+      return 1000000.0;
+    if (won (opponent (color)))
+      return -1000000.0;
+    Move moves [MaxLegalMoves];
+    int nb = legalMoves (turn, moves);
+    if (nb == 0) {
+      if (color == turn)
+        return -1000000.0;
+      else
+        return 1000000.0;
+    }
+    int nbOpponent = legalMoves (opponent (turn), moves);
+    if (color == turn)
+      return (float)(nb - nbOpponent);
+    return (float)(nbOpponent - nb);
+  }
+
+  int opponent (int joueur) {
+    if (joueur == White)
+      return Black;
+    return White;
+  }
+
+  bool legalMove (Move m) {
+    if (board [m.x] [m.y] != m.color)
+      return false;
+    if (board [m.x1] [m.y1] == m.color)
+      return false;
+    if (m.color == White)
+      if ((m.y1 == m.y - 1) && (m.x == m.x1))
+        if (board [m.x1] [m.y1] == Black)
+          return false;
+    if (m.color == Black)
+      if ((m.y1 == m.y + 1) && (m.x == m.x1))
+        if (board [m.x1] [m.y1] == White)
+          return false;
+     return true;
+  }
+
+  void play (Move m) {
+    board [m.x] [m.y] = Empty;
+    hash ^= HashArray [m.color] [m.x] [m.y];
+    if (board [m.x1] [m.y1] != Empty)
+      hash ^= HashArray [board [m.x1] [m.y1]] [m.x1] [m.y1];
+    board [m.x1] [m.y1] = m.color;
+    hash ^= HashArray [m.color] [m.x1] [m.y1];
+    hash ^= HashTurn;
+    if (length < MaxPlayoutLength) {
+      rollout [length] = m;
+      length++;
+    }
+    else
+      fprintf (stderr, "Pb play,");
+    turn = opponent (turn);
+  }
+
+  int legalMoves (int color, Move moves [MaxLegalMoves]) {
+    int nb = 0;
+    for (int i = 0; i < Dx; i++)
+      for (int j = 0; j < Dy; j++)
+        if (board [i] [j] == color) {
+          Move m;
+          m.x = i;
+          m.y = j;
+          m.color = color;
+          if (color == White) {
+            if ((j - 1 >= 0) && (i + 1 < Dx)) {
+              m.x1 = i + 1;
+              m.y1 = j - 1;
+              if (board [m.x1] [m.y1] == Empty)
+                m.code = 0;
+              else
+                m.code = 6 * Dx * Dy;
+              if (legalMove (m)) {
+                moves [nb] = m;
+                nb++;
+              }
+            }
+            if ((j - 1 >= 0) && (i - 1 >= 0)) {
+              m.x1 = i - 1;
+              m.y1 = j - 1;
+              if (board [m.x1] [m.y1] == Empty)
+                m.code = 0;
+              else
+                m.code = 6 * Dx * Dy;
+              if (legalMove (m)) {
+                moves [nb] = m;
+                nb++;
+              }
+            }
+            if ((j - 1 >= 0)) {
+              m.x1 = i;
+              m.y1 = j - 1;
+              if (board [m.x1] [m.y1] == Empty)
+                m.code = 0;
+              else
+                m.code = 6 * Dx * Dy;
+              if (legalMove (m)) {
+                moves [nb] = m;
+                nb++;
+              }
+            }
+          }
+          else {
+            if ((j + 1 < Dy) && (i + 1 < Dx)) {
+              m.x1 = i + 1;
+              m.y1 = j + 1;
+              if (board [m.x1] [m.y1] == Empty)
+                m.code = 0;
+              else
+                m.code = 6 * Dx * Dy;
+              if (legalMove (m)) {
+                moves [nb] = m;
+                nb++;
+              }
+            }
+            if ((j + 1 < Dy) && (i - 1 >= 0)) {
+              m.x1 = i - 1;
+              m.y1 = j + 1;
+              if (board [m.x1] [m.y1] == Empty)
+                m.code = 0;
+              else
+                m.code = 6 * Dx * Dy;
+              if (legalMove (m)) {
+                moves [nb] = m;
+                nb++;
+              }
+	    }
+	    if ((j + 1 < Dy)) {
+	      m.x1 = i;
+	      m.y1 = j + 1;
+              if (board [m.x1] [m.y1] == Empty)
+                m.code = 0;
+              else
+                m.code = 6 * Dx * Dy;
+              if (legalMove (m)) {
+                moves [nb] = m;
+                nb++;
+              }
+            }
+          }
+        }
+    return nb;
+  }
+  
+  void initHash () {
+    static bool initHashCalled = false;
+    if (initHashCalled == false) {
+      initHashCalled = true;
+      for (int player = 0; player < 2; player++)
+	for (int i = 0; i < Dx; i++)
+	  for (int j = 0; j < Dy; j++) {
+	    HashArray [player] [i] [j] = 0;
+	    for (int k = 0; k < 64; k++)
+	      if ((rand () / (RAND_MAX + 1.0)) > 0.5)
+		HashArray [player] [i] [j] |= (1ULL << k);
+	  }
+      HashTurn = 0;
+      for (int k = 0; k < 64; k++)
+	if ((rand () / (RAND_MAX + 1.0)) > 0.5)
+	  HashTurn |= (1ULL << k);
+    }
+  }
+
+ StateForChouFleur():State() {
   //  std::cout << "OTGChouFleur CreateState" << std::endl;
     Initialize();
   //  std::cout << "OTGChouFleur CreateState done" << std::endl;
@@ -224,10 +492,10 @@ class StateForChouFleur : public State {
     // People implementing classes should not have much to do in _moves; just _moves.clear().
     _moves.clear();
  //   std::cout << "OTGChouFleur initialize" << std::endl;
-    _xsize[0]=StateForChouFleurX;_xsize[1]=StateForChouFleurY;_xsize[2]=StateForChouFleurZ;  // the features are just one number between 0 and 1 (the distance, normalized).
-    _actionSize[0]=2;_actionSize[1]=1;_actionSize[2]=1; // size of the output of the neural network; this should cover the positions of actions (above).
-    _hash = DISTANCE; // _hash is an unsigned int, it should be nearly unique.
-    _status = 0; // _status is described above, 0 means black plays:
+    _xsize[0]=StateForChouFleurX;_xsize[1]=StateForChouFleurY;_xsize[2]=StateForChouFleurZ;  // the features are just one number between 0 and 1 (the distance, normalized).                                                                                                      
+    _actionSize[0]=8;_actionSize[1]=8;_actionSize[2]=3; // size of the output of the neural network; this should cover the positions of actions (above).                                                                                                                                   
+    _hash = 0; // _hash is an unsigned int, it should be nearly unique.                                                                       
+    _status = 1; // _status is described above, 0 means black plays:                                                                          
   // 0: black to play.
   // 1: white to play.
   // 2: draw.
@@ -235,45 +503,111 @@ class StateForChouFleur : public State {
   // 4: white has won.
 
     // _features is a vector representing the current state. It can (must...) be large for complex games; here just one number between 0 and 1.
-    _features.resize(StateForChouFleurX*StateForChouFleurY*StateForChouFleurZ);  // trivial case in dimension 1.
+
+    /*
+      _features.resize(StateForChouFleurX*StateForChouFleurY*StateForChouFleurZ);  // trivial case in dimension 1.
 //    _features[0] = float(_hash)/DISTANCE; // this is the worst representation I can imagine... brute force would be possible...
 	for (int i=0;i<DISTANCE+1;i++) {
       _features[i] = (float(_hash) < float(i)) ? 1. : 0.;
 	}
+    */
+    _features.resize(StateForChouFleurX*StateForChouFleurY*StateForChouFleurZ);  // trivial case in dimension 1.                     
     generator.seed(time(NULL));
-  // There are two legal actions, 2 and 3.
+    init ();
+    findFeatures ();
     if (_actions.size() > 0) return;
-    _actions.push_back(new ActionForChouFleur(2));
-    _actions[0]->SetIndex(0);
-    _actions.push_back(new ActionForChouFleur(3));
-    _actions[1]->SetIndex(1);
-  } // the hash is the distance.
-
-  // The action just decreases the distance and swaps the turn to play.
-  void ApplyAction(const Action& action) {
-    if (_hash < action.GetHash()) { _hash = 0; } else { _hash -= action.GetHash();}
-	/*if (_hash < 7 || _hash > 95) {
-    std::cout << "OTGChouFleur ApplyAction" << _hash << std::endl;
-	}*/
-    if (_hash <= 0) {
-      _status += 3;
-    } else {
-      _status = 1 - _status;
-    }
-	for (int i=0;i<DISTANCE+1;i++) {
-      _features[i] = (float(_hash) < float(i)) ? 1. : 0.;
-	}
+    findActions (White);
   }
 
+  void findActions (int color) {
+    Move moves [MaxLegalMoves];
+    int nb = legalMoves (color, moves);
+
+    _actions.clear ();
+    for (int i = 0; i < nb; i++) {
+      int x = moves [i].x;
+      int y = moves [i].y;
+      int dir = 2;
+      if (moves [i].x1 == x - 1)
+        dir = 0;
+      else if (moves [i].x1 == x)
+        dir = 1;
+      _actions.push_back(new ActionForChouFleur(x, y, dir));
+      _actions[i]->SetIndex(i);
+    }
+  }
+
+  void findFeatures () {
+    for (int i = 0; i < 128; i++)
+      _features [i] = 0;
+    for (int i = 0; i < 64; i++)
+      if (board [i % 8] [i / 8] == Black)
+        _features [i] = 1;
+    for (int i = 0; i < 64; i++)
+      if (board [i % 8] [i / 8] == White)
+        _features [64 + i] = 1;
+  }
+
+  void ApplyAction(const Action& action) {
+    Move m;
+    if (_status == 1) { // White                                                                                                             
+      m.color = White;
+      m.x = action.GetX ();
+      m.y = action.GetY ();
+      if (action.GetZ () == 0) {
+        m.x1 = action.GetX () - 1;
+        m.y1 = action.GetY () - 1;
+      }
+      else if (action.GetZ () == 1) {
+        m.x1 = action.GetX ();
+        m.y1 = action.GetY () - 1;
+      }
+      else if (action.GetZ () == 2) {
+        m.x1 = action.GetX () + 1;
+        m.y1 = action.GetY () - 1;
+      }
+      play (m);
+      findActions (Black);
+      if (won (White))
+        _status = 4;
+      else
+        _status = 0;
+    }
+    else { // Black                                                                                                                          
+      m.color = Black;
+      m.x = action.GetX ();
+      m.y = action.GetY ();
+      if (action.GetZ () == 0) {
+        m.x1 = action.GetX () - 1;
+        m.y1 = action.GetY () + 1;
+      }
+      else if (action.GetZ () == 1) {
+        m.x1 = action.GetX ();
+        m.y1 = action.GetY () + 1;
+      }
+      else if (action.GetZ () == 2) {
+        m.x1 = action.GetX () + 1;
+        m.y1 = action.GetY () + 1;
+      }
+      play (m);
+      findActions (White);
+      if (won (Black))
+        _status = 3;
+      else
+        _status = 1;
+    }
+    findFeatures ();
+    _hash = hash;
+  }
+  
   // For this trivial example we just compare to random play. Ok, this is not really a good action.
   // By the way we need a good default DoGoodAction, e.g. one-ply at least. FIXME
   void DoGoodAction() {
-    //std::cout << "OTGChouFleur DoGoodAction" << std::endl;
-    std::bernoulli_distribution distribution(0.5);
-    if (distribution(generator))
-      ApplyAction(ActionForChouFleur(2));
-    else
-      ApplyAction(ActionForChouFleur(3));
+    std::cout << "OTGBreakthrough DoGoodAction" << std::endl;
+
+    int i = rand () % _actions.size ();
+    ActionForChouFleur a = *_actions [i];
+    ApplyAction(a);
   }
 
  protected:

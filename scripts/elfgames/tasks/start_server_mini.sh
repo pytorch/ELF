@@ -29,7 +29,7 @@ save=./myserver game=elfgames.tasks.game model=df_kl model_file=elfgames.tasks.d
     --eval_winrate_thres 0.55     --port 1234 \
     --q_min_size 200     --q_max_size 4000 \
     --save_first     \
-    --num_block 20     --dim 19 \
+    --num_block 20     --dim 128 \
     --weight_decay 0.0002    --opt_method sgd \
     --bn_momentum=0 --num_cooldown=50 \
     --expected_num_client 1 \

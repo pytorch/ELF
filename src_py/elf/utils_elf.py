@@ -206,6 +206,10 @@ class Batch:
                 bk.fill_(v)
             else:
                 try:
+                    print ("bk:")
+                    print (bk)
+                    print ("v.squeeze :")
+                    print (v.squeeze_())
                     bk[:] = v.squeeze_()
                 except BaseException:
                     import pdb
