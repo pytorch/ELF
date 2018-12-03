@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-egrep "esign.*won$" clientlogs | grep -v '\[' | sed 's/Player.*blackwon/1/g' | sed 's/Player.*whitewon/0/g' > /tmp/polygames_check
+egrep "esign.*won$" clientlogs | grep -v '\[' | sed 's/Player.*blackwon/1/g' | sed 's/Player.*whitewon/0/g' | grep "^.$" > /tmp/polygames_check
 
 num=`cat /tmp/polygames_check | wc -l`
 
