@@ -14,7 +14,7 @@
 #include "../base/go_state.h"
 #include "go_game_specific.h"
 #include "go_state_ext.h"
-
+#include "../Game.h"
 #include "elf/base/extractor.h"
 
 #define UNUSED(expr) do { (void)(expr); } while (0)
@@ -35,7 +35,7 @@ class ChouFleurFeature {
       _our_stone_plane = 0;
       _opponent_stone_plane = 1;*/
     }
-    _num_plane = 19;  // FIXME
+    _num_plane = StateForChouFleurX * StateForChouFleurY * StateForChouFleurZ;  // FIXME      // YOU MUST MODIFY THIS IF YOU MODIFY GAME.H / Game.h
   }
 
   // Inference part.
