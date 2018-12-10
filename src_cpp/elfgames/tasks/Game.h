@@ -246,8 +246,8 @@ class Move {
 
 class StateForChouFleur : public State {
  public:
-  unsigned long long HashArray [2] [Dx] [Dy];
-  unsigned long long HashTurn;
+  static unsigned long long HashArray [2] [Dx] [Dy];
+  static unsigned long long HashTurn;
 
   int board [Dx] [Dy];
   unsigned long long hash;
@@ -464,6 +464,7 @@ class StateForChouFleur : public State {
     static bool initHashCalled = false;
     if (initHashCalled == false) {
       initHashCalled = true;
+      fprintf (stderr, "\n\ninitHash ()\n\n");
       for (int player = 0; player < 2; player++)
 	for (int i = 0; i < Dx; i++)
 	  for (int j = 0; j < Dy; j++) {
