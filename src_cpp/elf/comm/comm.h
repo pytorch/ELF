@@ -274,13 +274,16 @@ class CommInternalT {
     typename ServerMap::accessor elem;
     bool uninitialized = servers_.insert(elem, id);
     if (uninitialized) {
-      elem->second.reset(new ServerNode());
+      storages_.emplace_back(new ServerNode());
+      elem->second = storages_.back().get();
     }
-    return elem->second.get();
+    return elem->second;
   }
 
-  using ServerMap = tbb::concurrent_hash_map<Id, std::unique_ptr<ServerNode>>;
+  using ServerMap = tbb::concurrent_hash_map<Id, ServerNode*>;
   ServerMap servers_;
+
+  std::vector<std::unique_ptr<ServerNode>> storages_;
 };
 
 struct SendOptions {
