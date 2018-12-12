@@ -397,7 +397,7 @@ class CommT : public CommInternalT<
           // std::cout << "WARNING! no servers has the label: " << label
           //          << std::endl;
         } else {
-          const std::vector<Id>& ids = *(elem->second);
+          const std::vector<Id>& ids = elem->second;
           // Randomly pick one of the label.
           // Note that there is no lock needed since only
           // read access is requested.
@@ -418,11 +418,8 @@ class CommT : public CommInternalT<
     void RegServer(const std::string& label) {
       std::lock_guard<std::mutex> lock(pp_->register_mutex_);
       ServerLabelMap::accessor elem;
-      bool uninitialized = pp_->serverLabels_.insert(elem, label);
-      if (uninitialized) {
-        elem->second.reset(new std::vector<Id>());
-      }
-      elem->second->push_back(std::this_thread::get_id());
+      pp_->serverLabels_.insert(elem, label);
+      elem->second.push_back(std::this_thread::get_id());
       counter_.increment();
     }
 
@@ -453,7 +450,7 @@ class CommT : public CommInternalT<
 
  private:
   using ServerLabelMap =
-      tbb::concurrent_hash_map<std::string, std::unique_ptr<std::vector<Id>>>;
+      tbb::concurrent_hash_map<std::string, std::vector<Id>>;
 
   ServerLabelMap serverLabels_;
   std::mutex register_mutex_;
