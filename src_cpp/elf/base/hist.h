@@ -11,38 +11,57 @@
 #include <cassert>
 #include <vector>
 
-#include <boost/range/adaptor/reversed.hpp>
-
 namespace elf {
 
 // Accumulate history buffer.
 template <typename T>
 class HistT {
  public:
-  enum MemOrder { BATCH_HIST, HIST_BATCH };
-
-  HistT(size_t q_size, size_t vec_size, MemOrder order)
-      : vec_size_(vec_size), order_(order) {
+  HistT(size_t q_size, size_t vec_size, T undef_val = 0)
+      : vec_size_(vec_size), undef_val_(undef_val) {
     q_ = std::vector<std::vector<T>>(q_size, std::vector<T>(vec_size_));
     assert(q_.size() > 0);
     assert(q_[0].size() == vec_size_);
   }
 
+  void reset() {
+    for (const auto &v : q_) {
+      std::fill(v.begin(), v.end(), undef_val_);
+    }
+  }
+
   T* prepare() {
+    // q_idx_ always points to the most recent entry.
     q_idx_ = (q_idx_ + 1) % q_.size();
     return &q_[q_idx_][0];
   }
 
-  void extract(T* s, int batchsize, int batch_idx) const {
-    switch (order_) {
-      case BATCH_HIST:
-        ext_batch_hist(s, batch_idx);
-        break;
-      case HIST_BATCH:
-        ext_hist_batch(s, batchsize, batch_idx);
-        break;
-      default:
-        assert(false);
+  void extract(T* s) const {
+    // one sample = dim per feature * time length
+    size_t idx = q_idx_;
+    for (size_t i = 0; i < q_.size(); ++i) {
+      const auto &v = q_[idx];
+      assert(v.size() == vec_size_);
+      copy(v.begin(), v.end(), s);
+      s += v.size();
+
+      if (idx == 0) idx = q_.size() - 1;
+      else idx --;
+    }
+  } 
+
+  void extractHistBatch(T* s, int batchsize, int batch_idx) const {
+    T* start = s + batch_idx * vec_size_;
+    int stride = batchsize * vec_size_;
+    size_t idx = q_idx_;
+    for (size_t i = 0; i < q_.size(); ++i) {
+      const auto &v = q_[idx];
+      assert(v.size() == vec_size_);
+      copy(v.begin(), v.end(), s);
+      start += stride;
+
+      if (idx == 0) idx = q_.size() - 1;
+      else idx --;
     }
   }
 
@@ -50,27 +69,7 @@ class HistT {
   std::vector<std::vector<T>> q_;
   size_t q_idx_ = 0;
   size_t vec_size_;
-  MemOrder order_;
-
-  void ext_batch_hist(T* s, int batch_idx) const {
-    // one sample = dim per feature * time length
-    T* start = s + batch_idx * vec_size_ * q_.size();
-    for (const auto& v : boost::adaptors::reverse(q_)) {
-      assert(v.size() == vec_size_);
-      copy(v.begin(), v.end(), start);
-      start += v.size();
-    }
-  }
-
-  void ext_hist_batch(T* s, int batchsize, int batch_idx) const {
-    T* start = s + batch_idx * vec_size_;
-    int stride = batchsize * vec_size_;
-    for (const auto& v : boost::adaptors::reverse(q_)) {
-      assert(v.size() == vec_size_);
-      copy(v.begin(), v.end(), s);
-      start += stride;
-    }
-  }
+  T undef_val_;
 };
 
 } // namespace elf
