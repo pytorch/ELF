@@ -25,7 +25,7 @@ class HistT {
   }
 
   void reset() {
-    for (const auto &v : q_) {
+    for (auto &v : q_) {
       std::fill(v.begin(), v.end(), undef_val_);
     }
   }
