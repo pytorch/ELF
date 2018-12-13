@@ -26,13 +26,13 @@ namespace elf {
 class GameContext : public GCInterface {
  public:
   GameContext(const Options& options)
-      : GCInterface(options),
+      : GCInterface(options), 
         logger_(elf::logging::getLogger("elf::GameContext-", "")) {
     std::cout << "Initialize game context" << std::endl;
     batchContext_.reset(new BatchContext());
     collectorContext_.reset(new CollectorContext());
 
-    ctx_.client = collectorContext_->getClient();
+    client_ = collectorContext_->getClient();
 
     for (int i = 0; i < options.num_game_thread; ++i) {
       game::Options opt;
@@ -40,7 +40,7 @@ class GameContext : public GCInterface {
       opt.seed = 0;
       opt.verbose = options.verbose;
       opt.job_id = options.job_id;
-      games_.emplace_back(new game::Base(ctx_, opt));
+      games_.emplace_back(new game::Base(client_, opt));
     }
 
     collectorContext_->setStartCallback(
@@ -57,6 +57,8 @@ class GameContext : public GCInterface {
   void stop() override {
     batchContext_->stop(collectorContext_.get());
   }
+
+  GameClientInterface *getClient() override { return client_; }
 
   SharedMemData* wait(int time_usec = 0) override {
     return batchContext_->getWaiter()->wait(time_usec);
@@ -120,6 +122,8 @@ class GameContext : public GCInterface {
   }
 
  private:
+  elf::GameClientInterface *client_;
+
   std::unique_ptr<BatchContext> batchContext_;
   std::unique_ptr<CollectorContext> collectorContext_;
   std::vector<std::unique_ptr<elf::game::Base>> games_;

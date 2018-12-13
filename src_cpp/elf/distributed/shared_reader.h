@@ -18,6 +18,7 @@
 #include <shared_mutex>
 #include <sstream>
 #include <thread>
+#include <atomic>
 
 #include "../utils/utils.h"
 

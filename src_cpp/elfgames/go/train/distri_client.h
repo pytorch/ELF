@@ -74,7 +74,7 @@ class Client {
     uint64_t num_games = ctx->options().num_game_thread;
 
     if (ctx->getClient() != nullptr) {
-      dispatcher_.reset(new ThreadedDispatcher(ctx->getCtrl(), num_games));
+      dispatcher_.reset(new ThreadedDispatcher(ctrl_, num_games));
     }
 
     using std::placeholders::_1;
@@ -91,7 +91,7 @@ class Client {
           new GameNotifier(writer_->identity(), options_, ctx->getClient()));
 
       writer_callback_.reset(
-          new WriterCallback(writer_.get(), ctx->getCtrl(), *notifier_));
+          new WriterCallback(writer_.get(), ctrl_, *notifier_));
     } else if (options_.common.mode == "online") {
     } else {
       throw std::range_error(
@@ -166,6 +166,7 @@ class Client {
   std::unique_ptr<WriterCallback> writer_callback_;
 
   const GameOptionsSelfPlay options_;
+  Ctrl ctrl_;
 
   GoFeature goFeature_;
 

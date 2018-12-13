@@ -83,7 +83,7 @@ MCTSGoAI* GoGameSelfPlay::init_ai(
   }
 
   return new MCTSGoAI(
-      opt, [&](int) { return new MCTSActor(base_->ctx().client, params); });
+      opt, [&](int) { return new MCTSActor(base_->client(), params); });
 }
 
 Coord GoGameSelfPlay::mcts_make_diverse_move(MCTSGoAI* mcts_go_ai, Coord c) {
@@ -214,7 +214,7 @@ void GoGameSelfPlay::restart() {
         -1,
         -1,
         request.vers.black_ver));
-    _human_player.reset(new HumanPlayer(base_->ctx().client, {"human_actor"}));
+    _human_player.reset(new HumanPlayer(base_->client(), {"human_actor"}));
   } else {
     logger_->critical("Unknown mode! {}", options_.common.mode);
     throw std::range_error("Unknown mode");
@@ -293,8 +293,8 @@ bool GoGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* reply) {
 }
 
 void GoGameSelfPlay::OnAct(elf::game::Base* base) {
-  elf::GameClient* client = base->ctx().client;
   base_ = base;
+  auto *client = base_->client();
 
   if (_online_counter % 5 == 0) {
     using std::placeholders::_1;
@@ -391,11 +391,13 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
       AI ai_white(client, {"actor_white"});
       ai_white.act(bf, &reply);
 
-      elf::FuncsWithState funcs = client->BindStateToFunctions(
+      auto binder = client->getBinder();
+
+      elf::FuncsWithState funcs = binder.BindStateToFunctions(
           {"game_start"}, &_state_ext.currRequest().vers);
       client->sendWait({"game_start"}, &funcs);
 
-      funcs = client->BindStateToFunctions({"game_end"}, &_state_ext.state());
+      funcs = binder.BindStateToFunctions({"game_end"}, &_state_ext.state());
       client->sendWait({"game_end"}, &funcs);
 
       logger_->info("Received command to prepare to stop");

@@ -106,7 +106,7 @@ class GameNotifier {
   GameNotifier(
       const std::string& identity,
       const GameOptionsSelfPlay& options,
-      elf::GameClient* client)
+      elf::GameClientInterface* client)
       : records_(identity), options_(options), client_(client) {}
 
   std::string DumpRecords(int* sz) {
@@ -123,8 +123,9 @@ class GameNotifier {
     // game_stats_.feedSgf(s.dumpSgf(""));
 
     // Report winrate (so that Python side could know).
+    auto binder = client_->getBinder();
     elf::FuncsWithState funcs =
-        client_->BindStateToFunctions({end_target_}, &s);
+        binder.BindStateToFunctions({end_target_}, &s);
     client_->sendWait({end_target_}, &funcs);
   }
 
@@ -148,6 +149,6 @@ class GameNotifier {
   GameStats game_stats_;
   GuardedRecords records_;
   const GameOptionsSelfPlay options_;
-  elf::GameClient* client_ = nullptr;
+  elf::GameClientInterface* client_ = nullptr;
   const std::string end_target_ = "game_end";
 };

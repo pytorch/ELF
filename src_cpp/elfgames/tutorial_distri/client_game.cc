@@ -43,12 +43,13 @@ void ClientGame::OnAct(elf::game::Base* base) {
   }
   counter_ ++;
 
-  elf::GameClient *client = base->ctx().client;
+  elf::GameClient *client = base->client();
 
   // Simply use info to construct random samples.
-  elf::FuncsWithState funcs = client->BindStateToFunctions({"actor"}, &state_);
+  auto binder = client->getBinder();
+  elf::FuncsWithState funcs = binder.BindStateToFunctions({"actor"}, &state_);
   Reply reply;
-  elf::FuncsWithState funcs_reply = client->BindStateToFunctions({"actor"}, &reply);
+  elf::FuncsWithState funcs_reply = binder.BindStateToFunctions({"actor"}, &reply);
   funcs.add(funcs_reply);
 
   // std::cout << "[" << game_idx_ << "] Sending client data " << std::endl;

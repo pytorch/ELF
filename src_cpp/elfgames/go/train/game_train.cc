@@ -20,6 +20,8 @@ GoGameTrain::GoGameTrain(
 
 void GoGameTrain::OnAct(elf::game::Base* base) {
   std::vector<elf::FuncsWithState> funcsToSend;
+  auto *client = base->client();
+  auto binder = client->getBinder();
 
   for (size_t i = 0; i < kNumState; ++i) {
     while (true) {
@@ -49,7 +51,7 @@ void GoGameTrain::OnAct(elf::game::Base* base) {
 
     // elf::FuncsWithState funcs =
     // client_->BindStateToFunctions({"train"}, &_state_ext);
-    funcsToSend.push_back(base->ctx().client->BindStateToFunctions(
+    funcsToSend.push_back(binder.BindStateToFunctions(
         {"train"}, _state_ext[i].get()));
   }
 
@@ -63,6 +65,6 @@ void GoGameTrain::OnAct(elf::game::Base* base) {
   // VERY DANGEROUS - sending pointers of local objects to a function
   // std::cout << "[" << _game_idx << "] Sending packages to python.." <<
   // std::endl;
-  base->ctx().client->sendBatchWait({"train"}, funcPtrsToSend);
+  client->sendBatchWait({"train"}, funcPtrsToSend);
   // std::cout << "[" << _game_idx << "] Return from python ..." << std::endl;
 }

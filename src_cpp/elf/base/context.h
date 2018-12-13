@@ -24,15 +24,15 @@
 #include "elf/comm/comm.h"
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
-#include "extractor.h"
 #include "sharedmem.h"
+#include "game_client_interface.h"
 
 namespace elf {
 
 class Collectors;
 class CollectorContext;
 
-class GameClient {
+class GameClient : public GameClientInterface {
  public:
   friend class Collectors;
   friend class CollectorContext;
@@ -45,49 +45,41 @@ class GameClient {
         prepareToStop_(false) {}
 
   // For Game side.
-  void start() {
+  void start() override {
     n_++;
   }
 
-  void End() {
+  void End() override {
     numStoppedCounter_.increment();
   }
 
-  bool DoStopGames() {
+  bool DoStopGames() override {
     return stop_games_.load();
   }
 
   // TODO: This function should go away (ssengupta@fb)
-  bool checkPrepareToStop() {
+  bool checkPrepareToStop() override {
     return prepareToStop_.load();
   }
 
-  template <typename S>
-  FuncsWithState BindStateToFunctions(
-      const std::vector<std::string>& smem_names,
-      S* s);
-
-  template <typename S>
-  std::vector<FuncsWithState> BindStateToFunctions(
-      const std::vector<std::string>& smem_names,
-      const std::vector<S*>& batch_s);
+  Binder getBinder() const override; 
 
   comm::ReplyStatus sendWait(
       const std::vector<std::string>& targets,
-      FuncsWithState* funcs) {
+      FuncsWithState* funcs) override {
     return client_->sendWait(funcs, targets);
   }
 
   comm::ReplyStatus sendBatchWait(
       const std::vector<std::string>& targets,
-      const std::vector<FuncsWithState*>& funcs) {
+      const std::vector<FuncsWithState*>& funcs) override {
     return client_->sendBatchWait(funcs, targets);
   }
 
   comm::ReplyStatus sendBatchesWait(
       const std::vector<std::string>& targets, 
       const std::vector<std::vector<FuncsWithState*>>& funcs,
-      const std::vector<comm::SuccessCallback>& callbacks) {
+      const std::vector<comm::SuccessCallback>& callbacks) override {
     return client_->sendBatchesWait(funcs, targets, callbacks);
   }
 
@@ -520,97 +512,10 @@ class BatchContext {
   std::atomic_bool done_;
 };
 
-template <typename S>
-inline FuncsWithState GameClient::BindStateToFunctions(
-    const std::vector<std::string>& smem_names,
-    S* s) {
-  const Extractor& extractor = context_->getExtractor();
-  FuncsWithState funcsWithState;
 
-  std::set<std::string> dup;
-
-  for (const auto& name : smem_names) {
-    const std::vector<std::string>* keys = context_->getSMemKeys(name);
-
-    if (keys == nullptr) {
-      continue;
-    }
-
-    for (const auto& key : *keys) {
-      if (dup.find(key) != dup.end()) {
-        continue;
-      }
-
-      const FuncMapBase* funcs = extractor.getFunctions(key);
-
-      if (funcs == nullptr) {
-        continue;
-      }
-
-      if (funcsWithState.state_to_mem_funcs.addFunction(
-              key, funcs->BindStateToStateToMemFunc(*s))) {
-        // LOG(INFO) << "GetPackage: key: " << key << "Add s2m "
-        //           << std:: endl;
-      }
-
-      if (funcsWithState.mem_to_state_funcs.addFunction(
-              key, funcs->BindStateToMemToStateFunc(*s))) {
-        // LOG(INFO) << "GetPackage: key: " << key << "Add m2s "
-        //           << std::endl;
-      }
-      dup.insert(key);
-    }
-  }
-  return funcsWithState;
-}
-
-template <typename S>
-inline std::vector<FuncsWithState> GameClient::BindStateToFunctions(
-    const std::vector<std::string>& smem_names,
-    const std::vector<S*>& batch_s) {
-  const Extractor& extractor = context_->getExtractor();
-  std::vector<FuncsWithState> batchFuncsWithState(batch_s.size());
-
-  std::set<std::string> dup;
-
-  for (const auto& name : smem_names) {
-    const std::vector<std::string>* keys = context_->getSMemKeys(name);
-
-    if (keys == nullptr) {
-      continue;
-    }
-
-    for (const auto& key : *keys) {
-      if (dup.find(key) != dup.end()) {
-        continue;
-      }
-
-      const FuncMapBase* funcs = extractor.getFunctions(key);
-
-      if (funcs == nullptr) {
-        continue;
-      }
-
-      for (size_t i = 0; i < batch_s.size(); ++i) {
-        auto& funcsWithState = batchFuncsWithState[i];
-        S* s = batch_s[i];
-
-        if (funcsWithState.state_to_mem_funcs.addFunction(
-                key, funcs->BindStateToStateToMemFunc(*s))) {
-          // LOG(INFO) << "GetPackage: key: " << key << "Add s2m "
-          //           << std:: endl;
-        }
-
-        if (funcsWithState.mem_to_state_funcs.addFunction(
-                key, funcs->BindStateToMemToStateFunc(*s))) {
-          // LOG(INFO) << "GetPackage: key: " << key << "Add m2s "
-          //           << std::endl;
-        }
-      }
-      dup.insert(key);
-    }
-  }
-  return batchFuncsWithState;
+inline Binder GameClient::getBinder() const { 
+  return Binder(context_->getExtractor(), 
+      [&](const std::string &name) { return context_->getSMemKeys(name); });
 }
 
 } // namespace elf

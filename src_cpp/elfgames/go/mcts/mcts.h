@@ -46,7 +46,7 @@ class MCTSActor {
   using NodeResponse = elf::ai::tree_search::NodeResponseT<Coord, void>;
   using EdgeInfo = elf::ai::tree_search::EdgeInfo;
 
-  MCTSActor(elf::GameClient* client, const MCTSActorParams& params)
+  MCTSActor(elf::GameClientInterface* client, const MCTSActorParams& params)
       : params_(params), rng_(params.seed) {
     ai_.reset(new AI(client, {params_.actor_name}));
   }

@@ -32,9 +32,10 @@ void ServerGame::OnAct(elf::game::Base* base) {
     reply = p->result.reply;
   }
 
-  auto *client = base->ctx().client;
-  auto funcs = client->BindStateToFunctions({"train"}, &state);
-  auto funcs2 = client->BindStateToFunctions({"train"}, &reply);
+  auto *client = base->client();
+  auto binder = client->getBinder();
+  auto funcs = binder.BindStateToFunctions({"train"}, &state);
+  auto funcs2 = binder.BindStateToFunctions({"train"}, &reply);
   funcs.add(funcs2);
 
   client->sendWait({"train"}, &funcs);

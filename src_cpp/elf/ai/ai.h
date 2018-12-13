@@ -94,14 +94,15 @@ class AIClientT : public AI_T<S, A> {
   using State = S;
   using BatchCtrl = typename AI_T<S, A>::BatchCtrl;
 
-  AIClientT(elf::GameClient* client, const std::vector<std::string>& targets)
+  AIClientT(elf::GameClientInterface* client, const std::vector<std::string>& targets)
       : client_(client), targets_(targets) {}
 
   // Given the current state, perform action and send the action to _a;
   // Return false if this procedure fails.
   bool act(const S& s, A* a) override {
-    elf::FuncsWithState funcs_s = client_->BindStateToFunctions(targets_, &s);
-    elf::FuncsWithState funcs_a = client_->BindStateToFunctions(targets_, a);
+    auto binder = client_->getBinder();
+    elf::FuncsWithState funcs_s = binder.BindStateToFunctions(targets_, &s);
+    elf::FuncsWithState funcs_a = binder.BindStateToFunctions(targets_, a);
     funcs_s.add(funcs_a);
 
     // return client_->sendWait(targets_, &funcs);
@@ -114,11 +115,12 @@ class AIClientT : public AI_T<S, A> {
       const std::vector<A*>& batch_a, 
       const BatchCtrl &batch_ctrl) override {
     assert(batch_s.size() == batch_a.size());
+    auto binder = client_->getBinder();
 
     std::vector<elf::FuncsWithState> funcs_s =
-        client_->BindStateToFunctions(targets_, batch_s);
+        binder.BindStateToFunctions(targets_, batch_s);
     std::vector<elf::FuncsWithState> funcs_a =
-        client_->BindStateToFunctions(targets_, batch_a);
+        binder.BindStateToFunctions(targets_, batch_a);
 
     // return client_->sendWait(targets_, &funcs);
     comm::ReplyStatus status;
@@ -160,7 +162,7 @@ class AIClientT : public AI_T<S, A> {
   }
 
  private:
-  elf::GameClient* client_;
+  elf::GameClientInterface* client_;
   std::vector<std::string> targets_;
 };
 

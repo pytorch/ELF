@@ -10,7 +10,7 @@ using ThreadedDispatcher = elf::ThreadedDispatcherT<MsgRequest, RestartReply>;
 
 class DispatcherCallback {
  public:
-  DispatcherCallback(ThreadedDispatcher* dispatcher, elf::GameClient* client)
+  DispatcherCallback(ThreadedDispatcher* dispatcher, elf::GameClientInterface* client)
       : client_(client) {
     assert(client_ != nullptr);
 
@@ -82,8 +82,9 @@ class DispatcherCallback {
       //          << request->vers.black_ver
       //          << ", white_ver = " << request->vers.white_ver
       //          << ", #addrs_to_reply: " << n << std::endl;
+      auto binder = client_->getBinder();
       elf::FuncsWithState funcs =
-          client_->BindStateToFunctions({start_target_}, &request->vers);
+          binder.BindStateToFunctions({start_target_}, &request->vers);
       client_->sendWait({start_target_}, &funcs);
 
       for (size_t i = 0; i < replies.size(); ++i) {
@@ -99,6 +100,6 @@ class DispatcherCallback {
   }
 
  private:
-  elf::GameClient* client_ = nullptr;
+  elf::GameClientInterface* client_ = nullptr;
   const std::string start_target_ = "game_start";
 };

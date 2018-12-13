@@ -30,7 +30,7 @@ class Server {
 
     size_t num_games = ctx->options().num_game_thread;
     trainCtrl_.reset(
-        new TrainCtrl(ctx->getCtrl(), num_games, ctx->getClient(), options_));
+        new TrainCtrl(ctrl_, num_games, ctx->getClient(), options_));
 
     using std::placeholders::_1;
 
@@ -96,6 +96,7 @@ class Server {
   const GameOptionsTrain options_;
 
   GoFeature goFeature_;
+  Ctrl ctrl_;
 
   std::shared_ptr<spdlog::logger> logger_;
 

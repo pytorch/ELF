@@ -2,13 +2,16 @@
 
 #include "game_base.h"
 #include "options.h"
-#include "sharedmem.h"
+#include "sharedmem_data.h"
+#include "extractor.h"
 
 namespace elf {
 
 class GCInterface {
  public:
-  GCInterface(const Options& options) : options_(options) {}
+  GCInterface(const Options& options) 
+    : options_(options) {}
+
   const Options& options() const {
     return options_;
   }
@@ -22,13 +25,7 @@ class GCInterface {
       const SharedMemOptions& options,
       const std::vector<std::string>& keys) = 0;
 
-  // For application-specific.
-  Ctrl& getCtrl() {
-    return ctx_.ctrl;
-  }
-  elf::GameClient* getClient() {
-    return ctx_.client;
-  }
+  virtual GameClientInterface* getClient() = 0;
   virtual Extractor& getExtractor() = 0;
 
   virtual const game::Base* getGameC(int /*game_idx*/) const {
@@ -40,7 +37,6 @@ class GCInterface {
 
  protected:
   Options options_;
-  Ctx ctx_;
 };
 
 } // namespace elf

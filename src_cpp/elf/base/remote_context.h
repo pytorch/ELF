@@ -363,6 +363,8 @@ class BatchReceiver : public GCInterface {
     batchContext_->stop(nullptr);
   }
 
+  GameClientInterface *getClient() override { return nullptr; }
+
   SharedMemData* wait(int time_usec = 0) override {
     return batchContext_->getWaiter()->wait(time_usec);
   }

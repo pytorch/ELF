@@ -40,7 +40,7 @@ class Client {
     const int numGames = options_.common.base.num_game_thread;
     const int batchsize = options_.common.base.batchsize;
 
-    dispatcher_.reset(new ThreadedDispatcher(context->getCtrl(), numGames));
+    dispatcher_.reset(new ThreadedDispatcher(ctrl_, numGames));
     dispatcher_callback_.reset(
         new DispatcherCallback(dispatcher_.get(), context->getClient()));
 
@@ -88,6 +88,7 @@ class Client {
  private:
   const GameOptionsSelfPlay options_;
   GoFeature goFeature_;
+  Ctrl ctrl_;
 
   std::vector<std::unique_ptr<GoGameSelfPlay>> games_;
   std::unique_ptr<ThreadedDispatcher> dispatcher_;

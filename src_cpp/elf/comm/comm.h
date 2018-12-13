@@ -21,6 +21,7 @@
 
 #include "elf/concurrency/TBBHashers.h"
 
+#include "base.h"
 #include "broadcast.h"
 
 namespace comm {
@@ -84,9 +85,6 @@ namespace comm {
 ///      Usually these messages are control messages
 ///      Thus the sender's queue is usually a queue that uses signal-wait which
 ///      is `moodycamel::BlockingConcurrentQueue`
-
-enum ReplyStatus { DONE_ONE_JOB = 0, SUCCESS, FAILED, UNKNOWN };
-using SuccessCallback = std::function<void ()>;
 
 template <
     typename Id,

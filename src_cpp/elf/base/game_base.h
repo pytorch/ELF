@@ -8,16 +8,10 @@
 
 #pragma once
 
-#include "elf/base/context.h"
-#include "elf/base/ctrl.h"
+#include "elf/base/game_client_interface.h"
 #include "elf/utils/utils.h"
 
 namespace elf {
-
-struct Ctx {
-  GameClient* client = nullptr;
-  Ctrl ctrl;
-};
 
 namespace game {
 
@@ -34,7 +28,8 @@ class Base {
   using ActFunc = std::function<void(Base*)>;
   using EndFunc = std::function<void(Base*)>;
 
-  Base(Ctx& ctx, const Options& options) : ctx_(ctx), options_(options) {
+  Base(elf::GameClientInterface *client, const Options& options) 
+    : client_(client), options_(options) {
     if (options_.seed == 0) {
       options_.seed = elf_utils::get_seed(
           options_.game_idx ^ std::hash<std::string>{}(options_.job_id));
@@ -53,7 +48,7 @@ class Base {
     }
 
     // Main loop of the game.
-    while (!ctx_.client->DoStopGames()) {
+    while (!client_->DoStopGames()) {
       act_func_(this);
     }
     if (end_func_ != nullptr)
@@ -69,8 +64,8 @@ class Base {
     end_func_ = end_func;
   }
 
-  elf::Ctx& ctx() {
-    return ctx_;
+  elf::GameClientInterface* client() {
+    return client_;
   }
   std::mt19937& rng() {
     return rng_;
@@ -80,7 +75,7 @@ class Base {
   }
 
  protected:
-  elf::Ctx& ctx_;
+  elf::GameClientInterface *client_ = nullptr;
   std::mt19937 rng_;
   Options options_;
 

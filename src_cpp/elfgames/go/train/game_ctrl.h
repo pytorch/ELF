@@ -41,7 +41,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
  public:
   ThreadedCtrl(
       Ctrl& ctrl,
-      elf::GameClient* client,
+      elf::GameClientInterface* client,
       ReplayBuffer* replay_buffer,
       const GameOptionsTrain& options)
       : ThreadedCtrlBase(ctrl, 10000),
@@ -190,7 +190,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
   bool eval_mode_ = false;
 
   const GameOptionsTrain options_;
-  elf::GameClient* client_ = nullptr;
+  elf::GameClientInterface* client_ = nullptr;
   std::mt19937 rng_;
 
   std::string kTrainCtrl = "train_ctrl";
@@ -223,8 +223,9 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     // Then we send information to Python side.
     MsgVersion msg;
     msg.model_ver = ver;
+    auto binder = client_->getBinder();
     elf::FuncsWithState funcs =
-        client_->BindStateToFunctions({kTrainCtrl}, &msg);
+        binder.BindStateToFunctions({kTrainCtrl}, &msg);
     client_->sendWait({kTrainCtrl}, &funcs);
   }
 };
@@ -234,7 +235,7 @@ class TrainCtrl : public elf::msg::DataInterface {
   TrainCtrl(
       Ctrl& ctrl,
       int num_games,
-      elf::GameClient* client,
+      elf::GameClientInterface* client,
       const GameOptionsTrain& options)
       : ctrl_(ctrl),
         rng_(time(NULL)),
