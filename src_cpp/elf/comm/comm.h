@@ -283,38 +283,6 @@ class CommInternalT {
 
   std::vector<std::unique_ptr<ServerNode>> storages_;
 };
-
-struct SendOptions {
-  // Specify labels of this msg.
-  // For each label, the message will be sent to a receiver with this label.
-  // For example, if a message carrys the labels ["actor", "train"]
-  // , and there are four receivers, each with label:
-  //    1. "actor"
-  //    2. "train"
-  //    3. "actor"
-  //    4. "train"
-  // Then the message will be sent to (1, 2), (1, 4), (2, 3), (3, 4)
-  // with equal probability.
-  std::vector<std::string> labels;
-};
-
-struct RecvOptions {
-  // A receiver will only honor messags that matches its label
-  std::string label;
-  WaitOptions wait_opt;
-
-  RecvOptions(
-      const std::string& label,
-      int batchsize,
-      int timeout_usec = 0,
-      int min_batchsize = 0)
-      : label(label), wait_opt(batchsize, timeout_usec, min_batchsize) {}
-
-  friend bool operator==(const RecvOptions &op1, const RecvOptions &op2) {
-    return op1.label == op2.label && op1.wait_opt == op2.wait_opt;
-  }
-};
-
 ///
 /// Adds capability of grouping server by their levels and some simple routing
 ///
