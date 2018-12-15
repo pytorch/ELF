@@ -149,13 +149,6 @@ class GameClientInterface {
     FuncsWithState funcs = binder.BindStateToFunctions({target}, &s);
     return sendWait({target}, &funcs) == comm::SUCCESS;
   }
-
-  template <typename S>
-  bool sendWait(const std::string &target, S s) {
-    auto binder = getBinder();
-    FuncsWithState funcs = binder.BindStateToFunctions({target}, &s);
-    return sendWait({target}, &funcs) == comm::SUCCESS;
-  }
 };
 
 }  // namespace elf
