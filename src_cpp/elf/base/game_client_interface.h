@@ -142,6 +142,13 @@ class GameClientInterface {
       const std::vector<std::string>& targets, 
       const std::vector<std::vector<FuncsWithState*>>& funcs,
       const std::vector<comm::SuccessCallback>& callbacks) = 0;
+
+  template <typename S>
+  bool sendWait(const std::string &target, S &s) {
+    auto binder = getBinder();
+    FuncsWithState funcs = binder.BindStateToFunctions({target}, &s);
+    return sendWait({target}, &funcs) == comm::SUCCESS;
+  }
 };
 
 }  // namespace elf
