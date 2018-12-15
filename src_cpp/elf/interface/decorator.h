@@ -1,8 +1,8 @@
-#include "elf/base/hist.h"
+#include "hist.h"
 
 namespace elf {
 
-namespace interface {
+namespace decorator {
 
 class FrameStacking {
  public:
@@ -92,6 +92,6 @@ class ShortReplayBuffer {
   HistR hist_reply_;
 };
 
-}  // namespace interface
+}  // namespace decorator
 
 }  // namespace elf
