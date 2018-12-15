@@ -12,7 +12,7 @@
 #include "go_game_specific.h"
 #include "go_state_ext.h"
 
-#include "elf/base/extractor.h"
+#include "elf/interface/extractor.h"
 
 enum SpecialActionType { SA_SKIP = -100, SA_PASS, SA_RESIGN, SA_CLEAR, SA_PEEK };
 

@@ -9,7 +9,7 @@
 #include "../common/go_game_specific.h"
 #include "../common/go_state_ext.h"
 #include "../common/record.h"
-#include "elf/base/game_base.h"
+#include "elf/interface/game_base.h"
 #include "elf/distributed/shared_reader.h"
 
 class GoGameTrain {

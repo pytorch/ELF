@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "elf/base/game_client_interface.h"
+#include "game_client_interface.h"
 #include "elf/utils/utils.h"
 
 namespace elf {

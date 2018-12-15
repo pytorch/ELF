@@ -13,7 +13,7 @@
 #include <string>
 
 #include "elf/base/dispatcher.h"
-#include "elf/base/game_base.h"
+#include "elf/interface/game_base.h"
 #include "elf/logging/IndexedLoggerFactory.h"
 
 #include "../mcts/mcts.h"

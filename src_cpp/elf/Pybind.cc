@@ -20,7 +20,7 @@
 #include "elf/ai/tree_search/tree_search_options.h"
 #include "elf/base/context.h"
 #include "elf/base/game_context.h"
-#include "elf/base/game_interface.h"
+#include "elf/interface/game_interface.h"
 #include "elf/base/remote_context.h"
 #include "elf/comm/comm.h"
 #include "elf/logging/Pybind.h"

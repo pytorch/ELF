@@ -17,7 +17,7 @@
 
 #include "context.h"
 #include "elf/logging/IndexedLoggerFactory.h"
-#include "game_interface.h"
+#include "elf/interface/game_interface.h"
 
 #include <thread>
 

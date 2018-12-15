@@ -12,7 +12,7 @@
 #include "elf/comm/base.h"
 
 namespace elf {
- 
+
 class Binder {
  public:
   using RetrieverFunc = std::function<const std::vector<std::string> * (const std::string &)>;

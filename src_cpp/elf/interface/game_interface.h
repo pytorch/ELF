@@ -31,7 +31,7 @@ class GCInterface {
   virtual const game::Base* getGameC(int /*game_idx*/) const {
     return nullptr;
   }
-  virtual elf::game::Base* getGame(int /*game_idx*/) {
+  virtual game::Base* getGame(int /*game_idx*/) {
     return nullptr;
   }
 

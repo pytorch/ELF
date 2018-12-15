@@ -25,7 +25,7 @@
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
 #include "sharedmem.h"
-#include "game_client_interface.h"
+#include "elf/interface/game_client_interface.h"
 
 namespace elf {
 

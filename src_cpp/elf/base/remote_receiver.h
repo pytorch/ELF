@@ -5,7 +5,7 @@
 
 #include "remote_common.h"
 #include "game_context.h"
-#include "game_interface.h"
+#include "elf/interface/game_interface.h"
 
 #include <algorithm>
 #include <iterator>

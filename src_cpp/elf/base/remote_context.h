@@ -24,7 +24,7 @@
 #include "elf/distributed/addrs.h"
 #include "elf/distributed/shared_rw_buffer3.h"
 #include "game_context.h"
-#include "game_interface.h"
+#include "elf/interface/game_interface.h"
 
 #include "remote_sender.h"
 #include "remote_receiver.h"

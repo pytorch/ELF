@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <functional>
 
-#include "sharedmem_data.h"
+#include "elf/interface/sharedmem_data.h"
 #include "elf/comm/comm.h"
 #include "elf/concurrency/ConcurrentQueue.h"
 
