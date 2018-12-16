@@ -63,7 +63,7 @@ class PolicyGradient(object):
             ``policy_err``: polict error
             ``entropy_err``: entropy error
         """
-        batchsize = a.size(0)
+        batchsize = pi.size(0)
 
         # Add normalization constant
         logpi = (pi + self.options.min_prob).log()
@@ -166,14 +166,14 @@ class PolicyGradient(object):
             entropy_err = add_err(entropy_err, errs["entropy_err"])
             log_pi_s.append(errs["logpi"])
 
-            stats["nll_" + pi_node].feed(errs["policy_err"].data[0])
-            stats["entropy_" + pi_node].feed(errs["entropy_err"].data[0])
+            stats["nll_" + pi_node].feed(errs["policy_err"].item()) 
+            stats["entropy_" + pi_node].feed(errs["entropy_err"].item())
 
         for log_pi in log_pi_s:
             self._reg_backward(log_pi, Variable(pg_weights))
 
         if len(self.policy_action_nodes) > 1:
-            stats["total_nll"].feed(policy_err.data[0])
-            stats["total_entropy"].feed(entropy_err.data[0])
+            stats["total_nll"].feed(policy_err.item())
+            stats["total_entropy"].feed(entropy_err.item())
 
         return policy_err + entropy_err * self.options.entropy_ratio

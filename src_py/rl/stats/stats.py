@@ -4,6 +4,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from collections import defaultdict
+
 class ValueStats(object):
     def __init__(self, name=None):
         self.name = name
@@ -42,3 +44,22 @@ class ValueStats(object):
         self.max_idx = None
         self.min_idx = None
 
+class Stats:
+    def __init__(self):
+        self.stats = dict()
+        
+    def __getitem__(self, key):
+        if key not in self.stats:
+            self.stats[key] = ValueStats(name=key)
+        return self.stats[key]
+
+    def first(self):
+        key = next(iter(self.stats))
+        return self.stats[key]
+
+    def summary(self, info=None):
+        return "\n".join([ s.summary() for k, s in self.stats.items()])
+
+    def reset(self):
+        for k, s in self.stats.items():
+            s.reset()

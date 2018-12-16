@@ -5,7 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 
 from elf.options import auto_import_options, PyOptionSpec
-from ..stats import ValueStats
 from .policy_gradient import PolicyGradient
 from .discounted_reward import DiscountedReward
 from .value_matcher import ValueMatcher
@@ -35,11 +34,11 @@ class ActorCritic(object):
 
         `PolicyGradient`, `DiscountedReward`, and `ValueMatcher`.
         """
-        self.discounted_reward = DiscountedReward()
-        self.pg = PolicyGradient()
-        self.value_matcher = ValueMatcher()
+        self.discounted_reward = DiscountedReward(option_map)
+        self.pg = PolicyGradient(option_map)
+        self.value_matcher = ValueMatcher(option_map)
 
-    def update(self, m, batch, stats : ValueStats):
+    def update(self, m, batch, stats):
         """Actor critic model update.
 
         Feed stats for later summarization.
@@ -54,7 +53,7 @@ class ActorCritic(object):
         """
         value_node = self.options.value_node
 
-        T = batch["s"].size(0)
+        T = batch.histSize("s")
 
         state_curr = m(batch.hist(T - 1))
         self.discounted_reward.setR(
@@ -70,7 +69,7 @@ class ActorCritic(object):
             V = state_curr[value_node].squeeze()
 
             R = self.discounted_reward.feed(
-                dict(r=batch["r"][t], terminal=batch["terminal"][t]),
+                batch.hist(t, key=['r', "terminal"]),
                 stats=stats)
 
             policy_err = self.pg.feed(
@@ -79,5 +78,5 @@ class ActorCritic(object):
             err = add_err(err, self.value_matcher.feed(
                 {value_node: V, "target": R}, stats))
 
-        stats["cost"].feed(err.data[0] / (T - 1))
+        stats["cost"].feed(err.item() / (T - 1))
         err.backward()

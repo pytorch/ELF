@@ -68,7 +68,7 @@ class ValueMatcher(object):
         V = batch[self.options.value_node]
         value_err = self.value_loss(V, Variable(batch["target"]))
         self._reg_backward(V)
-        stats["predicted_" + self.options.value_node].feed(V.data[0])
-        stats[self.options.value_node + "_err"].feed(value_err.data[0])
+        # stats["predicted_" + self.options.value_node].feed(V.item())
+        stats[self.options.value_node + "_err"].feed(value_err.item())
 
         return value_err

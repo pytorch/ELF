@@ -200,6 +200,15 @@ def tensor_slice(t, dim, b, e=None):
     else:
         raise ValueError("unsupported %d in tensor_slice" % dim)
 
+def tensor_sel(t, dim, b):
+    if dim == 0:
+        return t[b]
+    elif dim == 1:
+        return t[:, b]
+    elif dim == 2:
+        return t[:, :, b]
+    else:
+        raise ValueError("unsupported %d in tensor_sel" % dim)
 
 class Batch:
     def __init__(self, _GC=None, _game_obj=None, _batchdim=0, _histdim=None, **kwargs):
@@ -311,6 +320,11 @@ class Batch:
             k for k, assigned in key_assigned.items() if not assigned]
         return keys_extra, keys_missing
 
+    def histSize(self, key):
+        if self.histdim is None:
+            raise ValueError("No histdim information for the batch")
+        return self.batch[key].size(self.histdim)
+
     def hist(self, hist_idx, key=None):
         '''
         return batch history.
@@ -326,8 +340,15 @@ class Batch:
         if key is None:
             new_batch = self.empty_copy()
             new_batch.batch = {
-                k: tensor_slice(v, self.histdim, hist_idx)
+                k: tensor_sel(v, self.histdim, hist_idx)
                 for k, v in self.batch.items()
+            }
+            return new_batch
+        elif isinstance(key, list):
+            new_batch = self.empty_copy()
+            new_batch.batch = {
+                k: tensor_sel(self.batch[k], self.histdim, hist_idx)
+                for k in key
             }
             return new_batch
         else:
