@@ -54,9 +54,9 @@ class ShortReplayBuffer {
      : dim_(dim), trait_(dim, 0), hist_(T), hist_reply_(T) {
   }
 
-  void reset() {
+  void reset(std::function<void (Reply &)> resetter = nullptr) {
     hist_.reset([&](std::vector<float> &v) { return trait_.Initialize(v); });
-    hist_reply_.reset(nullptr);
+    hist_reply_.reset(resetter);
     last_step_ = 0;
     curr_step_ = 0; 
   }
