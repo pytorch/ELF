@@ -47,6 +47,7 @@ class ValueStats(object):
 class Stats:
     def __init__(self):
         self.stats = dict()
+        self.last_start = None
         
     def __getitem__(self, key):
         if key not in self.stats:
@@ -58,7 +59,15 @@ class Stats:
         return self.stats[key]
 
     def summary(self, info=None):
-        return "\n".join([ s.summary() for k, s in self.stats.items()])
+        if self.last_start is not None:
+            curr = time.perf_counter()
+            elapsed = curr - self.last_start
+            self.last_start = curr
+            time_str = "Time elasped: %f sec" % elapsed 
+        else:
+            time_str = ""
+            
+        return time_str + "\n".join([ s.summary() for k, s in self.stats.items()])
 
     def reset(self):
         for k, s in self.stats.items():
