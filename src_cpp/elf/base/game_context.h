@@ -50,6 +50,9 @@ class GameContext : public GCInterface {
 
   // Virtual functions for python.
   void start() override {
+    // Initialize current receiver.
+    batchContext_->getWaiter();
+    
     collectorContext_->start();
     batchContext_->start();
   }
