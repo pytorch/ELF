@@ -59,13 +59,13 @@ class Stats:
         return self.stats[key]
 
     def summary(self, info=None):
+        curr = time.perf_counter()
         if self.last_start is not None:
-            curr = time.perf_counter()
             elapsed = curr - self.last_start
-            self.last_start = curr
             time_str = "Time elasped: %f sec" % elapsed 
         else:
             time_str = ""
+        self.last_start = curr
             
         return time_str + "\n".join([ s.summary() for k, s in self.stats.items()])
 
