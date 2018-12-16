@@ -232,6 +232,9 @@ class Batch:
             v in self.batch.items()}
         return batch
 
+    def replace_keys(self, substr1, substr2):
+        self.batch = { k.replace(substr1, substr2) : v for k, v in self.batch.items() }
+
     def __getitem__(self, key):
         '''Get a key from batch. Can be either ``key`` or ``last_key``
 
