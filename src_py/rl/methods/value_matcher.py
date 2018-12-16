@@ -70,5 +70,6 @@ class ValueMatcher(object):
         self._reg_backward(V)
         # stats["predicted_" + self.options.value_node].feed(V.item())
         stats[self.options.value_node + "_err"].feed(value_err.item())
+        stats[self.options.value_node + "_std"].feed(V.std(dim=0).item())
 
         return value_err
