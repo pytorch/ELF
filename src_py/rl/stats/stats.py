@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from collections import defaultdict
+import time
 
 class ValueStats(object):
     def __init__(self, name=None):
