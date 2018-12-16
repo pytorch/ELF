@@ -272,16 +272,13 @@ class CommInternalT {
     typename ServerMap::accessor elem;
     bool uninitialized = servers_.insert(elem, id);
     if (uninitialized) {
-      storages_.emplace_back(new ServerNode());
-      elem->second = storages_.back().get();
+      elem->second.reset(new ServerNode());
     }
-    return elem->second;
+    return elem->second.get();
   }
 
-  using ServerMap = tbb::concurrent_hash_map<Id, ServerNode*>;
+  using ServerMap = tbb::concurrent_hash_map<Id, std::unique_ptr<ServerNode>>;
   ServerMap servers_;
-
-  std::vector<std::unique_ptr<ServerNode>> storages_;
 };
 ///
 /// Adds capability of grouping server by their levels and some simple routing
