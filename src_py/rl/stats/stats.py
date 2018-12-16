@@ -68,7 +68,7 @@ class Stats:
             time_str = ""
         self.last_start = curr
             
-        return time_str + "\n".join([ s.summary() for k, s in self.stats.items()])
+        return time_str + "\n" + "\n".join([ s.summary() for k, s in self.stats.items()])
 
     def reset(self):
         for k, s in self.stats.items():
