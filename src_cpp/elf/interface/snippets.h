@@ -18,7 +18,7 @@ struct DiscreteReply {
   int terminal;
   std::vector<float> pi;
 
-  Reply(int num_action = 0) : pi(num_action) {
+  DiscreteReply(int num_action = 0) : pi(num_action) {
   }
 
   void setPi(const float *ppi) { assert(pi.size() > 0); std::copy(ppi, ppi + pi.size(), pi.begin()); }
