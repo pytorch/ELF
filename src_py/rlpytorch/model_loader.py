@@ -50,7 +50,7 @@ class ModelLoader(object):
         spec.addIntOption(
             'gpu',
             'which GPU to use',
-            -1)
+            1)
         spec.addBoolOption(
             'check_loaded_options',
             'Toggles consistency check of loaded vs. current model options.',
