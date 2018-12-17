@@ -158,8 +158,7 @@ class Model_PolicyValue(Model):
         spec.addIntOption(
             'gpu',
             'which gpu to use',
-            -1)
-#            1)
+            1)
 
         spec.merge(GoResNet.get_option_spec())
 

@@ -189,6 +189,7 @@ class Batch:
         keys_extra = []
 
         for k, v in this_src.items():
+            print(k)
             # Copy it down to cpu.
             if k not in self.batch:
                 keys_extra.append(k)
