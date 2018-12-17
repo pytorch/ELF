@@ -74,16 +74,41 @@ class HistT {
     return sz;
   }
 
+  // From oldest to most recent.
   template <typename S>
-  void extract(S* s, size_t (T::*extractor)(S *) const) const {
+  void extractForward(S* s, size_t (T::*extractor)(S *) const) const {
     auto f = [=](const T &v, S *s) {
       return (v.*extractor)(s);
     };
-    this->template extract<S>(s, f);
+    this->template extractForward<S>(s, f);
   }
 
   template <typename S>
-  void extract(S* s, std::function<size_t (const T &, S *)> extractor) const {
+  void extractForward(S* s, std::function<size_t (const T &, S *)> extractor) const {
+    assert(extractor != nullptr);
+    // one sample = dim per feature * time length
+    size_t idx = q_idx_;
+
+    for (size_t i = 0; i < q_.size(); ++i) {
+      idx ++;
+      if (idx >= q_.size()) idx = 0;
+
+      const T &v = q_[idx];
+      s += extractor(v, s);
+    }
+  } 
+
+  // From most recent to oldest.
+  template <typename S>
+  void extractReverse(S* s, size_t (T::*extractor)(S *) const) const {
+    auto f = [=](const T &v, S *s) {
+      return (v.*extractor)(s);
+    };
+    this->template extractReverse<S>(s, f);
+  }
+
+  template <typename S>
+  void extractReverse(S* s, std::function<size_t (const T &, S *)> extractor) const {
     assert(extractor != nullptr);
     // one sample = dim per feature * time length
     size_t idx = q_idx_;

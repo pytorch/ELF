@@ -23,7 +23,7 @@ class FrameStacking {
   }
 
   void getFeature(float *s) const {
-    hist_.extract<float>(s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
+    hist_.extractReverse<float>(s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
   }
 
   std::vector<float> feature() const {
@@ -76,8 +76,11 @@ class ShortReplayBuffer {
     } else return false;
   }
 
-  void getFeature(float *s) const {
-    hist_.extract<float>(s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
+  void getFeatureForward(float *s) const {
+    hist_.extractForward<float>(s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
+  }
+  void getFeatureReverse(float *s) const {
+    hist_.extractReverse<float>(s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
   }
 
   const Hist& hist() const { return hist_; }
