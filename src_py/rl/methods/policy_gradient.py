@@ -118,7 +118,7 @@ class PolicyGradient(object):
             return grad
         v.register_hook(bw_hook)
 
-    def feed(self, Q, pi_s, actions, stats : ValueStats, old_pi_s=dict()):
+    def feed(self, Q, pi_s, actions, stats, old_pi_s=dict()):
         """One iteration of policy gradient.
 
         rho nabla_w log p_w(a|s) Q + entropy_ratio * nabla H(pi(.|s))

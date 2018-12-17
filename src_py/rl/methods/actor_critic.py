@@ -21,6 +21,10 @@ class ActorCritic(object):
             'value_node',
             'name of the value node',
             'V')
+        spec.addFloatOption(
+            'adv_clip',
+            'clip value of advantage. 0.0 means no clipping',
+            0.0)
 
         spec.merge(PyOptionSpec.fromClasses(
             (PolicyGradient, DiscountedReward, ValueMatcher)
@@ -72,8 +76,14 @@ class ActorCritic(object):
                 batch.hist(t, key=['r', "terminal"]),
                 stats=stats)
 
+            A = R - V.data
+            if self.options.adv_clip > 0.0:
+                # Clip the advantage. 
+                A = torch.clamp(A, min=-self.options.adv_clip, max=self.options.adv_clip)
+                R = V.data + A
+
             policy_err = self.pg.feed(
-                R - V.data, state_curr, bht, stats, old_pi_s=bht)
+                A, state_curr, bht, stats, old_pi_s=bht)
             err = add_err(err, policy_err)
             err = add_err(err, self.value_matcher.feed(
                 {value_node: V, "target": R}, stats))
