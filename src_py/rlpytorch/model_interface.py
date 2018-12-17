@@ -73,6 +73,7 @@ class ModelInterface(object):
         """
         mi = ModelInterface(self.option_map)
         for key, model in self.models.items():
+            print ("gpu = ", gpu)
             mi.models[key] = model.clone(gpu=gpu)
             if key in self.optimizers:
                 # Same parameters.
