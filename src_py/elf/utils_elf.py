@@ -403,6 +403,7 @@ class GCWrapper:
         # If reply is meaningful, send them back.
         if isinstance(reply, dict) and sel_reply is not None:
             if self.gpu is not None:
+                print ("self.gpu = ", self.gpu)
                 with torch.cuda.device(self.gpu):
                     keys_extra, keys_missing = sel_reply.copy_from(reply)
             else:
