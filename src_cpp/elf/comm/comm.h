@@ -360,8 +360,8 @@ class CommT : public CommInternalT<
         typename ServerLabelMap::const_accessor elem;
         bool found = pp_->serverLabels_.find(elem, label);
         if (!found) {
-          // std::cout << "WARNING! no servers has the label: " << label
-          //          << std::endl;
+          std::cout << "WARNING! no servers has the label: \"" << label << "\""
+                    << std::endl;
         } else {
           const std::vector<Id>& ids = elem->second;
           // Randomly pick one of the label.
