@@ -182,7 +182,9 @@ DEF_END
 
 class Summary {
 public:
-    Summary() : _accu_reward(0), _accu_reward_all_game(0), _n_complete_game(0) { }
+    Summary() 
+      : _accu_reward(0), _accu_reward_all_game(0), 
+        _accu_reward_last_game(0), _n_complete_game(0), _n_merged(0) { }
 
     void feed(float curr_reward) {
       _accu_reward = _accu_reward + curr_reward;
@@ -191,10 +193,14 @@ public:
     void feed(const Summary &other) {
       _accu_reward_all_game = _accu_reward_all_game + other._accu_reward_all_game;
       _n_complete_game = _n_complete_game + other._n_complete_game;
+
+      _accu_reward_last_game = _accu_reward_last_game + other._accu_reward_last_game;
+      _n_merged ++;
     }
 
     void reset() {
       _accu_reward_all_game = _accu_reward_all_game + _accu_reward;
+      _accu_reward_last_game = _accu_reward;
       _accu_reward = 0;
       _n_complete_game ++;
     }
@@ -202,10 +208,16 @@ public:
     std::string print() const {
       std::stringstream ss;
       if (_n_complete_game > 0) {
-        ss << (float)_accu_reward_all_game / _n_complete_game << "[" << _n_complete_game << "]";
+        ss << "Accumulated: " << (float)_accu_reward_all_game / _n_complete_game << "[" << _n_complete_game << "]";
       } else {
         ss << "0[0]";
       }
+      if (_n_merged > 0) {
+        ss << ", Avg last episode:" << (float)_accu_reward_last_game / _n_merged << "[" << _n_merged << "]";
+      } else {
+        ss << "0[0]";
+      }
+
       ss << " current accumulated reward: " << _accu_reward;
       return ss.str();
     }
@@ -213,7 +225,9 @@ public:
 private:
     std::atomic<float> _accu_reward;
     std::atomic<float> _accu_reward_all_game;
+    std::atomic<float> _accu_reward_last_game;
     std::atomic<int> _n_complete_game;
+    std::atomic<int> _n_merged;
 };
 
 class MyContext {
