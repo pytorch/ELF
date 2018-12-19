@@ -254,7 +254,7 @@ class MyContext {
      return params;
    }
 
-   std::string getGameSummary() {
+   std::string getSummary() {
      Summary summary;
      for (const auto &g : games_) {
        summary.feed(g->summary);

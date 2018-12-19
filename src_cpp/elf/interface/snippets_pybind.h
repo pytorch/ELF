@@ -24,6 +24,7 @@ void reg_pybind11(py::module &m) {
     .def("setGameContext", &MyContext::setGameContext)
     .def("setGameFactory", &MyContext::setGameFactory)
     .def("getParams", &MyContext::getParams)
+    .def("getSummary", &MyContext::getSummary)
     .def("getBatchSpec", &MyContext::getBatchSpec);
 }
 
