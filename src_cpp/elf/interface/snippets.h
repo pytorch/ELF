@@ -200,7 +200,7 @@ public:
 
     void reset() {
       _accu_reward_all_game = _accu_reward_all_game + _accu_reward;
-      _accu_reward_last_game = _accu_reward;
+      _accu_reward_last_game = _accu_reward + 0;
       _accu_reward = 0;
       _n_complete_game ++;
     }
