@@ -9,7 +9,7 @@ namespace options {
 template <typename C>
 class Visitor {
  public:
-  Visitor(std::string prefix, OptionSpec& spec) 
+  Visitor(std::string prefix, OptionSpec& spec)
     : prefix_(prefix), spec_(spec) {
     static_assert(elf::reflection::has_reflection<C>::value);
     C::applyStatic(*this);
@@ -21,6 +21,7 @@ class Visitor {
       (void)defaultValue;
       Visitor<T> sub_visitor(prefix_ + optionName + ".", spec_);
     } else {
+      // std::cout << "Add option " << optionName << ", type: " << typeid(T).name() << std::endl;
       spec_.template addOption<T>(prefix_ + optionName, help, defaultValue);
     }
   }

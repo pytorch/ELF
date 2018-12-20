@@ -5,6 +5,7 @@
 #include <pybind11/stl_bind.h>
 #include <pybind11/functional.h>
 
+#include "elf/options/pybind_utils.h"
 #include "snippets.h"
 
 namespace elf {
@@ -14,8 +15,7 @@ namespace snippet {
 namespace py = pybind11;
 
 void reg_pybind11(py::module &m) {
-  py::class_<Options>(m, "Options")
-    .def(py::init<>());
+  options::PyInterface<Options>(m, "Options");
 
   py::class_<GameFactory>(m, "GameFactory");
 

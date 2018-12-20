@@ -56,7 +56,7 @@ class GameInterface {
   virtual std::vector<int> dims() const = 0;
   virtual int numActions() const = 0;
   virtual std::unordered_map<std::string, int> getParams() const = 0;
-  // return false if the game has come to an end, and change the reply. 
+  // return false if the game has come to an end, and change the reply.
   virtual bool step(Reply *) = 0;
   virtual void reset() = 0;
 };
@@ -90,7 +90,7 @@ struct ActorSender {
      dims[1] *= frame_stack;
 
      e.addField<float>("s")
-       .addExtents(batchsize, dims) 
+       .addExtents(batchsize, dims)
        .addFunction<ActorSender>(&ActorSender::getFeature);
 
      e.addField<int>("game_cnt")
@@ -176,14 +176,14 @@ struct TrainSender {
 DEF_STRUCT(Options)
   DEF_FIELD(int, T, 6, "len of history")
   DEF_FIELD(int, frame_stack, 4, "Framestack")
-  DEF_FIELD(float, reward_clip, 0, "Reward clip")
+  DEF_FIELD(float, reward_clip, 1.0f, "Reward clip")
   // DEF_FIELD_NODEFAULT(elf::Options, base, "ELF options")
 DEF_END
 
 class Summary {
 public:
-    Summary() 
-      : _accu_reward(0), _accu_reward_all_game(0), 
+    Summary()
+      : _accu_reward(0), _accu_reward_all_game(0),
         _accu_reward_last_game(0), _n_complete_game(0), _n_merged(0) { }
 
     void feed(float curr_reward) {
@@ -264,7 +264,7 @@ class MyContext {
 
      params["num_action"] = game.numActions();
      params["frame_stack"] = options_.frame_stack;
-     params["T"] = options_.T; 
+     params["T"] = options_.T;
      return params;
    }
 
@@ -306,7 +306,7 @@ class MyContext {
         replay(opt.T, opt.frame_stack * game->dim()),
         client(client),
         eval_name(eval_name),
-        train_name(train_name), 
+        train_name(train_name),
         opt(opt) {
 
        assert(game.get() != nullptr);
