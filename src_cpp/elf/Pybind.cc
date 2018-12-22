@@ -27,6 +27,7 @@
 #include "elf/options/Pybind.h"
 #include "elf/options/OptionMap.h"
 #include "elf/options/reflection_option.h"
+#include "elf/options/pybind_utils.h"
 #include "elf/utils/pybind.h"
 #include "elf/ai/tree_search/Pybind.h"
 
@@ -166,6 +167,8 @@ void register_game(pybind11::module& m) {
     PB_FIELD(job_id)
     PB_FIELD(time_signature)
   PB_END
+
+  elf::options::PyInterface<Options>(m, "ELFOptions", false);
 
   PB_INIT(NetOptions)
     .def(py::init<>())
