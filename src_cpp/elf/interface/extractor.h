@@ -630,8 +630,10 @@ class Extractor {
     return pointers;
   }
 
-  void merge(const Extractor &e) {
-    fields_.insert(e.fields_.begin(), e.fields_.end());
+  void merge(Extractor &&e) {
+    for (auto &&p : e.fields_) {
+      fields_[p.first] = std::move(p.second);
+    }
   } 
 
   std::vector<std::string> getMem2StateNames() const { 

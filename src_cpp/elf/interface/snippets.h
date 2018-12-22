@@ -365,7 +365,7 @@ class MyContext {
     return SpecItem{
       { "input", e.getState2MemNames() },
       { "reply", e.getMem2StateNames() },
-    }
+    };
   }
 
   void regFunc(elf::GCInterface *ctx) {
@@ -376,12 +376,12 @@ class MyContext {
     int batchsize = ctx->options().batchsize;
     
     Extractor e_actor = ActorSender::reg(game, batchsize, options_.frame_stack);
-    e.merge(e_actor);
     spec_[eval_name_] = getSpec(e_actor);
+    e.merge(std::move(e_actor));
 
     Extractor e_train = TrainSender::reg(game, batchsize, options_.T, options_.frame_stack);
-    e.merge(e_train);
     spec_[train_name_] = getSpec(e_train); 
+    e.merge(std::move(e_train));
   }
 };
 
