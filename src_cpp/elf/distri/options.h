@@ -10,16 +10,21 @@
 
 #include <sstream>
 #include <string>
-#include "elf/base/options.h"
+#include "elf/options/reflection_option.h"
 #include "elf/distributed/options.h"
 #include "elf/utils/reflection.h"
 #include "elf/utils/utils.h"
 
-DEF_STRUCT(GameOptions)
-  DEF_FIELD(int32_t, num_action, 10, "Number of actions");
-  DEF_FIELD(int32_t, input_dim, 10, "Input dimention");
-  
+namespace elf {
+
+namespace cs {
+
+DEF_STRUCT(Options)
+  DEF_FIELD(int, server_num_state_pushed_per_thread, 1, "Number of states pushed per thread in the server side");
   DEF_FIELD_NODEFAULT(elf::msg::Options, net, "Network options");
   DEF_FIELD_NODEFAULT(elf::Options, base, "Base Options");
 DEF_END
 
+}  // namespace cs
+
+}  // namespace elf

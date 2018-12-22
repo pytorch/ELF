@@ -1,7 +1,8 @@
 #pragma once
 
 #include <chrono>
-#include "elf/base/game_context.h"
+#include "elf/interface/game_interface.h"
+#include "elf/base/ctrl.h"
 #include "elf/distributed/addrs.h"
 #include "elf/distributed/options.h"
 #include "elf/distributed/shared_rw_buffer3.h"
@@ -9,10 +10,14 @@
 #include "dispatcher_callback.h"
 #include "record.h"
 #include "options.h"
-#include "client_game.h"
-#include "feature.h"
 
-using ThreadedWriter = elf::msg::Client;
+#include "game_interface.h"
+
+namespace elf { 
+
+namespace cs {
+
+using ThreadedWriter = msg::Client;
 
 class WriterCallback {
  public:
@@ -40,11 +45,12 @@ class WriterCallback {
     return msg;
   }
 
-  void addRecord(const State &s, const Reply &r) {
+  void addRecord(const GameInterface &s) {
     std::lock_guard<std::mutex> lock(mutex_);
     Record record;
-    record.request.state = s;
-    record.result.reply = r;
+    record.request.state = s.to_json();
+    // Not used. 
+    // record.result.reply = r;
     records_.addRecord(std::move(record));
   }
 
@@ -56,15 +62,17 @@ class WriterCallback {
 
 class Client {
  public:
-  Client(const GameOptions& options)
-      : options_(options), feature_(options) {}
+  Client(const Options &options) : options_(options) {}
+
+  void setGameFactory(GameFactory factory) {
+    factory_ = factory;
+  }
 
   void setGameContext(elf::GCInterface* ctx) {
-    feature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
     uint64_t num_games = ctx->options().num_game_thread;
 
     if (ctx->getClient() != nullptr) {
-      dispatcher_.reset(new ThreadedDispatcher(ctx->getCtrl(), num_games));
+      dispatcher_.reset(new ThreadedDispatcher(ctrl_, num_games));
     }
 
     auto netOptions =
@@ -74,18 +82,14 @@ class Client {
     // Resend after 900s
     netOptions.usec_resend_when_no_msg = 900000000;
     writer_.reset(new ThreadedWriter(netOptions));
-    writer_callback_.reset(
-        new WriterCallback(writer_.get(), ctx->getCtrl()));
+    writer_callback_.reset(new WriterCallback(writer_.get(), ctrl_));
 
     using std::placeholders::_1;
-    using std::placeholders::_2;
-
-    auto collect_func = std::bind(&WriterCallback::addRecord, writer_callback_.get(), _1, _2);
 
     for (size_t i = 0; i < num_games; ++i) {
       auto* g = ctx->getGame(i);
       if (g != nullptr) {
-        games_.emplace_back(new ClientGame(i, options_, collect_func, dispatcher_.get()));
+        games_.emplace_back(new ClientGame(i, this));
         g->setCallbacks(
             std::bind(&ClientGame::OnAct, games_[i].get(), _1),
             std::bind(&ClientGame::OnEnd, games_[i].get(), _1),
@@ -99,10 +103,9 @@ class Client {
   }
 
   std::unordered_map<std::string, int> getParams() const {
-    return std::unordered_map<std::string, int>{
-      { "input_dim", options_.input_dim },
-      { "num_action", options_.num_action },
-    };
+    assert(! games_.empty());
+    const GameInterface &game = *games_[0]->state_;
+    return game.getParams();
   }
 
   ~Client() {
@@ -113,6 +116,55 @@ class Client {
   }
 
  private:
+  struct ClientGame {
+    int game_idx_;
+    Client *c_ = nullptr;
+    std::unique_ptr<GameInterface> state_;
+    int counter_ = 0;
+
+    ClientGame(int game_idx, Client *client) 
+      : game_idx_(game_idx), c_(client) {
+    }
+
+    bool OnReceive(const MsgRequest& request, MsgReply* reply) {
+      (void)reply;
+      state_ = std::move(c_->factory_.from_json(request.state, nullptr));
+      // No next section.
+      return false;
+    }
+
+    void OnEnd(elf::game::Base*) { }
+
+    void OnAct(elf::game::Base* base) {
+      // elf::GameClient* client = base->ctx().client;
+      if (counter_ % 5 == 0) {
+        using std::placeholders::_1;
+        using std::placeholders::_2;
+        auto f = std::bind(&ClientGame::OnReceive, this, _1, _2);
+        bool block_if_no_message = false;
+
+        do {
+          c_->dispatcher_->checkMessage(block_if_no_message, f);
+        } while (false);
+      }
+      counter_ ++;
+
+      elf::GameClientInterface *client = base->client();
+
+      // Simply use info to construct random samples.
+      client->sendWait("actor", *state_);
+
+      c_->writer_callback_->addRecord(*state_);
+
+      state_->step();
+    }
+  };
+
+  Ctrl ctrl_;
+
+  const Options options_;
+  GameFactory factory_;
+
   std::vector<std::unique_ptr<ClientGame>> games_;
   std::unique_ptr<ThreadedDispatcher> dispatcher_;
   std::unique_ptr<DispatcherCallback> dispatcher_callback_;
@@ -120,7 +172,8 @@ class Client {
   /// ZMQClient
   std::unique_ptr<ThreadedWriter> writer_;
   std::unique_ptr<WriterCallback> writer_callback_;
-
-  const GameOptions options_;
-  Feature feature_;
 };
+
+}  // namespace cs
+
+}  // namespace elf

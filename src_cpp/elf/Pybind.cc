@@ -30,6 +30,7 @@
 #include "elf/options/pybind_utils.h"
 #include "elf/utils/pybind.h"
 #include "elf/ai/tree_search/Pybind.h"
+#include "elf/distri/Pybind.h"
 
 namespace {
 
@@ -236,6 +237,9 @@ void registerPy(pybind11::module& m) {
 
   auto m_mcts = m.def_submodule("_mcts");
   elf::ai::tree_search::registerPy(m_mcts);
+
+  auto m_distri = m.def_submodule("_distri");
+  elf::cs::registerPy(m_distri);
 
   register_game(m);
   register_remote(m);

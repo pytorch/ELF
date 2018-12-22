@@ -13,6 +13,7 @@ set(ELF_SOURCES
     options/OptionSpec.cc
     options/Pybind.cc
     ai/tree_search/Pybind.cc
+    distri/Pybind.cc
 )
 
 # set(ELF_TEST_SOURCES

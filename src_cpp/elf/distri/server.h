@@ -11,12 +11,16 @@
 #include "elf/distributed/addrs.h"
 #include "elf/logging/IndexedLoggerFactory.h"
 
+#include "game_interface.h"
+
 #include "record.h"
 #include "options.h"
-#include "server_game.h"
-#include "feature.h"
 
 #include <thread>
+
+namespace elf {
+
+namespace cs {
 
 using ReplayBuffer = elf::shared::ReaderQueuesT<Record>;
 
@@ -58,7 +62,9 @@ class TrainCtrl : public elf::msg::DataInterface {
 
     // Send new request to that client.
     MsgRequest request;
-    request.state.content = rng_() % 100;
+    // TODO design mechanism to add meaningful state here. 
+    // request.state.content = rng_() % 100;
+
     *msg = request.dumpJsonString();
     std::cout << "TrainCtrl: ReplyMsg[" << identity << "]: " << *msg << std::endl;
     return true;
@@ -77,21 +83,23 @@ class TrainCtrl : public elf::msg::DataInterface {
 
 class Server {
  public:
-  Server(const GameOptions& options)
-      : options_(options), feature_(options) {}
+  Server(const Options& options)
+      : options_(options) {}
+
+  void setGameFactory(GameFactory factory) {
+    factory_ = factory;
+  }
 
   void setGameContext(elf::GameContext* ctx) {
-    feature_.registerExtractor(ctx->options().batchsize, ctx->getExtractor());
-
     size_t num_games = ctx->options().num_game_thread;
-    trainCtrl_.reset(new TrainCtrl(ctx->getCtrl()));
+    trainCtrl_.reset(new TrainCtrl(ctrl_));
 
     using std::placeholders::_1;
 
     for (size_t i = 0; i < num_games; ++i) {
       auto* g = ctx->getGame(i);
       if (g != nullptr) {
-        games_.emplace_back(new ServerGame(i, options_, trainCtrl_->getReplayBuffer()));
+        games_.emplace_back(new ServerGame(i, this));
         g->setCallbacks(std::bind(&ServerGame::OnAct, games_[i].get(), _1));
       }
     }
@@ -106,10 +114,12 @@ class Server {
   }
 
   std::unordered_map<std::string, int> getParams() const {
-    return std::unordered_map<std::string, int>{
-      { "input_dim", options_.input_dim },
-      { "num_action", options_.num_action },
-    };
+    assert(! games_.empty());
+    /*
+    const GameInterface &game = *games_[0];
+    return game.getParams();
+    */
+    return std::unordered_map<std::string, int>(); 
   }
 
   ~Server() {
@@ -118,11 +128,61 @@ class Server {
   }
 
  private:
+  struct ServerGame {
+    int game_idx_;
+    Server *s_ = nullptr;
+
+    ServerGame(int game_idx, Server *s) : game_idx_(game_idx), s_(s) { }
+
+    void OnAct(game::Base* base) {
+      size_t n = s_->options_.server_num_state_pushed_per_thread;
+
+      std::vector<std::unique_ptr<GameInterface>> senders(n);
+      std::vector<FuncsWithState> funcsToSend;
+      auto *client = base->client();
+      auto binder = client->getBinder();
+
+      auto *reader = s_->trainCtrl_->getReplayBuffer();
+
+      for (size_t i = 0; i < n; ++i) {
+        while (true) {
+          // std::cout << "[" << _game_idx << "][" << i << "] Before get sampler "
+          // << std::endl;
+          int q_idx;
+          auto sampler = reader->getSamplerWithParity(&base->rng(), &q_idx);
+          const Record* r = sampler.sample();
+          if (r == nullptr) {
+            continue;
+          }
+
+          senders[i] = std::move(s_->factory_.from_json(r->request.state, &base->rng()));
+          if (senders[i].get() != nullptr) {
+            funcsToSend.push_back(binder.BindStateToFunctions(
+                {"train"}, senders[i].get()));
+            break;
+          }
+        }
+      }
+
+      std::vector<elf::FuncsWithState*> funcPtrsToSend(funcsToSend.size());
+      for (size_t i = 0; i < funcsToSend.size(); ++i) {
+        funcPtrsToSend[i] = &funcsToSend[i];
+      }
+
+      client->sendBatchWait({"train"}, funcPtrsToSend);
+    }
+  };
+
+  Ctrl ctrl_;
+
   std::vector<std::unique_ptr<ServerGame>> games_;
   std::unique_ptr<TrainCtrl> trainCtrl_;
   std::unique_ptr<elf::msg::DataOnlineLoader> onlineLoader_;
 
-  const GameOptions options_;
-
-  Feature feature_;
+  const Options options_;
+  GameFactory factory_;
 };
+
+}  // namespace cs
+
+}  // namespace elf

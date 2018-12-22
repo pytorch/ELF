@@ -16,52 +16,29 @@
 
 #include <nlohmann/json.hpp>
 #include "elf/utils/json_utils.h"
-#include "state.h"
 
 using json = nlohmann::json;
 
-inline void to_json(json& j, const State& state) {
-  j["content"] = state.content;
-}
-
-inline void from_json(const json& j, State& state) {
-  state.content = j["content"];
-}
-
-inline void to_json(json& j, const Reply& reply) {
-  j["value"] = reply.value;
-  j["pi"] = reply.pi;
-  j["a"] = reply.a;
-}
-
-inline void from_json(const json& j, Reply& reply) {
-  reply.value = j["value"];
-  reply.pi = j["pi"].get<std::vector<float>>();
-  reply.a = j["a"];
-}
-
 struct MsgRequest {
-  State state;
+  json state;
 
   std::string info() const {
     std::stringstream ss;
-    ss << "[request=" << state.info() << "]";
+    ss << "[request=" << state.dump() << "]";
     return ss.str();
   }
 
   void setJsonFields(json& j) const {
-    JSON_SAVE(j, state);
+    j = state;
   }
 
   std::string dumpJsonString() const {
-    json j;
-    setJsonFields(j);
-    return j.dump();
+    return state.dump();
   }
 
   static MsgRequest createFromJson(const json& j) {
     MsgRequest r;
-    JSON_LOAD(r, j, state);
+    r.state = j;
     return r;
   }
 
@@ -75,26 +52,24 @@ struct MsgRequest {
 };
 
 struct MsgResult {
-  Reply reply;
+  json reply;
   std::string info() const {
     std::stringstream ss;
-    ss << "[result=" << reply.info() << "]";
+    ss << "[result=" << reply.dump() << "]";
     return ss.str();
   }
 
   void setJsonFields(json& j) const {
-    JSON_SAVE(j, reply);
+    j = reply; 
   }
 
   std::string dumpJsonString() const {
-    json j;
-    setJsonFields(j);
-    return j.dump();
+    return reply.dump();
   }
 
   static MsgResult createFromJson(const json& j) {
     MsgResult r;
-    JSON_LOAD(r, j, reply);
+    r.reply = j;
     return r;
   }
 };

@@ -33,7 +33,3 @@ test_cpp_elfgames_go:
 .PHONY: elfgames/go
 elfgames/go: build/Makefile
 	(cd build && cmake --build elfgames/go -- -j)
-
-.PHONY: elfgames/tutorial_distri
-elfgames/tutorial_distri: build/Makefile
-	(cd build && cmake --build elfgames/tutorial_distri -- -j)

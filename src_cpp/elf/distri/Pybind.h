@@ -10,10 +10,10 @@
 
 #include <pybind11/pybind11.h>
 
-namespace elfgames {
-namespace tutorial {
+namespace elf {
+namespace cs {
 
 void registerPy(pybind11::module& m);
 
-} // namespace go
-} // namespace elfgames
+} // namespace cs
+} // namespace elf
