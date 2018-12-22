@@ -147,6 +147,10 @@ struct FuncMapBase {
 
   template <typename S>
   FuncStateToMem::OutputFuncType BindStateToStateToMemFunc(const S& s) const {
+    // Note that if S is polymorphic, then typeid(S).name() will return the name 
+    // of derived type, even if S itself is a base type. 
+    // This is useful if we want to define different StateToMem/MemToState function 
+    // for different derived types. 
     auto it = state_to_mem_funcs_.find(typeid(S).name());
     if (it == state_to_mem_funcs_.end()) {
       return nullptr;
@@ -156,12 +160,19 @@ struct FuncMapBase {
 
   template <typename S>
   FuncMemToState::OutputFuncType BindStateToMemToStateFunc(S& s) const {
+    // Note that if S is polymorphic, then typeid(S).name() will return the name 
+    // of derived type, even if S itself is a base type. 
+    // This is useful if we want to define different StateToMem/MemToState function 
+    // for different derived types. 
     auto it = mem_to_state_funcs_.find(typeid(S).name());
     if (it == mem_to_state_funcs_.end()) {
       return nullptr;
     }
     return it->second.Bind<S>(s);
   }
+
+  size_t state2memCount() const { return state_to_mem_funcs_.size(); }
+  size_t mem2stateCount() const { return mem_to_state_funcs_.size(); }
 
   virtual ~FuncMapBase() = default;
 
@@ -617,6 +628,30 @@ class Extractor {
       }
     }
     return pointers;
+  }
+
+  void merge(const Extractor &e) {
+    fields_.insert(e.fields_.begin(), e.fields_.end());
+  } 
+
+  std::vector<std::string> getMem2StateNames() const { 
+    std::vector<std::string> names;
+    for (const auto &p : fields_) {
+      if (p.second->mem2stateCount() > 0) {
+        names.push_back(p.first);
+      }
+    }
+    return names;
+  }
+
+  std::vector<std::string> getState2MemNames() const { 
+    std::vector<std::string> names;
+    for (const auto &p : fields_) {
+      if (p.second->state2memCount() > 0) {
+        names.push_back(p.first);
+      }
+    }
+    return names;
   }
 
  private:

@@ -83,7 +83,8 @@ struct ActorSender {
   void setPi(const float *pi) { reply.setPi(pi); }
   void setAction(const int64_t *a) { reply.setAction(a); }
 
-  static SpecItem reg(const GameInterface &game, int batchsize, int frame_stack, Extractor &e) {
+  static Extractor reg(const GameInterface &game, int batchsize, int frame_stack) {
+     Extractor e;
      std::vector<int> dims = game.dims();
 
      dims.insert(dims.begin(), batchsize);
@@ -113,10 +114,7 @@ struct ActorSender {
        .addExtents(batchsize, {batchsize})
        .addFunction<ActorSender>(&ActorSender::setAction);
 
-     return SpecItem {
-       { "input", { "s", "game_cnt", "game_step" } },
-       { "reply", { "V", "pi", "a" } }
-     };
+     return e;
   }
 };
 
@@ -133,7 +131,9 @@ struct TrainSender {
   void getReward(float *reward) const { replay.histReply().extractForward(reward, &Reply::getReward); }
   void getTerminal(int *terminal) const { replay.histReply().extractForward(terminal, &Reply::getTerminal); }
 
-  static SpecItem reg(const GameInterface &game, int batchsize, int T, int frame_stack, Extractor &e) {
+  static Extractor reg(const GameInterface &game, int batchsize, int T, int frame_stack) {
+     Extractor e;
+
      std::vector<int> dims = game.dims();
      dims.insert(dims.begin(), T);
      dims.insert(dims.begin(), batchsize);
@@ -167,9 +167,7 @@ struct TrainSender {
        .addExtents(batchsize, {batchsize, T})
        .addFunction<TrainSender>(&TrainSender::getTick);
 
-     return SpecItem {
-       { "input", { "s_", "pi_", "V_", "a_", "r_", "terminal_", "t_" } },
-     };
+     return e;
   }
 };
 
@@ -363,15 +361,27 @@ class MyContext {
 
   std::vector<std::unique_ptr<_Bundle>> games_;
 
+  static SpecItem getSpec(const Extractor &e) {
+    return SpecItem{
+      { "input", e.getState2MemNames() },
+      { "reply", e.getMem2StateNames() },
+    }
+  }
+
   void regFunc(elf::GCInterface *ctx) {
     assert(! games_.empty());
     const GameInterface &game = *games_[0]->game;
 
     Extractor& e = ctx->getExtractor();
     int batchsize = ctx->options().batchsize;
+    
+    Extractor e_actor = ActorSender::reg(game, batchsize, options_.frame_stack);
+    e.merge(e_actor);
+    spec_[eval_name_] = getSpec(e_actor);
 
-    spec_[eval_name_] = ActorSender::reg(game, batchsize, options_.frame_stack, e);
-    spec_[train_name_] = TrainSender::reg(game, batchsize, options_.T, options_.frame_stack, e);
+    Extractor e_train = TrainSender::reg(game, batchsize, options_.T, options_.frame_stack);
+    e.merge(e_train);
+    spec_[train_name_] = getSpec(e_train); 
   }
 };
 
