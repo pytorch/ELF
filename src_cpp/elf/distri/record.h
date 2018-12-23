@@ -14,40 +14,48 @@
 #include <string>
 #include <vector>
 
-#include <nlohmann/json.hpp>
-#include "elf/utils/json_utils.h"
+#include "client_manager_def.h"
+
+namespace elf {
+
+namespace cs {
 
 using json = nlohmann::json;
 
 struct MsgRequest {
   json state;
-
-  std::string info() const {
-    std::stringstream ss;
-    ss << "[request=" << state.dump() << "]";
-    return ss.str();
-  }
+  ClientCtrl client_ctrl;
 
   void setJsonFields(json& j) const {
-    j = state;
-  }
-
-  std::string dumpJsonString() const {
-    return state.dump();
+    j["state"] = state;
+    JSON_SAVE_OBJ(j, client_ctrl);
   }
 
   static MsgRequest createFromJson(const json& j) {
-    MsgRequest r;
-    r.state = j;
-    return r;
+    MsgRequest request;
+    request.state = j["state"];
+    JSON_LOAD_OBJ(request, j, client_ctrl);
+    return request;
   }
 
-  friend bool operator==(const MsgRequest &m1, const MsgRequest &m2) {
-    return m1.state == m2.state;
+  std::string dumpJsonString() const {
+    json j;
+    setJsonFields(j);
+    return j.dump();
   }
 
-  friend bool operator!=(const MsgRequest &m1, const MsgRequest &m2) {
-    return ! (m1 == m2);
+  std::string info() const {
+    std::stringstream ss;
+    ss << client_ctrl.info() << state.dump();
+    return ss.str();
+  }
+
+  friend bool operator==(const MsgRequest& m1, const MsgRequest& m2) {
+    return m1.state == m2.state && m1.client_ctrl == m2.client_ctrl;
+  }
+
+  friend bool operator!=(const MsgRequest& m1, const MsgRequest& m2) {
+    return !(m1 == m2);
   }
 };
 
@@ -297,3 +305,7 @@ struct Records {
     }
   }
 };
+
+}  // namespace cs
+
+} // namespace elf

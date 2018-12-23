@@ -22,23 +22,27 @@ namespace elf {
 
 namespace cs {
 
-using ReplayBuffer = elf::shared::ReaderQueuesT<Record>;
-
 class TrainCtrl : public elf::msg::DataInterface {
  public:
-  // TrainCtrl(Ctrl& ctrl) : ctrl_(ctrl), rng_(time(NULL)) {
-  TrainCtrl(Ctrl& ctrl) : rng_(time(NULL)) {
-    (void)ctrl;
+  TrainCtrl(const TrainCtrlOptions &options, 
+            const ClientManagerOptions &cm_options, 
+            ServerInterface *server_interface) 
+    : rng_(time(NULL)) {
     // Register sender for python thread.
     elf::shared::RQCtrl rq_ctrl;
-    rq_ctrl.num_reader = 20;
-    rq_ctrl.ctrl.queue_min_size = 10;
-    rq_ctrl.ctrl.queue_max_size = 1000;
+    rq_ctrl.num_reader = options.num_reader;
+    rq_ctrl.ctrl.queue_min_size = options.q_min_size;
+    rq_ctrl.ctrl.queue_max_size = options.q_max_size;
 
     replay_buffer_.reset(new ReplayBuffer(rq_ctrl));
+    client_mgr_.reset(new ClientManager(cm_options));
+    server_interface_ = server_interface;
+    assert(server_interface_ != nullptr);
   }
 
-  void OnStart() override {}
+  void OnStart() override { 
+    server_interface_->OnStart();
+  }
 
   elf::shared::InsertInfo OnReceive(
       const std::string& identity,
@@ -46,26 +50,23 @@ class TrainCtrl : public elf::msg::DataInterface {
     (void)identity;
     Records rs = Records::createFromJsonString(msg);
     std::cout << "TrainCtrl: RecvMsg[" << identity << "]: " << rs.size() << std::endl;
-
-    elf::shared::InsertInfo insert_info;
-    for (size_t i = 0; i < rs.records.size(); ++i) {
-      const Record& r = rs.records[i];
-      insert_info +=
-        replay_buffer_->Insert(Record(r), &rng_);
-    }
-
-    return insert_info;
+    const ClientInfo& info = client_mgr_->updateStates(rs.identity, rs.states);
+    return server_interface_->OnReceive(rs, info, replay_buffer_.get());
   }
 
   bool OnReply(const std::string& identity, std::string* msg) override {
-    (void)identity;
+    ClientInfo& info = client_mgr_->getClient(identity);
 
-    // Send new request to that client.
+    if (info.justAllocated()) {
+      //std::cout << "New allocated: " << identity << ", " << client_mgr_->info()
+      //          << std::endl;
+    }
+
     MsgRequest request;
-    // TODO design mechanism to add meaningful state here. 
-    // request.state.content = rng_() % 100;
-
+    server_interface_->fillInRequest(info, &request);
+    request.client_ctrl.seq = info.seq();
     *msg = request.dumpJsonString();
+    info.incSeq();
     std::cout << "TrainCtrl: ReplyMsg[" << identity << "]: " << *msg << std::endl;
     return true;
   }
@@ -77,7 +78,10 @@ class TrainCtrl : public elf::msg::DataInterface {
  private:
   // Ctrl& ctrl_;
   std::unique_ptr<ReplayBuffer> replay_buffer_;
+  std::unique_ptr<ClientManager> client_mgr_;
   std::mt19937 rng_;
+
+  ServerInterface *server_interface_ = nullptr;
 };
 
 
@@ -86,13 +90,15 @@ class Server {
   Server(const Options& options)
       : options_(options) {}
 
-  void setGameFactory(GameFactory factory) {
+  void setFactory(Factory factory) {
     factory_ = factory;
   }
 
   void setGameContext(elf::GameContext* ctx) {
     size_t num_games = ctx->options().num_game_thread;
-    trainCtrl_.reset(new TrainCtrl(ctrl_));
+
+    server_interface_ = std::move(factory_.getServerInterface());
+    trainCtrl_.reset(new TrainCtrl(options_.tc_opt, options_.cm_opt, server_interface_.get()));
 
     using std::placeholders::_1;
 
@@ -155,7 +161,7 @@ class Server {
             continue;
           }
 
-          senders[i] = std::move(s_->factory_.from_json(r->request.state, &base->rng()));
+          senders[i] = std::move(s_->factory_.gameFromJson(r->request.state, &base->rng()));
           if (senders[i].get() != nullptr) {
             funcsToSend.push_back(binder.BindStateToFunctions(
                 {"train"}, senders[i].get()));
@@ -178,9 +184,10 @@ class Server {
   std::vector<std::unique_ptr<ServerGame>> games_;
   std::unique_ptr<TrainCtrl> trainCtrl_;
   std::unique_ptr<elf::msg::DataOnlineLoader> onlineLoader_;
+  std::unique_ptr<ServerInterface> server_interface_;
 
   const Options options_;
-  GameFactory factory_;
+  Factory factory_;
 };
 
 }  // namespace cs

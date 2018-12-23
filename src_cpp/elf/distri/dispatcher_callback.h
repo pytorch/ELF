@@ -4,6 +4,10 @@
 #include "elf/base/dispatcher.h"
 #include "record.h"
 
+namespace elf {
+
+namespace cs {
+
 using Ctrl = elf::Ctrl;
 using Addr = elf::Addr;
 using MsgReply = int;
@@ -32,3 +36,7 @@ class DispatcherCallback {
     return next_session;
   }
 };
+
+} // namespace cs
+
+} // namespace elf

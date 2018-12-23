@@ -64,7 +64,7 @@ class Client {
  public:
   Client(const Options &options) : options_(options) {}
 
-  void setGameFactory(GameFactory factory) {
+  void setFactory(Factory factory) {
     factory_ = factory;
   }
 
@@ -128,7 +128,7 @@ class Client {
 
     bool OnReceive(const MsgRequest& request, MsgReply* reply) {
       (void)reply;
-      state_ = std::move(c_->factory_.from_json(request.state, nullptr));
+      state_ = std::move(c_->factory_.gameFromJson(request.state, nullptr));
       // No next section.
       return false;
     }
@@ -163,7 +163,7 @@ class Client {
   Ctrl ctrl_;
 
   const Options options_;
-  GameFactory factory_;
+  Factory factory_;
 
   std::vector<std::unique_ptr<ClientGame>> games_;
   std::unique_ptr<ThreadedDispatcher> dispatcher_;
