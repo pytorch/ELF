@@ -41,7 +41,7 @@ class TrainCtrl : public elf::msg::DataInterface {
   }
 
   void OnStart() override { 
-    server_interface_->OnStart();
+    server_interface_->onStart();
   }
 
   elf::shared::InsertInfo OnReceive(
@@ -51,7 +51,7 @@ class TrainCtrl : public elf::msg::DataInterface {
     Records rs = Records::createFromJsonString(msg);
     std::cout << "TrainCtrl: RecvMsg[" << identity << "]: " << rs.size() << std::endl;
     const ClientInfo& info = client_mgr_->updateStates(rs.identity, rs.states);
-    return server_interface_->OnReceive(rs, info, replay_buffer_.get());
+    return server_interface_->onReceive(rs, info, replay_buffer_.get());
   }
 
   bool OnReply(const std::string& identity, std::string* msg) override {
@@ -63,7 +63,7 @@ class TrainCtrl : public elf::msg::DataInterface {
     }
 
     MsgRequest request;
-    server_interface_->fillInRequest(info, &request);
+    server_interface_->fillInRequest(info, &request.state);
     request.client_ctrl.seq = info.seq();
     *msg = request.dumpJsonString();
     info.incSeq();
@@ -76,7 +76,6 @@ class TrainCtrl : public elf::msg::DataInterface {
   }
 
  private:
-  // Ctrl& ctrl_;
   std::unique_ptr<ReplayBuffer> replay_buffer_;
   std::unique_ptr<ClientManager> client_mgr_;
   std::mt19937 rng_;
@@ -90,14 +89,14 @@ class Server {
   Server(const Options& options)
       : options_(options) {}
 
-  void setFactory(Factory factory) {
+  void setFactory(ServerFactory factory) {
     factory_ = factory;
   }
 
   void setGameContext(elf::GameContext* ctx) {
     size_t num_games = ctx->options().num_game_thread;
 
-    server_interface_ = std::move(factory_.getServerInterface());
+    server_interface_ = std::move(factory_.createServerInterface());
     trainCtrl_.reset(new TrainCtrl(options_.tc_opt, options_.cm_opt, server_interface_.get()));
 
     using std::placeholders::_1;
@@ -120,12 +119,7 @@ class Server {
   }
 
   std::unordered_map<std::string, int> getParams() const {
-    assert(! games_.empty());
-    /*
-    const GameInterface &game = *games_[0];
-    return game.getParams();
-    */
-    return std::unordered_map<std::string, int>(); 
+    return factory_.getParams();
   }
 
   ~Server() {
@@ -138,19 +132,25 @@ class Server {
     int game_idx_;
     Server *s_ = nullptr;
 
-    ServerGame(int game_idx, Server *s) : game_idx_(game_idx), s_(s) { }
+    std::vector<std::unique_ptr<GameInterface>> senders_;
+
+    ServerGame(int game_idx, Server *s) 
+      : game_idx_(game_idx), s_(s) { 
+      size_t n = s_->options_.server_num_state_pushed_per_thread;
+      senders_.resize(n);
+      for (size_t i = 0; i < n; ++i) {
+        senders_[i] = std::move(s_->factory_.createGameInterface(game_idx));
+      }
+    }
 
     void OnAct(game::Base* base) {
-      size_t n = s_->options_.server_num_state_pushed_per_thread;
-
-      std::vector<std::unique_ptr<GameInterface>> senders(n);
       std::vector<FuncsWithState> funcsToSend;
       auto *client = base->client();
       auto binder = client->getBinder();
 
       auto *reader = s_->trainCtrl_->getReplayBuffer();
 
-      for (size_t i = 0; i < n; ++i) {
+      for (size_t i = 0; i < senders_.size(); ++i) {
         while (true) {
           // std::cout << "[" << _game_idx << "][" << i << "] Before get sampler "
           // << std::endl;
@@ -161,10 +161,10 @@ class Server {
             continue;
           }
 
-          senders[i] = std::move(s_->factory_.gameFromJson(r->request.state, &base->rng()));
-          if (senders[i].get() != nullptr) {
+          senders_[i]->fromJson(r->request.state);
+          if (senders_[i]->step(base)) {
             funcsToSend.push_back(binder.BindStateToFunctions(
-                {"train"}, senders[i].get()));
+                {"`train"}, senders_[i].get()));
             break;
           }
         }
@@ -179,15 +179,13 @@ class Server {
     }
   };
 
-  Ctrl ctrl_;
-
   std::vector<std::unique_ptr<ServerGame>> games_;
   std::unique_ptr<TrainCtrl> trainCtrl_;
   std::unique_ptr<elf::msg::DataOnlineLoader> onlineLoader_;
   std::unique_ptr<ServerInterface> server_interface_;
 
   const Options options_;
-  Factory factory_;
+  ServerFactory factory_;
 };
 
 }  // namespace cs

@@ -7,7 +7,7 @@
 #include "elf/distributed/options.h"
 #include "elf/distributed/shared_rw_buffer3.h"
 
-#include "dispatcher_callback.h"
+#include "elf/base/dispatcher.h"
 #include "record.h"
 #include "options.h"
 
@@ -18,11 +18,107 @@ namespace elf {
 namespace cs {
 
 using ThreadedWriter = msg::Client;
+using ThreadedDispatcher = ThreadedDispatcherT<MsgRequest, MsgReply>;
+
+struct GuardedRecords {
+ public:
+  GuardedRecords(const std::string& identity) : records_(identity) {}
+
+  void feed(Record&& r) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    records_.addRecord(std::move(r));
+  }
+
+  void updateState(const ThreadState& ts) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto now = elf_utils::sec_since_epoch_from_now();
+    records_.updateState(ts);
+
+    last_states_.push_back(std::make_pair(now, ts));
+    if (last_states_.size() > 100) {
+      last_states_.pop_front();
+    }
+
+    if (now - last_state_vis_time_ > 60) {
+      std::unordered_map<int, ThreadState> states;
+      std::unordered_map<int, uint64_t> timestamps;
+      for (const auto& s : last_states_) {
+        timestamps[s.second.thread_id] = s.first;
+        states[s.second.thread_id] = s.second;
+      }
+
+      std::cout << "GuardedRecords::updateState[" << elf_utils::now() << "] "
+                << visStates(states, &timestamps) << std::endl;
+
+      last_state_vis_time_ = now;
+    }
+  }
+
+  size_t size() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return records_.records.size();
+  }
+
+  std::string dumpAndClear() {
+    // send data.
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::cout << "GuardedRecords::DumpAndClear[" << elf_utils::now()
+              << "], #records: " << records_.records.size();
+
+    std::cout << ", " << visStates(records_.states) << std::endl;
+    std::string s = records_.dumpJsonString();
+    records_.clear();
+    return s;
+  }
+
+ private:
+  std::mutex mutex_;
+  Records records_;
+  std::deque<std::pair<uint64_t, ThreadState>> last_states_;
+  uint64_t last_state_vis_time_ = 0;
+
+  static std::string visStates(
+      const std::unordered_map<int, ThreadState>& states,
+      const std::unordered_map<int, uint64_t>* timestamps = nullptr) {
+    std::stringstream ss;
+    ss << "#states: " << states.size();
+    ss << "[";
+
+    auto now = elf_utils::sec_since_epoch_from_now();
+    std::vector<int> ordered;
+    for (const auto& p : states) {
+      ordered.push_back(p.first);
+    }
+    std::sort(ordered.begin(), ordered.end());
+
+    for (const auto& th_id : ordered) {
+      auto it = states.find(th_id);
+      assert(it != states.end());
+
+      ss << th_id << ":" << it->second.seq << ":" << it->second.move_idx;
+
+      if (timestamps != nullptr) {
+        auto it = timestamps->find(th_id);
+        if (it != timestamps->end()) {
+          uint64_t td = now - it->second;
+          ss << ":" << td;
+        }
+        ss << ",";
+      }
+    }
+    ss << "]  ";
+
+    ss << elf_utils::get_gap_list(ordered);
+    return ss.str();
+  }
+};
+
 
 class WriterCallback {
  public:
   WriterCallback(ThreadedWriter* writer, Ctrl& ctrl)
-      : ctrl_(ctrl) {
+      : ctrl_(ctrl), records_(writer->identity()) {
     writer->setCallbacks(
         std::bind(&WriterCallback::OnSend, this),
         std::bind(&WriterCallback::OnRecv, this, std::placeholders::_1));
@@ -38,33 +134,41 @@ class WriterCallback {
   }
 
   std::string OnSend() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    std::string msg = records_.dumpJsonString(); 
-    std::cout << "WriterCB: SendMsg: " << records_.size() << std::endl;
-    records_.clear();
+    size_t sz = records_.size();
+    std::string msg = records_.dumpAndClear();
+    std::cout << "WriterCB: SendMsg: " << sz << std::endl;
+
+    // If there is no record, wait a few seconds then send (to reduce server's load)
+    if (sz == 0) {
+      // TODO: OpenGo this is 60 seconds
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
     return msg;
   }
 
-  void addRecord(const GameInterface &s) {
-    std::lock_guard<std::mutex> lock(mutex_);
+  void addRecord(const json &state) {
     Record record;
-    record.request.state = s.to_json();
+    record.request.state = state;
     // Not used. 
     // record.result.reply = r;
-    records_.addRecord(std::move(record));
+    records_.feed(std::move(record));
+  }
+
+  void updateState(const ThreadState &ts) {
+    records_.updateState(ts);
   }
 
  private:
   Ctrl& ctrl_;
-  std::mutex mutex_;
-  Records records_;
+  GuardedRecords records_;
 };
 
 class Client {
  public:
   Client(const Options &options) : options_(options) {}
 
-  void setFactory(Factory factory) {
+  void setFactory(ClientFactory factory) {
     factory_ = factory;
   }
 
@@ -85,6 +189,7 @@ class Client {
     writer_callback_.reset(new WriterCallback(writer_.get(), ctrl_));
 
     using std::placeholders::_1;
+    using std::placeholders::_2;
 
     for (size_t i = 0; i < num_games; ++i) {
       auto* g = ctx->getGame(i);
@@ -98,42 +203,39 @@ class Client {
     }
 
     if (ctx->getClient() != nullptr) {
-      dispatcher_callback_.reset(new DispatcherCallback(dispatcher_.get()));
+      dispatcher_->Start(factory_.onReply, factory_.onFirstSend);
     }
   }
 
   std::unordered_map<std::string, int> getParams() const {
-    assert(! games_.empty());
-    const GameInterface &game = *games_[0]->state_;
-    return game.getParams();
+    return factory_.getParams();
   }
 
   ~Client() {
     dispatcher_.reset(nullptr);
     writer_.reset(nullptr);
     writer_callback_.reset(nullptr);
-    dispatcher_callback_.reset(nullptr);
   }
 
  private:
   struct ClientGame {
     int game_idx_;
     Client *c_ = nullptr;
-    std::unique_ptr<GameInterface> state_;
+    std::unique_ptr<ClientInterface> game_;
     int counter_ = 0;
 
     ClientGame(int game_idx, Client *client) 
       : game_idx_(game_idx), c_(client) {
+      game_ = std::move(c_->factory_.createClientInterface(game_idx));
     }
 
     bool OnReceive(const MsgRequest& request, MsgReply* reply) {
-      (void)reply;
-      state_ = std::move(c_->factory_.gameFromJson(request.state, nullptr));
-      // No next section.
-      return false;
+      return game_->onReceive(request.state, reply);
     }
 
-    void OnEnd(elf::game::Base*) { }
+    void OnEnd(elf::game::Base* base) {
+      game_->onEnd(base);
+    }
 
     void OnAct(elf::game::Base* base) {
       // elf::GameClient* client = base->ctx().client;
@@ -146,28 +248,25 @@ class Client {
         do {
           c_->dispatcher_->checkMessage(block_if_no_message, f);
         } while (false);
+
+        c_->writer_callback_->updateState(game_->getThreadState());
       }
       counter_ ++;
 
-      elf::GameClientInterface *client = base->client();
-
-      // Simply use info to construct random samples.
-      client->sendWait("actor", *state_);
-
-      c_->writer_callback_->addRecord(*state_);
-
-      state_->step();
+      json j;
+      if (game_->step(base, &j) == StepStatus::NEW_RECORD) {
+        c_->writer_callback_->addRecord(j);
+      }
     }
   };
 
   Ctrl ctrl_;
 
   const Options options_;
-  Factory factory_;
+  ClientFactory factory_;
 
   std::vector<std::unique_ptr<ClientGame>> games_;
   std::unique_ptr<ThreadedDispatcher> dispatcher_;
-  std::unique_ptr<DispatcherCallback> dispatcher_callback_;
 
   /// ZMQClient
   std::unique_ptr<ThreadedWriter> writer_;

@@ -5,8 +5,11 @@
 #include <vector>
 
 #include "client_manager_def.h"
+#include "record.h"
 #include "elf/options/reflection_option.h"
 #include "elf/utils/utils.h"
+
+#include "options.h"
 
 namespace elf {
 
