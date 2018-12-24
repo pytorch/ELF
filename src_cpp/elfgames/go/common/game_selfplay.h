@@ -12,7 +12,6 @@
 #include <random>
 #include <string>
 
-#include "elf/base/dispatcher.h"
 #include "elf/interface/game_base.h"
 #include "elf/logging/IndexedLoggerFactory.h"
 
@@ -20,24 +19,40 @@
 #include "../sgf/sgf.h"
 #include "game_feature.h"
 #include "game_stats.h"
-#include "notifier.h"
+
+#include "elf/distri/game_interface.h"
+
+constexpr int NO_OP = 0;
+constexpr int ONLY_WAIT = 1;
+constexpr int UPDATE_REQUEST_ONLY = 2;
+constexpr int UPDATE_MODEL = 3;
+constexpr int UPDATE_MODEL_ASYNC = 4;
+constexpr int UPDATE_COMPLETE = 5;
+
+using elf::cs::StepStatus;
+using elf::cs::ThreadState;
+using elf::cs::MsgReply;
 
 // Game interface for Go.
-class GoGameSelfPlay {
+class GoGameSelfPlay : public elf::cs::ClientInterface {
  public:
-  using ThreadedDispatcher = elf::ThreadedDispatcherT<MsgRequest, RestartReply>;
   GoGameSelfPlay(
       int game_idx,
-      const GameOptionsSelfPlay& options,
-      ThreadedDispatcher* dispatcher,
-      GameNotifier* notifier = nullptr);
+      const GameOptionsSelfPlay& options, 
+      GameStats &game_stats);
 
-  void OnAct(elf::game::Base* base);
-  void OnEnd(elf::game::Base*) {
+  void onEnd(elf::game::Base*) override {
     _ai.reset(nullptr);
     _ai2.reset(nullptr);
   }
-  bool OnReceive(const MsgRequest& request, RestartReply* reply);
+
+  StepStatus step(elf::game::Base*, json *) override;
+  bool onReceive(const json& j, MsgReply* reply) override;
+  ThreadState getThreadState() const override;
+
+  std::unordered_map<std::string, int> getParams() const override {
+    return std::unordered_map<std::string, int>(); 
+  }
 
   void addMCTSParams(const elf::ai::tree_search::CtrlOptions &ctrl_options) {
     _ai->addMCTSParams(ctrl_options);
@@ -85,11 +100,9 @@ class GoGameSelfPlay {
       int64_t model_ver);
   Coord mcts_make_diverse_move(MCTSGoAI* curr_ai, Coord c);
   Coord mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c);
-  void finish_game(FinishReason reason);
+  StepStatus finish_game(FinishReason reason, json *j);
 
  private:
-  ThreadedDispatcher* dispatcher_ = nullptr;
-  GameNotifier* notifier_ = nullptr;
   GoStateExt _state_ext;
   Sgf _preload_sgf;
   Sgf::iterator _sgf_iter;
@@ -105,6 +118,9 @@ class GoGameSelfPlay {
   // Opponent ai (used for selfplay evaluation)
   std::unique_ptr<MCTSGoAI> _ai2;
   std::unique_ptr<HumanPlayer> _human_player;
+
+  // A shared stats for all game threads.
+  GameStats &game_stats_;
 
   std::shared_ptr<spdlog::logger> logger_;
 };

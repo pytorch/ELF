@@ -13,12 +13,13 @@
 #include <deque>
 
 #include "../common/go_game_specific.h"
-#include "client_manager.h"
+#include "elf/distri/client_manager.h"
 #include "ctrl_utils.h"
 
 #include "elf/ai/tree_search/tree_search_options.h"
 
 using TSOptions = elf::ai::tree_search::TSOptions;
+using ClientManager = elf::cs::ClientManager;
 
 /**
  * This class keeps track of the appropriate value threshold for resigning.

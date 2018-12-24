@@ -6,9 +6,11 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "client_manager.h"
+#include "elf/distri/client_manager.h"
 
 namespace fair_pick {
+
+using elf::cs::ClientManager;
 
 struct Info {
   enum Status { WAIT, SETTLED, STUCK };

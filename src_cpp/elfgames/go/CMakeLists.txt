@@ -11,8 +11,6 @@ set(ELFGAMES_GO_SOURCES
     sgf/sgf.cc
     common/game_selfplay.cc
     common/go_state_ext.cc
-    train/client_manager.cc
-    train/game_train.cc
     train/Pybind.cc
 )
 

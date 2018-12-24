@@ -15,12 +15,10 @@
 GoGameSelfPlay::GoGameSelfPlay(
     int game_idx,
     const GameOptionsSelfPlay& options,
-    ThreadedDispatcher* dispatcher,
-    GameNotifier* notifier)
-    : dispatcher_(dispatcher),
-      notifier_(notifier),
-      _state_ext(game_idx, options),
+    GameStats &game_stats)
+    : _state_ext(game_idx, options),
       options_(options),
+      game_stats_(game_stats),
       logger_(elf::logging::getLogger(
           "elfgames::go::GoGameSelfPlay-" + std::to_string(game_idx) + "-",
           "")) {}
@@ -127,13 +125,14 @@ Coord GoGameSelfPlay::mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c) {
     c = M_PASS;
 
   // Check the ranking of selected move.
-  if (notifier_ != nullptr) {
-    notifier_->OnMCTSResult(c, mcts_go_ai->getLastResult());
-  }
+  auto move_rank = 
+    mcts_go_ai->getLastResult().getRank(c, 
+        elf::ai::tree_search::MCTSResultT<Coord>::PRIOR);
+  game_stats_.feedMoveRanking(move_rank.first);
   return c;
 }
 
-void GoGameSelfPlay::finish_game(FinishReason reason) {
+StepStatus GoGameSelfPlay::finish_game(FinishReason reason, json *j) {
   if (!_state_ext.currRequest().vers.is_selfplay() &&
       options_.cheat_eval_new_model_wins_half) {
     reason = FR_CHEAT_NEWER_WINS_HALF;
@@ -163,12 +162,19 @@ void GoGameSelfPlay::finish_game(FinishReason reason) {
     _ai2->endGame(_state_ext.state());
   }
 
-  if (notifier_ != nullptr) {
-    notifier_->OnGameEnd(_state_ext);
-  }
+  *j = _state_ext.dumpRecord();
+
+  game_stats_.resetRankingIfNeeded(options_.num_reset_ranking);
+  game_stats_.feedWinRate(_state_ext.state().getFinalValue());
+  // game_stats_.feedSgf(s.dumpSgf(""));
+
+  // Report winrate (so that Python side could know).
+  base_->client()->sendWait("game_end", _state_ext);
 
   // clear state, MCTS polices et.al.
   _state_ext.restart();
+
+  return StepStatus::NEW_RECORD;
 }
 
 void GoGameSelfPlay::setAsync() {
@@ -180,8 +186,8 @@ void GoGameSelfPlay::setAsync() {
 }
 
 void GoGameSelfPlay::restart() {
-  const MsgRequest& request = _state_ext.currRequest();
-  bool async = request.client_ctrl.async;
+  const Request& request = _state_ext.currRequest();
+  bool async = request.async;
 
   _ai.reset(nullptr);
   _ai2.reset(nullptr);
@@ -202,7 +208,7 @@ void GoGameSelfPlay::restart() {
           _state_ext.options().white_mcts_rollout_per_thread,
           async ? -1 : request.vers.white_ver));
     }
-    if (!request.vers.is_selfplay() && request.client_ctrl.player_swap) {
+    if (!request.vers.is_selfplay() && request.player_swap) {
       // Swap the two pointer.
       swap(_ai, _ai2);
     }
@@ -242,9 +248,11 @@ void GoGameSelfPlay::restart() {
   }
 }
 
-bool GoGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* reply) {
-  if (*reply == RestartReply::UPDATE_COMPLETE)
+bool GoGameSelfPlay::onReceive(const json& req, MsgReply* reply) {
+  if (*reply == UPDATE_COMPLETE)
     return false;
+
+  Request request = Request::createFromJson(req);
 
   bool is_waiting = request.vers.wait();
   bool is_prev_waiting = _state_ext.currRequest().vers.wait();
@@ -258,10 +266,10 @@ bool GoGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* reply) {
 
   bool same_vers = (request.vers == _state_ext.currRequest().vers);
   bool same_player_swap =
-      (request.client_ctrl.player_swap ==
-       _state_ext.currRequest().client_ctrl.player_swap);
+      (request.player_swap ==
+       _state_ext.currRequest().player_swap);
 
-  bool async = request.client_ctrl.async;
+  bool async = request.async;
 
   bool no_restart =
       (same_vers || async) && same_player_swap && !is_prev_waiting;
@@ -270,52 +278,35 @@ bool GoGameSelfPlay::OnReceive(const MsgRequest& request, RestartReply* reply) {
   _state_ext.setRequest(request);
 
   if (is_waiting) {
-    *reply = RestartReply::ONLY_WAIT;
+    *reply = ONLY_WAIT;
     return false;
   } else {
     if (!no_restart) {
       restart();
-      *reply = RestartReply::UPDATE_MODEL;
+      *reply = UPDATE_MODEL;
       return true;
     } else {
       if (!async)
-        *reply = RestartReply::UPDATE_REQUEST_ONLY;
+        *reply = UPDATE_REQUEST_ONLY;
       else {
         setAsync();
         if (same_vers)
-          *reply = RestartReply::UPDATE_REQUEST_ONLY;
+          *reply = UPDATE_REQUEST_ONLY;
         else
-          *reply = RestartReply::UPDATE_MODEL_ASYNC;
+          *reply = UPDATE_MODEL_ASYNC;
       }
       return false;
     }
   }
 }
 
-void GoGameSelfPlay::OnAct(elf::game::Base* base) {
+ThreadState GoGameSelfPlay::getThreadState() const {
+  return _state_ext.getThreadState(); 
+}
+
+StepStatus GoGameSelfPlay::step(elf::game::Base* base, json *j) {
   base_ = base;
   auto *client = base_->client();
-
-  if (_online_counter % 5 == 0) {
-    using std::placeholders::_1;
-    using std::placeholders::_2;
-    auto f = std::bind(&GoGameSelfPlay::OnReceive, this, _1, _2);
-
-    do {
-      dispatcher_->checkMessage(_state_ext.currRequest().vers.wait(), f);
-    } while (_state_ext.currRequest().vers.wait());
-
-    // Check request every 5 times.
-    // Update current state.
-    // std::cout << "Thread[" << _game_idx << ",ply:" <<
-    // _state_ext.state().getPly()
-    // << "] state updating: " << _state_ext.getThreadState().info() <<
-    // std::endl;
-    if (notifier_ != nullptr) {
-      notifier_->OnStateUpdate(_state_ext.getThreadState());
-    }
-  }
-  _online_counter++;
 
   bool show_board =
       (options_.common.base.verbose &&
@@ -330,8 +321,7 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
   if (_human_player != nullptr) {
     do {
       if (s.terminated()) {
-        finish_game(FR_ILLEGAL);
-        return;
+        return finish_game(FR_ILLEGAL, j);
       }
 
       GoHumanInfo info;
@@ -347,27 +337,26 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
       if (reply.c == M_PEEK) {
         // Peek
         curr_ai->act(s, &c);
-        return;
+        return StepStatus::RUNNING;
       }
       
       if (reply.c == M_CLEAR) {
         if (!_state_ext.state().justStarted()) {
-          finish_game(FR_CLEAR);
+          return finish_game(FR_CLEAR, j);
         }
-        return;
+        return StepStatus::RUNNING;
       }
 
       if (reply.c == M_RESIGN) {
-        finish_game(FR_RESIGN);
-        return;
+        return finish_game(FR_RESIGN, j);
       }
       // Otherwise we forward.
       if (_state_ext.forward(reply.c)) {
         if (_state_ext.state().isTwoPass()) {
           // If the human opponent pass, we pass as well.
-          finish_game(FR_TWO_PASSES);
+          return finish_game(FR_TWO_PASSES, j);
         }
-        return;
+        return StepStatus::RUNNING;
       }
       logger_->warn(
           "Invalid move: x = {} y = {} move: {} please try again",
@@ -386,23 +375,17 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
       ai.act(bf, &reply);
 
       if (client->DoStopGames())
-        return;
+        return StepStatus::RUNNING;
 
       AI ai_white(client, {"actor_white"});
       ai_white.act(bf, &reply);
 
-      auto binder = client->getBinder();
-
-      elf::FuncsWithState funcs = binder.BindStateToFunctions(
-          {"game_start"}, &_state_ext.currRequest().vers);
-      client->sendWait({"game_start"}, &funcs);
-
-      funcs = binder.BindStateToFunctions({"game_end"}, &_state_ext.state());
-      client->sendWait({"game_end"}, &funcs);
+      client->sendWait("game_start", _state_ext.currRequest().vers);
+      client->sendWait("game_end", _state_ext.state());
 
       logger_->info("Received command to prepare to stop");
       std::this_thread::sleep_for(std::chrono::seconds(1));
-      return;
+      return StepStatus::RUNNING;
     }
   }
 
@@ -430,14 +413,12 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
 
   const bool shouldResign = _state_ext.shouldResign(&base_->rng());
   if (shouldResign && s.getPly() >= 50) {
-    finish_game(FR_RESIGN);
-    return;
+    return finish_game(FR_RESIGN, j);
   }
 
   if (_preload_sgf.numMoves() > 0) {
     if (_sgf_iter.done()) {
-      finish_game(FR_MAX_STEP);
-      return;
+      return finish_game(FR_MAX_STEP, j);
     }
     Coord new_c = _sgf_iter.getCurrMove().move;
     logger_->info(
@@ -458,17 +439,17 @@ void GoGameSelfPlay::OnAct(elf::game::Base* base) {
         s.getPly(),
         elf::ai::tree_search::ActionTrait<Coord>::to_string(c),
         _state_ext.dumpSgf(""));
-    return;
+    return StepStatus::RUNNING;
   }
 
   if (s.terminated()) {
     auto reason = s.isTwoPass()
         ? FR_TWO_PASSES
         : s.getPly() >= BOARD_MAX_MOVE ? FR_MAX_STEP : FR_ILLEGAL;
-    finish_game(reason);
+    return finish_game(reason, j);
   }
 
   if (options_.move_cutoff > 0 && s.getPly() >= options_.move_cutoff) {
-    finish_game(FR_MAX_STEP);
+    return finish_game(FR_MAX_STEP, j);
   }
 }

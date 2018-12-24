@@ -20,6 +20,12 @@
 
 #include "elf/ai/tree_search/tree_search_base.h"
 
+#include "elf/distri/game_interface.h"
+
+using elf::cs::StepStatus;
+using elf::cs::Record;
+using elf::cs::ThreadState;
+
 enum FinishReason {
   FR_RESIGN = 0,
   FR_TWO_PASSES,
@@ -28,6 +34,32 @@ enum FinishReason {
   FR_ILLEGAL,
   FR_CHEAT_NEWER_WINS_HALF,
   FR_CHEAT_SELFPLAY_RANDOM_RESULT,
+};
+
+struct CoordRecord {
+    unsigned char prob[BOUND_COORD];
+};
+
+inline void from_json(const json &j, CoordRecord &cr) {
+  for (size_t k = 0; k < j.size(); k++) {
+    cr.prob[k] = j[k];
+  }
+}
+
+inline void from_json(const json &j, std::vector<CoordRecord> &cr) {
+  cr.clear();
+  for (size_t i = 0; i < j.size(); i ++) {
+    cr.emplace_back();
+    for (size_t k = 0; k < j[i].size(); k++) {
+      cr[i].prob[k] = j[i][k];
+    }
+  }
+}
+
+inline void to_json(json &j, const CoordRecord &cr) {
+  for (unsigned char c : cr.prob) {
+    j.push_back(c);
+  }
 };
 
 struct GoStateExt {
@@ -50,13 +82,10 @@ struct GoStateExt {
     oo << sgf_record << std::endl;
   }
 
-  void setRequest(const MsgRequest& request) {
+  void setRequest(const Request& request) {
     curr_request_ = request;
-
-    const auto& ctrl = request.client_ctrl;
-
-    _resign_check.resign_thres = ctrl.resign_thres;
-    _resign_check.never_resign_ratio = ctrl.never_resign_prob;
+    _resign_check.resign_thres = request.resign_thres;
+    _resign_check.never_resign_ratio = request.never_resign_prob;
   }
 
   void addCurrentModel() {
@@ -66,7 +95,7 @@ struct GoStateExt {
       using_models_.insert(curr_request_.vers.white_ver);
   }
 
-  const MsgRequest& currRequest() const {
+  const Request& currRequest() const {
     return curr_request_;
   }
 
@@ -85,7 +114,7 @@ struct GoStateExt {
           std::hash<std::string>{}(
                    std::to_string(curr_request_.vers.white_ver));
       final_value = h % 2 == 0 ? 1.0 : -1.0;
-      if (curr_request_.client_ctrl.player_swap)
+      if (curr_request_.player_swap)
         final_value = -final_value;
     } else if (
         reason == FR_CHEAT_SELFPLAY_RANDOM_RESULT &&
@@ -119,24 +148,26 @@ struct GoStateExt {
     addCurrentModel();
   }
 
-  Record dumpRecord() const {
-    Record r;
+  json dumpRecord() const {
+    json j;
+    j["timestamp"] = elf_utils::sec_since_epoch_from_now();
+    j["thread_id"] = _game_idx;
+    j["seq"] = _seq;
+    curr_request_.setJsonFields(j["request"]);
 
-    r.timestamp = elf_utils::sec_since_epoch_from_now();
-    r.thread_id = _game_idx;
-    r.seq = _seq;
-    r.request = curr_request_;
+    json j_res;
 
-    r.result.reward = _state.getFinalValue();
-    r.result.content = coords2sgfstr(_state.getAllMoves());
-    r.result.never_resign = _resign_check.never_resign;
-    r.result.using_models =
-        std::vector<int64_t>(using_models_.begin(), using_models_.end());
-    r.result.policies = _mcts_policies;
-    r.result.num_move = _state.getPly() - 1;
-    r.result.values = _predicted_values;
+    j_res["reward"] = _state.getFinalValue();
+    j_res["content"] = coords2sgfstr(_state.getAllMoves());
+    j_res["never_resign"] = _resign_check.never_resign;
+    j_res["using_models"] = std::vector<int64_t>(using_models_.begin(), using_models_.end());
+    j_res["policies"] = _mcts_policies;
+    j_res["num_move"] = _state.getPly() - 1;
+    j_res["values"] = _predicted_values;
 
-    return r;
+    j["result"] = j_res;
+
+    return j;
   }
 
   ThreadState getThreadState() const {
@@ -235,7 +266,7 @@ struct GoStateExt {
   GoState _state;
   Coord _last_move_for_the_game;
 
-  MsgRequest curr_request_;
+  Request curr_request_;
   std::set<int64_t> using_models_;
 
   float _last_value;
@@ -254,16 +285,17 @@ class GoStateExtOffline {
   GoStateExtOffline(int game_idx, const GameOptionsTrain& options)
       : _game_idx(game_idx), _bf(_state), _options(options) {}
 
-  void fromRecord(const Record& r) {
+  void fromRecord(const json& j) {
     // std::cout << "Convert to moves: " << r.content << std::endl;
-    _offline_all_moves = sgfstr2coords(r.result.content);
-    _offline_winner = r.result.reward > 0 ? 1.0 : -1.0;
+    auto jr = j["result"];
+    _offline_all_moves = sgfstr2coords(jr["content"]);
+    _offline_winner = jr["reward"] > 0 ? 1.0 : -1.0;
     // std::cout << "Convert complete, #move = " << moves.size() << std::endl;
-
-    _mcts_policies = r.result.policies;
-    curr_request_ = r.request;
-    _seq = r.seq;
-    _predicted_values = r.result.values;
+    //
+    from_json(jr["policies"], _mcts_policies);
+    curr_request_.setJsonFields(jr["request"]);
+    _seq = j["seq"];
+    _predicted_values = jr["values"].get<decltype(_predicted_values)>();
     _state.reset();
   }
 
@@ -309,7 +341,7 @@ class GoStateExtOffline {
   GameOptionsTrain _options;
 
   int _seq;
-  MsgRequest curr_request_;
+  Request curr_request_;
 
   std::vector<Coord> _offline_all_moves;
   float _offline_winner;

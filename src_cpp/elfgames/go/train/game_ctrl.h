@@ -37,6 +37,9 @@ using ThreadedCtrlBase = elf::ThreadedCtrlBase;
 using Ctrl = elf::Ctrl;
 using Addr = elf::Addr;
 
+constexpr int CLIENT_SELFPLAY_ONLY = 0;
+constexpr int CLIENT_EVAL_THEN_SELFPLAY = 1;
+
 class ThreadedCtrl : public ThreadedCtrlBase {
  public:
   ThreadedCtrl(
@@ -223,144 +226,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     // Then we send information to Python side.
     MsgVersion msg;
     msg.model_ver = ver;
-    auto binder = client_->getBinder();
-    elf::FuncsWithState funcs =
-        binder.BindStateToFunctions({kTrainCtrl}, &msg);
-    client_->sendWait({kTrainCtrl}, &funcs);
+    client_->sendWait(kTrainCtrl, &msg);
   }
 };
 
-class TrainCtrl : public elf::msg::DataInterface {
- public:
-  TrainCtrl(
-      Ctrl& ctrl,
-      int num_games,
-      elf::GameClientInterface* client,
-      const GameOptionsTrain& options)
-      : ctrl_(ctrl),
-        rng_(time(NULL)),
-        selfplay_record_("tc_selfplay"),
-        logger_(elf::logging::getLogger("TrainCtrl-", "")) {
-    // Register sender for python thread.
-    elf::shared::RQCtrl rq_ctrl;
-    rq_ctrl.num_reader = options.num_reader;
-    rq_ctrl.ctrl.queue_min_size = options.q_min_size;
-    rq_ctrl.ctrl.queue_max_size = options.q_max_size;
-
-    replay_buffer_.reset(new ReplayBuffer(rq_ctrl));
-    logger_->info(
-        "Finished initializing replay_buffer {}", replay_buffer_->info());
-    threaded_ctrl_.reset(
-        new ThreadedCtrl(ctrl_, client, replay_buffer_.get(), options));
-    client_mgr_.reset(new ClientManager(
-        num_games,
-        options.client_max_delay_sec,
-        options.expected_num_clients,
-        0.5));
-  }
-
-  void OnStart() override {
-    // Call by shared_rw thread or any thread that will call OnReceive.
-    ctrl_.reg("train_ctrl");
-    ctrl_.addMailbox<int>();
-    threaded_ctrl_->Start();
-  }
-
-  ReplayBuffer* getReplayBuffer() {
-    return replay_buffer_.get();
-  }
-  ThreadedCtrl* getThreadedCtrl() {
-    return threaded_ctrl_.get();
-  }
-
-  bool setEvalMode(int64_t new_ver, int64_t old_ver) {
-    //std::cout << "Setting eval mode: new: " << new_ver << ", old: " << old_ver
-    //          << std::endl;
-    client_mgr_->setSelfplayOnlyRatio(0.0);
-    threaded_ctrl_->setEvalMode(new_ver, old_ver);
-    return true;
-  }
-
-  elf::shared::InsertInfo OnReceive(const std::string&, const std::string& s)
-      override {
-    Records rs = Records::createFromJsonString(s);
-    const ClientInfo& info = client_mgr_->updateStates(rs.identity, rs.states);
-
-    if (rs.identity.size() == 0) {
-      // No identity -> offline data.
-      for (auto& r : rs.records) {
-        r.offline = true;
-      }
-    }
-
-    std::vector<FeedResult> selfplay_res =
-        threaded_ctrl_->onSelfplayGames(rs.records);
-
-    elf::shared::InsertInfo insert_info;
-    for (size_t i = 0; i < rs.records.size(); ++i) {
-      if (selfplay_res[i] == FeedResult::FEEDED ||
-          selfplay_res[i] == FeedResult::VERSION_MISMATCH) {
-        const Record& r = rs.records[i];
-
-        bool black_win = r.result.reward > 0;
-        insert_info +=
-            replay_buffer_->InsertWithParity(Record(r), &rng_, black_win);
-        selfplay_record_.feed(r);
-        selfplay_record_.saveAndClean(1000);
-      }
-    }
-
-    std::vector<FeedResult> eval_res =
-        threaded_ctrl_->onEvalGames(info, rs.records);
-    threaded_ctrl_->checkNewModel(client_mgr_.get());
-
-    recv_count_++;
-    if (recv_count_ % 1000 == 0) {
-      int valid_selfplay = 0, valid_eval = 0;
-      for (size_t i = 0; i < rs.records.size(); ++i) {
-        if (selfplay_res[i] == FeedResult::FEEDED)
-          valid_selfplay++;
-        if (eval_res[i] == FeedResult::FEEDED)
-          valid_eval++;
-      }
-
-      std::cout << "TrainCtrl: Receive data[" << recv_count_ << "] from "
-                << rs.identity << ", #state_update: " << rs.states.size()
-                << ", #records: " << rs.records.size()
-                << ", #valid_selfplay: " << valid_selfplay
-                << ", #valid_eval: " << valid_eval << std::endl;
-    }
-    return insert_info;
-  }
-
-  bool OnReply(const std::string& identity, std::string* msg) override {
-    ClientInfo& info = client_mgr_->getClient(identity);
-
-    if (info.justAllocated()) {
-      //std::cout << "New allocated: " << identity << ", " << client_mgr_->info()
-      //          << std::endl;
-    }
-
-    MsgRequestSeq request;
-    threaded_ctrl_->fillInRequest(info, &request.request);
-    request.seq = info.seq();
-    *msg = request.dumpJsonString();
-    info.incSeq();
-    return true;
-  }
-
- private:
-  Ctrl& ctrl_;
-
-  std::unique_ptr<ReplayBuffer> replay_buffer_;
-  std::unique_ptr<ClientManager> client_mgr_;
-  std::unique_ptr<ThreadedCtrl> threaded_ctrl_;
-
-  int recv_count_ = 0;
-  std::mt19937 rng_;
-
-  // SelfCtrl has its own record buffer to save EVERY game it has received.
-  RecordBufferSimple selfplay_record_;
-
-  std::shared_ptr<spdlog::logger> logger_;
-};

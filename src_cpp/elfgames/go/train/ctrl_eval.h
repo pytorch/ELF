@@ -10,12 +10,14 @@
 
 #include <fstream>
 #include "../common/go_game_specific.h"
-#include "client_manager.h"
 #include "ctrl_utils.h"
 #include "elf/ai/tree_search/tree_search_options.h"
 #include "elf/utils/utils.h"
 #include "fair_pick.h"
 
+#include "elf/distri/client_manager.h"
+
+using ClientManager = elf::cs::ClientManager;
 using TSOptions = elf::ai::tree_search::TSOptions;
 
 class ModelPerf {

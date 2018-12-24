@@ -116,11 +116,11 @@ void GoStateExt::showFinishInfo(FinishReason reason) const {
       break;
     case FR_CHEAT_NEWER_WINS_HALF:
       std::cout << "Cheat mode: Version: " << curr_request_.vers.info()
-                << ", swap: " << curr_request_.client_ctrl.player_swap;
+                << ", swap: " << curr_request_.player_swap;
       break;
     case FR_CHEAT_SELFPLAY_RANDOM_RESULT:
       std::cout << "Cheat selfplay mode: Version: " << curr_request_.vers.info()
-                << ", swap: " << curr_request_.client_ctrl.player_swap;
+                << ", swap: " << curr_request_.player_swap;
       break;
   }
   std::cout << ", Value: " << _state.getFinalValue()
