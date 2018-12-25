@@ -9,5 +9,6 @@ from _elf import *
 
 # Other imports
 from .more_labels import MoreLabels
-from .utils_elf import GCWrapper, Batch, EnvWrapper
+from .utils_elf import GCWrapper, Batch, allocExtractor
+from .env_wrapper import EnvWrapper
 from .zmq_util import ZMQSender, ZMQReceiver

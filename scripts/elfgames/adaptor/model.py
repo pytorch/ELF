@@ -10,23 +10,10 @@ import torch
 import torch.nn as nn
 
 from elf.options import auto_import_options, PyOptionSpec
-from rlpytorch import Model
-from elfgames.tutorial_distri.optim_method import MyOptim
 
-class MyModel(Model):
-    @classmethod
-    def get_option_spec(cls):
-        spec = PyOptionSpec()
-        spec.addIntOption(
-            'gpu',
-            'which gpu to use',
-            -1)
-
-        return spec
-
-    @auto_import_options
-    def __init__(self, option_map, params):
-        super().__init__(option_map, params)
+class MyModel(nn.Module):
+    def __init__(self, params):
+        super().__init__()
 
         self.relu = nn.ReLU()
 
@@ -61,8 +48,3 @@ class MyModel(Model):
 
         return dict(logpi=logpi, pi=pi, V=V)
 
-
-# Format: key, [model, method]
-Models = {
-    "simple": [MyModel, MyOptim],
-}

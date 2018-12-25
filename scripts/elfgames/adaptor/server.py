@@ -1,7 +1,92 @@
 import sys
 import os
 import torch
-from rlpytorch import load_env, SingleProcessRun, Trainer
+
+from elf import GCWrapper, allocExtractor
+from elf.options import auto_import_options, PyOptionSpec
+from model import MyModel
+
+import _elf as elf
+
+class RunGC(object):
+    @classmethod
+    def get_option_spec(cls):
+        spec = PyOptionSpec()
+        elf.saveDefaultOptionsToArgs("", spec)
+        elf.saveDefaultNetOptionsToArgs("", spec)
+        spec.addIntOption(
+            'gpu',
+            'GPU id to use',
+            -1)
+        spec.addStrListOption(
+            "parsed_args",
+            "dummy option",
+            [])
+
+        return spec
+
+    @auto_import_options
+    def __init__(self, option_map):
+        self.option_map = option_map
+
+    def initialize(self):
+        opt = elf.Options()
+        net_opt = elf.NetOptions()
+
+        opt.loadFromArgs("", self.option_map.getOptionSpec())
+        net_opt.loadFromArgs("", self.option_map.getOptionSpec())
+
+        self.rs = elf.RemoteServers(elf.getNetOptions(opt, net_opt), ["actor", "train"])
+        GC = elf.BatchReceiver(opt, self.rs)
+        GC.setMode(elf.RECV_ENTRY)
+        batchsize = opt.batchsize
+
+        print("Batchsize: %d" % batchsize)
+
+        width = 210 // 2
+        height = 160 // 2
+        T = 6
+
+        spec = {}
+        spec["actor"] = dict(
+            input=dict(s=("float", (3, height, width))),
+            reply=dict(a=("int32_t", 1), pi=("float", num_action), V=("float", 1))
+        )
+        '''
+        spec["train"] = dict(
+            input=dict(s_=(T, 3, height, width), r_=(T, 1), a_=(T, 1), pi_=(T, num_action), V_=(T, 1)),
+        )
+        '''
+
+        e = GC.getExtractor()
+        desc = allocExtractor(e, batchsize, spec)
+
+        params = {
+           "input_dim" : width * height * 3,
+           "num_action" : 4
+        }
+
+        print("Init GC Wrapper")
+        has_gpu = self.options.gpu is not None and self.options.gpu >= 0
+
+        self.wrapper = GCWrapper(
+            GC, None, batchsize, desc, num_recv=1, default_gpu=(self.options.gpu if has_gpu else None),
+            use_numpy=False, params=params)
+
+        # wrapper.reg_callback("train", self.on_train)
+        self.wrapper.reg_callback("actor", self.on_actor)
+        self.model = MyModel(params)
+        if has_gpu:
+            self.model.cuda(self.options.gpu)
+        # self.optim = torch.optimi.Adam(self.model.parameters())
+
+    def on_actor(self, batch):
+        res = self.model(batch["s"])
+        m = torch.distributions.Categorical(res["pi"].data)
+        return dict(a=m.sample(), pi=res["pi"].data, V=res["V"].data)
+
+    def on_train(self, batch):
+        pass
 
 def main():
     print(sys.version)
@@ -9,50 +94,20 @@ def main():
     print(torch.version.cuda)
     print("Conda env: \"%s\"" % os.environ.get("CONDA_DEFAULT_ENV", ""))
 
-    additional_to_load = {
-        'trainer': (
-            Trainer.get_option_spec(),
-            lambda option_map: Trainer(option_map)),
-        'runner': (
-            SingleProcessRun.get_option_spec(),
-            lambda option_map: SingleProcessRun(option_map)),
-    }
+    option_spec = PyOptionSpec()
+    option_spec.merge(PyOptionSpec.fromClasses((RunGC,)))
+    option_map = option_spec.parse()
 
-    env = load_env(os.environ, additional_to_load=additional_to_load)
+    rungc = RunGC(option_map)
+    rungc.initialize()
 
-    trainer = env['trainer']
-    runner = env['runner']
+    num_batch = 10000000
+    rungc.wrapper.start()
 
-    GC = env["game"].initialize()
+    for i in range(num_batch):
+        rungc.wrapper.run()
 
-    model_loader = env["model_loaders"][0]
-    model = model_loader.load_model(GC.params)
-    env["mi"].add_model("model", model, opt=True)
-
-    # GC.reg_callback("train", trainer.train)
-    GC.reg_callback("train", None)
-
-    if GC.reg_has_callback("actor"):
-        args = env["game"].options
-        env["mi"].add_model(
-            "actor",
-            model,
-            copy=True,
-            cuda=(args.gpu >= 0),
-            gpu_id=args.gpu)
-        GC.reg_callback("actor", trainer.actor)
-
-    trainer.setup(
-        sampler=env["sampler"],
-        mi=env["mi"],
-        rl_method=env["method"])
-
-    print("About to run")
-
-    runner.setup(GC, episode_summary=trainer.episode_summary, \
-            episode_start=trainer.episode_start)
-
-    runner.run()
+    rungc.wrapper.stop()
 
 if __name__ == '__main__':
     main()

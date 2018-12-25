@@ -129,6 +129,17 @@ class Allocator(object):
     def __getitem__(self, key):
         return [self.batches[idx] for idx in self.name2idx[key]]
 
+    def getMem(self, recv_idx=0):
+        input = dict()
+        reply = dict()
+        for key, indices in self.name2idx.items():
+            idx = indices[recv_idx]
+            b = self.batches[idx]
+            input.update(b["input"])
+            reply.update(b["reply"])
+
+        return input, reply
+
     def getInputBatch(self, idx, batchsize):
         picked = self._makebatch(self.batches[idx]["input"]).first_k(batchsize)
         gpu = self.batches[idx]["gpu"]
@@ -564,55 +575,31 @@ class GCWrapper:
         signal.signal(signal.SIGINT, signal_handler)
 
 
-class EnvWrapper(object):
-    def __init__(self):
-        opt = elf.Options()
-        net_opt = elf.NetOptions()
-        net_opt.port = 5566
-        self.rc = elf.RemoteClients(elf.getNetOptions(opt, net_opt), ["actor"])
+def allocExtractor(e, batchsize, spec):
+    '''
+    Input format:
+    spec["train"] = {
+        input={
+            "s": { "float", (state_size) },
+            "a": { "uint32_t", (action_size) }
+        }
+    }
+    
+    '''
+    desc = {}
+    for name, spec_one in spec.items():
+        bs = spec_one.get("batchsize", batchsize)
+        desc[name] = dict(batchsize=bs)
+        for sel in ["input", "reply"]:
+            if sel not in spec_one:
+                continue
+            desc[name][sel] = list()
+            for entry, spec in spec_one[sel].items():
+                func_name = "addField_" + spec[0]
+                sz = [batchsize] + list(spec[1]) if isinstance(spec[1], (tuple,list)) else [spec[1]]
 
-        self.wrapper = elf.EnvSender(self.rc)
-        self.converter = NameConverter()
+                eval(f"e.{func_name}(\"{entry}\", {bs}, {sz})")
+                desc[name][sel].append(entry)
 
-    def setEnv(self, env):
-        self.env = env
-
-    def run(self):
-        state_size = self.env.getStateSize()
-        action_size = self.env.getActionSize()
-        num_action = self.env.getNumAction()
-
-        print("State_size: " + str(state_size))
-        print("Action_size: " + str(action_size))
-
-        batchsize = 1
-
-        e = self.wrapper.getExtractor()
-        e.addField_float("s", batchsize, [batchsize] + list(state_size))
-        e.addField_uint32_t("a", batchsize, [batchsize] + list(action_size))
-        e.addField_float("pi", batchsize, [batchsize, num_action])
-        e.addField_float("last_r", batchsize, [batchsize, 1])
-        e.addField_float("V", batchsize, [batchsize, 1])
-        
-        print(e.info())
-
-        desc = dict()
-        desc["actor"] = dict(input=["s", "last_r"], reply=["pi", "a", "V"])
-
-        self.allocator = Allocator(self.wrapper, None, batchsize, desc,
-            use_numpy=True, default_gpu=None, num_recv=1)
-        self.wrapper.setInputKeys(set(desc["actor"]["input"]))
-
-        mem_s = self.allocator["actor"][0]["input"]["s"]
-        mem_last_r = self.allocator["actor"][0]["input"]["last_r"]
-        mem_a = self.allocator["actor"][0]["reply"]["a"]
-
-        mem_s[:] = self.env.reset()
-        mem_last_r[:] = 0
-        terminal = False
-        while not terminal:
-            self.wrapper.sendAndWaitReply()
-            print(mem_a)
-            next_s, mem_last_r[:], terminal, _ = self.env.step(mem_a)
-            mem_s[:] = next_s
+    return desc
 

@@ -6,30 +6,27 @@ from elf import EnvWrapper
 def transpose(v):
     return np.transpose(v, axes=[2, 1, 0])
 
-class Env:
-    def __init__(self):
-        self.env = gym.make("Breakout-v0")
+def convert(s):
+    return transpose(s[::2,::2,:])
 
-    def reset(self):
-        s = self.env.reset()
-        return transpose(s[::2,::2,:])
+env = gym.make("Breakout-v0")
+sz = env.observation_space.shape[::-1]
+num_action = env.action_space.n
 
-    def step(self, action):
-        next_s, reward, terminal, _ = self.env.step(action)
-        return transpose(next_s[::2,::2,:]), reward, terminal, _ 
+spec = {}
+spec["actor"] = dict(
+    input=dict(s=("float", (sz[0], sz[1] // 2, sz[2] // 2))),
+    reply=dict(a=("int32_t", 1), pi=("float", num_action), V=("float", 1))
+)
 
-    def getActionSize(self):
-        return [1]
+wrapper = EnvWrapper()
+mem = wrapper.alloc(spec)
 
-    def getStateSize(self):
-        sz = self.env.observation_space.shape[::-1]
-        return (sz[0], sz[1] // 2, sz[2] // 2)
-
-    def getNumAction(self):
-        return self.env.action_space.n
-
-sender = EnvWrapper()
-env = Env()
-sender.setEnv(env)
-sender.run()
-
+while True:
+    mem["s"][:] = convert(env.reset())
+    terminal = False
+    while not terminal:
+        wrapper.wrapper.sendAndWaitReply()
+        print(mem["a"])
+        next_s, r, terminal, _ = env.step(mem["a"])
+        mem["s"][:] = convert(next_s)
