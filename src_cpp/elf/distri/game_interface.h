@@ -25,42 +25,36 @@ enum StepStatus {
   EPOSIDE_END,
 };
 
-class ClientInterface {
+class ClientGame {
  public:
-   virtual bool onReceive(const json &state, MsgReply *reply) = 0;
+   virtual bool onReceive(const MsgRequest &, MsgReply *reply) = 0;
    virtual ThreadState getThreadState() const = 0;
    virtual void onEnd(elf::game::Base*) = 0;
-   virtual StepStatus step(elf::game::Base*, json *j) = 0;
-   virtual std::unordered_map<std::string, int> getParams() const = 0;
+   virtual StepStatus step(elf::game::Base*, Record *) = 0;
+};
+
+struct ClientInterface {
+ public:
+  virtual void onFirstSend(const Addr &, MsgRequest*) = 0;
+  virtual std::vector<bool> onReply(const std::vector<MsgRequest>&, std::vector<MsgReply>*) = 0;
+  
+  virtual ClientGame *createGame(int) = 0;
 };
 
 using ReplayBuffer = elf::shared::ReaderQueuesT<Record>;
 
+class ServerGame {
+ public:
+   virtual void step(elf::game::Base *, ReplayBuffer *) = 0;
+};
+
 class ServerInterface {
  public:
   virtual void onStart() = 0;
-  virtual elf::shared::InsertInfo onReceive(const Records &rs, const ClientInfo& info, ReplayBuffer *replay_buffer) = 0;
-  virtual void fillInRequest(const ClientInfo &info, json *state) = 0;
-};
+  virtual elf::shared::InsertInfo onReceive(Records &&rs, const ClientInfo& info) = 0;
+  virtual void fillInRequest(const ClientInfo &info, MsgRequest *) = 0;
 
-class GameInterface {
- public:
-   virtual void fromJson(const json &) = 0;
-   // Return true if we want this game to be sent.
-   virtual bool step(elf::game::Base *) = 0;
-};
-
-struct ServerFactory {
-  std::function<std::unique_ptr<GameInterface> (int)> createGameInterface = nullptr;
-  std::function<std::unique_ptr<ServerInterface> ()> createServerInterface = nullptr;
-  std::function<std::unordered_map<std::string, int> ()> getParams = nullptr;
-};
-
-struct ClientFactory {
-  std::function<std::unique_ptr<ClientInterface> (int)> createClientInterface = nullptr;
-  std::function<void (const Addr &, MsgRequest*)> onFirstSend = nullptr;
-  std::function<std::vector<bool> (const std::vector<MsgRequest>&, std::vector<MsgReply>*)> onReply = nullptr;
-  std::function<std::unordered_map<std::string, int> ()> getParams = nullptr;
+  virtual ServerGame* createGame(int) = 0;
 };
 
 }  // namespace cs

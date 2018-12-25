@@ -22,11 +22,11 @@ namespace elf {
 
 namespace cs {
 
-class TrainCtrl : public elf::msg::DataInterface {
+class DataHolder : public elf::msg::DataInterface {
  public:
-  TrainCtrl(const TrainCtrlOptions &options, 
-            const ClientManagerOptions &cm_options, 
-            ServerInterface *server_interface) 
+  DataHolder(const TrainCtrlOptions &options, 
+             const ClientManagerOptions &cm_options, 
+             ServerInterface *server_interface) 
     : rng_(time(NULL)) {
     // Register sender for python thread.
     elf::shared::RQCtrl rq_ctrl;
@@ -35,6 +35,9 @@ class TrainCtrl : public elf::msg::DataInterface {
     rq_ctrl.ctrl.queue_max_size = options.q_max_size;
 
     replay_buffer_.reset(new ReplayBuffer(rq_ctrl));
+    // logger_->info(
+    //    "Finished initializing replay_buffer {}", replay_buffer_->info());
+
     client_mgr_.reset(new ClientManager(cm_options));
     server_interface_ = server_interface;
     assert(server_interface_ != nullptr);
@@ -51,7 +54,7 @@ class TrainCtrl : public elf::msg::DataInterface {
     Records rs = Records::createFromJsonString(msg);
     std::cout << "TrainCtrl: RecvMsg[" << identity << "]: " << rs.size() << std::endl;
     const ClientInfo& info = client_mgr_->updateStates(rs.identity, rs.states);
-    return server_interface_->onReceive(rs, info, replay_buffer_.get());
+    return server_interface_->onReceive(std::move(rs), info);
   }
 
   bool OnReply(const std::string& identity, std::string* msg) override {
@@ -63,7 +66,7 @@ class TrainCtrl : public elf::msg::DataInterface {
     }
 
     MsgRequest request;
-    server_interface_->fillInRequest(info, &request.state);
+    server_interface_->fillInRequest(info, &request);
     request.client_ctrl.seq = info.seq();
     *msg = request.dumpJsonString();
     info.incSeq();
@@ -73,6 +76,10 @@ class TrainCtrl : public elf::msg::DataInterface {
 
   ReplayBuffer* getReplayBuffer() {
     return replay_buffer_.get();
+  }
+
+  ClientManager *getClientManager() {
+    return client_mgr_.get();
   }
 
  private:
@@ -89,23 +96,23 @@ class Server {
   Server(const Options& options)
       : options_(options) {}
 
-  void setFactory(ServerFactory factory) {
-    factory_ = factory;
+  void setInterface(ServerInterface *server_interface) {
+    server_interface_ = server_interface;
   }
 
-  void setGameContext(elf::GameContext* ctx) {
+  void setGameContext(elf::GCInterface* ctx) {
+    ctx_ = ctx;
     size_t num_games = ctx->options().num_game_thread;
 
-    server_interface_ = std::move(factory_.createServerInterface());
-    trainCtrl_.reset(new TrainCtrl(options_.tc_opt, options_.cm_opt, server_interface_.get()));
+    dataHolder_.reset(new DataHolder(options_.tc_opt, options_.cm_opt, server_interface_));
 
     using std::placeholders::_1;
 
     for (size_t i = 0; i < num_games; ++i) {
       auto* g = ctx->getGame(i);
       if (g != nullptr) {
-        games_.emplace_back(new ServerGame(i, this));
-        g->setCallbacks(std::bind(&ServerGame::OnAct, games_[i].get(), _1));
+        games_.emplace_back(new _Game(i, this));
+        g->setCallbacks(std::bind(&_Game::OnAct, games_[i].get(), _1));
       }
     }
 
@@ -115,77 +122,52 @@ class Server {
     netOptions.usec_sleep_when_no_msg = 10000000;
     netOptions.usec_resend_when_no_msg = -1;
     onlineLoader_.reset(new elf::msg::DataOnlineLoader(netOptions));
-    onlineLoader_->start(trainCtrl_.get());
+    onlineLoader_->start(dataHolder_.get());
   }
 
-  std::unordered_map<std::string, int> getParams() const {
-    return factory_.getParams();
+  GCInterface *ctx() { return ctx_; }
+
+  DataHolder *getDataHolder() {
+    return dataHolder_.get();
+  }
+
+  ReplayBuffer *getReplayBuffer() {
+    return dataHolder_->getReplayBuffer();
+  }
+
+  ClientManager *getClientManager() {
+    return dataHolder_->getClientManager();
   }
 
   ~Server() {
-    trainCtrl_.reset(nullptr);
+    dataHolder_.reset(nullptr);
     onlineLoader_.reset(nullptr);
   }
 
  private:
-  struct ServerGame {
+  struct _Game {
     int game_idx_;
     Server *s_ = nullptr;
+    ServerGame *game_ = nullptr;
 
-    std::vector<std::unique_ptr<GameInterface>> senders_;
-
-    ServerGame(int game_idx, Server *s) 
-      : game_idx_(game_idx), s_(s) { 
-      size_t n = s_->options_.server_num_state_pushed_per_thread;
-      senders_.resize(n);
-      for (size_t i = 0; i < n; ++i) {
-        senders_[i] = std::move(s_->factory_.createGameInterface(game_idx));
-      }
+    _Game(int game_idx, Server *s) : game_idx_(game_idx), s_(s) { 
+      game_ = s_->server_interface_->createGame(game_idx);
     }
 
     void OnAct(game::Base* base) {
-      std::vector<FuncsWithState> funcsToSend;
-      auto *client = base->client();
-      auto binder = client->getBinder();
-
-      auto *reader = s_->trainCtrl_->getReplayBuffer();
-
-      for (size_t i = 0; i < senders_.size(); ++i) {
-        while (true) {
-          // std::cout << "[" << _game_idx << "][" << i << "] Before get sampler "
-          // << std::endl;
-          int q_idx;
-          auto sampler = reader->getSamplerWithParity(&base->rng(), &q_idx);
-          const Record* r = sampler.sample();
-          if (r == nullptr) {
-            continue;
-          }
-
-          senders_[i]->fromJson(r->request.state);
-          if (senders_[i]->step(base)) {
-            funcsToSend.push_back(binder.BindStateToFunctions(
-                {"`train"}, senders_[i].get()));
-            break;
-          }
-        }
-      }
-
-      std::vector<elf::FuncsWithState*> funcPtrsToSend(funcsToSend.size());
-      for (size_t i = 0; i < funcsToSend.size(); ++i) {
-        funcPtrsToSend[i] = &funcsToSend[i];
-      }
-
-      client->sendBatchWait({"train"}, funcPtrsToSend);
+      auto *reader = s_->getReplayBuffer();
+      game_->step(base, reader);
     }
   };
 
-  std::vector<std::unique_ptr<ServerGame>> games_;
-  std::unique_ptr<TrainCtrl> trainCtrl_;
+  elf::GCInterface *ctx_ = nullptr;
+
+  std::vector<std::unique_ptr<_Game>> games_;
+  std::unique_ptr<DataHolder> dataHolder_;
   std::unique_ptr<elf::msg::DataOnlineLoader> onlineLoader_;
-  std::unique_ptr<ServerInterface> server_interface_;
 
   const Options options_;
-  ServerFactory factory_;
+  ServerInterface *server_interface_ = nullptr;
 };
 
 }  // namespace cs

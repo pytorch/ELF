@@ -32,9 +32,11 @@ constexpr int UPDATE_COMPLETE = 5;
 using elf::cs::StepStatus;
 using elf::cs::ThreadState;
 using elf::cs::MsgReply;
+using elf::cs::MsgRequest;
+using elf::cs::Record;
 
 // Game interface for Go.
-class GoGameSelfPlay : public elf::cs::ClientInterface {
+class GoGameSelfPlay : public elf::cs::ClientGame {
  public:
   GoGameSelfPlay(
       int game_idx,
@@ -46,13 +48,9 @@ class GoGameSelfPlay : public elf::cs::ClientInterface {
     _ai2.reset(nullptr);
   }
 
-  StepStatus step(elf::game::Base*, json *) override;
-  bool onReceive(const json& j, MsgReply* reply) override;
+  StepStatus step(elf::game::Base*, Record *) override;
+  bool onReceive(const MsgRequest &, MsgReply* reply) override;
   ThreadState getThreadState() const override;
-
-  std::unordered_map<std::string, int> getParams() const override {
-    return std::unordered_map<std::string, int>(); 
-  }
 
   void addMCTSParams(const elf::ai::tree_search::CtrlOptions &ctrl_options) {
     _ai->addMCTSParams(ctrl_options);
@@ -100,7 +98,7 @@ class GoGameSelfPlay : public elf::cs::ClientInterface {
       int64_t model_ver);
   Coord mcts_make_diverse_move(MCTSGoAI* curr_ai, Coord c);
   Coord mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c);
-  StepStatus finish_game(FinishReason reason, json *j);
+  StepStatus finish_game(FinishReason reason, Record *);
 
  private:
   GoStateExt _state_ext;

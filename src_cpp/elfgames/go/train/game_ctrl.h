@@ -26,19 +26,18 @@
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
 
+#include "elf/distri/game_interface.h"
+
 #include "../common/game_stats.h"
 #include "../common/go_game_specific.h"
 #include "../common/go_state_ext.h"
-#include "../common/notifier.h"
 
 using namespace std::chrono_literals;
-using ReplayBuffer = elf::shared::ReaderQueuesT<Record>;
+using elf::cs::ReplayBuffer;
+using elf::cs::MsgRequest;
 using ThreadedCtrlBase = elf::ThreadedCtrlBase;
 using Ctrl = elf::Ctrl;
 using Addr = elf::Addr;
-
-constexpr int CLIENT_SELFPLAY_ONLY = 0;
-constexpr int CLIENT_EVAL_THEN_SELFPLAY = 1;
 
 class ThreadedCtrl : public ThreadedCtrlBase {
  public:
@@ -142,7 +141,9 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     std::vector<FeedResult> res(records.size());
 
     for (size_t i = 0; i < records.size(); ++i) {
-      res[i] = selfplay_->feed(records[i]);
+      Request request = Request::createFromJson(records[i].request.state);
+      Result result = Result::createFromJson(records[i].result.reply);
+      res[i] = selfplay_->feed(request, result, records[i]);
     }
 
     return res;
@@ -155,32 +156,37 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     std::vector<FeedResult> res(records.size());
 
     for (size_t i = 0; i < records.size(); ++i) {
-      res[i] = eval_->feed(info, records[i]);
+      Request request = Request::createFromJson(records[i].request.state);
+      Result result = Result::createFromJson(records[i].result.reply);
+      res[i] = eval_->feed(info, request, result, records[i]);
     }
 
     return res;
   }
 
-  void fillInRequest(const ClientInfo& info, MsgRequest* request) {
-    request->vers.set_wait();
-    request->client_ctrl.client_type = info.type();
+  void fillInRequest(const ClientInfo& info, MsgRequest* msg_request) {
+    Request request;
+    request.vers.set_wait();
 
     switch (info.type()) {
       case CLIENT_SELFPLAY_ONLY:
         if (!eval_mode_) {
-          selfplay_->fillInRequest(info, request);
+          selfplay_->fillInRequest(info, &request);
         }
         break;
       case CLIENT_EVAL_THEN_SELFPLAY:
-        eval_->fillInRequest(info, request);
-        if (request->vers.wait() && !eval_mode_) {
-          selfplay_->fillInRequest(info, request);
+        eval_->fillInRequest(info, &request);
+        if (request.vers.wait() && !eval_mode_) {
+          selfplay_->fillInRequest(info, &request);
         }
         break;
-      case CLIENT_INVALID:
-        std::cout << "Warning! Invalid client_type! " << std::endl;
+      default:
+        std::cout << "Warning! Invalid client_type! " << info.type() << std::endl;
         break;
     }
+
+    msg_request->client_ctrl.client_type = info.type();
+    request.setJsonFields(msg_request->state);
   }
 
  protected:
@@ -226,7 +232,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     // Then we send information to Python side.
     MsgVersion msg;
     msg.model_ver = ver;
-    client_->sendWait(kTrainCtrl, &msg);
+    client_->sendWait(kTrainCtrl, msg);
   }
 };
 

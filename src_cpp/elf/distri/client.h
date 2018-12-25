@@ -147,12 +147,8 @@ class WriterCallback {
     return msg;
   }
 
-  void addRecord(const json &state) {
-    Record record;
-    record.request.state = state;
-    // Not used. 
-    // record.result.reply = r;
-    records_.feed(std::move(record));
+  void addRecord(Record &&r) {
+    records_.feed(std::move(r));
   }
 
   void updateState(const ThreadState &ts) {
@@ -168,11 +164,12 @@ class Client {
  public:
   Client(const Options &options) : options_(options) {}
 
-  void setFactory(ClientFactory factory) {
-    factory_ = factory;
+  void setInterface(ClientInterface *client_interface) {
+    client_interface_ = client_interface;
   }
 
   void setGameContext(elf::GCInterface* ctx) {
+    ctx_ = ctx;
     uint64_t num_games = ctx->options().num_game_thread;
 
     if (ctx->getClient() != nullptr) {
@@ -194,21 +191,26 @@ class Client {
     for (size_t i = 0; i < num_games; ++i) {
       auto* g = ctx->getGame(i);
       if (g != nullptr) {
-        games_.emplace_back(new ClientGame(i, this));
+        games_.emplace_back(new _Game(i, this));
         g->setCallbacks(
-            std::bind(&ClientGame::OnAct, games_[i].get(), _1),
-            std::bind(&ClientGame::OnEnd, games_[i].get(), _1),
+            std::bind(&_Game::OnAct, games_[i].get(), _1),
+            std::bind(&_Game::OnEnd, games_[i].get(), _1),
             [&, i](elf::game::Base*) { dispatcher_->RegGame(i); });
       }
     }
 
     if (ctx->getClient() != nullptr) {
-      dispatcher_->Start(factory_.onReply, factory_.onFirstSend);
+      dispatcher_->Start(
+          [&](auto ...params) { return client_interface_->onReply(params...); },
+          [&](auto ...params) { client_interface_->onFirstSend(params...); }
+      );
     }
   }
 
-  std::unordered_map<std::string, int> getParams() const {
-    return factory_.getParams();
+  GCInterface *ctx() { return ctx_; }
+
+  ThreadedDispatcher *getThreadedDispatcher() {
+    return dispatcher_.get();
   }
 
   ~Client() {
@@ -218,19 +220,19 @@ class Client {
   }
 
  private:
-  struct ClientGame {
+  struct _Game {
     int game_idx_;
     Client *c_ = nullptr;
-    std::unique_ptr<ClientInterface> game_;
+    ClientGame *game_ = nullptr;
     int counter_ = 0;
 
-    ClientGame(int game_idx, Client *client) 
+    _Game(int game_idx, Client *client) 
       : game_idx_(game_idx), c_(client) {
-      game_ = std::move(c_->factory_.createClientInterface(game_idx));
+      game_ = c_->client_interface_->createGame(game_idx);
     }
 
     bool OnReceive(const MsgRequest& request, MsgReply* reply) {
-      return game_->onReceive(request.state, reply);
+      return game_->onReceive(request, reply);
     }
 
     void OnEnd(elf::game::Base* base) {
@@ -242,7 +244,7 @@ class Client {
       if (counter_ % 5 == 0) {
         using std::placeholders::_1;
         using std::placeholders::_2;
-        auto f = std::bind(&ClientGame::OnReceive, this, _1, _2);
+        auto f = std::bind(&_Game::OnReceive, this, _1, _2);
         bool block_if_no_message = false;
 
         do {
@@ -253,9 +255,9 @@ class Client {
       }
       counter_ ++;
 
-      json j;
-      if (game_->step(base, &j) == StepStatus::NEW_RECORD) {
-        c_->writer_callback_->addRecord(j);
+      Record r;
+      if (game_->step(base, &r) == StepStatus::NEW_RECORD) {
+        c_->writer_callback_->addRecord(std::move(r));
       }
     }
   };
@@ -263,9 +265,10 @@ class Client {
   Ctrl ctrl_;
 
   const Options options_;
-  ClientFactory factory_;
+  ClientInterface *client_interface_ = nullptr;
+  GCInterface *ctx_ = nullptr;
 
-  std::vector<std::unique_ptr<ClientGame>> games_;
+  std::vector<std::unique_ptr<_Game>> games_;
   std::unique_ptr<ThreadedDispatcher> dispatcher_;
 
   /// ZMQClient

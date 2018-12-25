@@ -20,6 +20,9 @@
 using ClientManager = elf::cs::ClientManager;
 using TSOptions = elf::ai::tree_search::TSOptions;
 
+constexpr int CLIENT_SELFPLAY_ONLY = 0;
+constexpr int CLIENT_EVAL_THEN_SELFPLAY = 1;
+
 class ModelPerf {
  public:
   enum EvalResult {
@@ -35,7 +38,7 @@ class ModelPerf {
       const ModelPair& p)
       : options_(options), curr_pair_(p) {
     const size_t cushion = 5;
-    const size_t max_request_per_layer = mgr.getExpectedNumEval() / 2;
+    const size_t max_request_per_layer = mgr.getExpectedNum(CLIENT_EVAL_THEN_SELFPLAY) / 3;
     const size_t num_request = options.eval_num_games / 2 + cushion;
     const size_t num_eval_machine_per_layer =
         compute_num_eval_machine(num_request, max_request_per_layer);
@@ -95,17 +98,17 @@ class ModelPerf {
     return eval_result_;
   }
 
-  void feed(const ClientInfo& c, const Record& r) {
-    if (r.request.client_ctrl.player_swap) {
-      swap_games_->add(c, -r.result.reward);
+  void feed(const ClientInfo& c, const Request &request, const Result &result, const Record &r) {
+    if (request.player_swap) {
+      swap_games_->add(c, -result.reward);
     } else {
-      games_->add(c, r.result.reward);
+      games_->add(c, result.reward);
     }
     record_.feed(r);
     recv_++;
   }
 
-  void fillInRequest(const ClientInfo& c, MsgRequest* msg) {
+  void fillInRequest(const ClientInfo& c, Request* msg) {
     if (sealed_)
       return;
 
@@ -132,9 +135,9 @@ class ModelPerf {
       // faster.
       msg->vers = curr_pair_;
       // Now treat player_swap as same as other quantities.
-      msg->client_ctrl.player_swap = g.second;
-      msg->client_ctrl.resign_thres = options_.resign_thres;
-      msg->client_ctrl.num_game_thread_used = options_.eval_num_threads;
+      msg->player_swap = g.second;
+      msg->resign_thres = options_.resign_thres;
+      msg->num_game_thread_used = options_.eval_num_threads;
       break;
     }
     sent_++;
@@ -256,17 +259,17 @@ class EvalSubCtrl {
     return -1;
   }
 
-  FeedResult feed(const ClientInfo& info, const Record& r) {
-    if (r.request.vers.is_selfplay())
+  FeedResult feed(const ClientInfo& info, const Request &request, const Result &result, const Record& r) {
+    if (request.vers.is_selfplay())
       return NOT_EVAL;
 
     std::lock_guard<std::mutex> lock(mutex_);
 
-    ModelPerf* perf = find_or_null(r.request.vers);
+    ModelPerf* perf = find_or_null(request.vers);
     if (perf == nullptr)
       return NOT_REQUESTED;
 
-    perf->feed(info, r);
+    perf->feed(info, request, result, r);
     return FEEDED;
   }
 
@@ -275,7 +278,7 @@ class EvalSubCtrl {
     return best_baseline_model_;
   }
 
-  void fillInRequest(const ClientInfo& info, MsgRequest* msg) {
+  void fillInRequest(const ClientInfo& info, Request* msg) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     // Go through all current models

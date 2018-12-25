@@ -7,6 +7,7 @@
  */
 
 #include "elf/distri/client_manager.h"
+using elf::cs::ClientInfo;
 
 namespace fair_pick {
 

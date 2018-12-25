@@ -10,8 +10,8 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#include "distri_client.h"
-#include "distri_server.h"
+#include "server_wrapper.h"
+#include "client_wrapper.h"
 #include "elf/base/game_context.h"
 #include "elf/options/reflection_option.h"
 #include "elf/utils/pybind.h"
@@ -76,22 +76,20 @@ void registerPy(pybind11::module& m) {
   m.def("getServerOpt", getServerOpt);
   m.def("getClientOpt", getClientOpt);
 
-  py::class_<Server>(m, "Server")
+  py::class_<ServerWrapper>(m, "ServerWrapper")
       .def(py::init<const GameOptionsTrain&>())
-      .def("setGameContext", &Server::setGameContext)
-      .def("getParams", &Server::getParams)
-      .def("waitForSufficientSelfplay", &Server::waitForSufficientSelfplay)
-      .def("notifyNewVersion", &Server::notifyNewVersion)
-      .def("setInitialVersion", &Server::setInitialVersion)
-      .def("setEvalMode", &Server::setEvalMode);
+      .def("getParams", &ServerWrapper::getParams)
+      .def("waitForSufficientSelfplay", &ServerWrapper::waitForSufficientSelfplay)
+      .def("notifyNewVersion", &ServerWrapper::notifyNewVersion)
+      .def("setInitialVersion", &ServerWrapper::setInitialVersion)
+      .def("setEvalMode", &ServerWrapper::setEvalMode);
 
-  py::class_<Client>(m, "Client")
+  py::class_<ClientWrapper>(m, "ClientWrapper")
       .def(py::init<const GameOptionsSelfPlay&>())
-      .def("setGameContext", &Client::setGameContext)
-      .def("getGame", &Client::getGame, ref)
-      .def("getParams", &Client::getParams)
-      .def("setRequest", &Client::setRequest)
-      .def("getGameStats", &Client::getGameStats, ref);
+      .def("getGame", &ClientWrapper::getGame, ref)
+      .def("getParams", &ClientWrapper::getParams)
+      .def("setRequest", &ClientWrapper::setRequest)
+      .def("getGameStats", &ClientWrapper::getGameStats, ref);
 
   py::class_<WinRateStats>(m, "WinRateStats")
       .def(py::init<>())

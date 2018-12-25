@@ -48,8 +48,7 @@ class ResignThresholdCalculator {
         maxThreshold_ <= 2.0);
   }
 
-  void feed(const Record& r) {
-    const MsgResult& result = r.result;
+  void feed(const Request &request, const Result &result) {
     numGamesFed_++;
     if (result.reward > 0.0)
       numGamesFedBlackWin_++;
@@ -59,7 +58,7 @@ class ResignThresholdCalculator {
       return;
 
     nr_stats_.feed(result.reward);
-    feedWinnerMinvalue(NRItem(r));
+    feedWinnerMinvalue(NRItem(request, result));
   }
 
   float getThreshold() const {
@@ -141,9 +140,7 @@ class ResignThresholdCalculator {
     bool fp = false;
     bool blackWin = false;
 
-    NRItem(const Record& r) {
-      const MsgResult& result = r.result;
-
+    NRItem(const Request &request, const Result & result) {
       // Resign calculator stuff
       blackWin = result.reward > 0;
 
@@ -156,7 +153,7 @@ class ResignThresholdCalculator {
       }
 
       // The winning player would have resigned if never_resign was not set.
-      fp = r.request.client_ctrl.resign_thres > minValue;
+      fp = request.resign_thres > minValue;
     }
 
     void changeStat(NRStats& stats, int delta) const {
@@ -202,30 +199,28 @@ struct SelfPlayRecord {
     records_.resetPrefix(selfplay_prefix + "-" + std::to_string(ver_));
   }
 
-  void feed(const Record& record) {
-    const MsgResult& r = record.result;
-
-    const bool didBlackWin = r.reward > 0;
+  void feed(const Request &, const Result &result, const Record& record) {
+    const bool didBlackWin = result.reward > 0;
     if (didBlackWin) {
       black_win_++;
     } else {
       white_win_++;
     }
 
-    if (abs(r.reward - 1.0f) < 0.1f) {
+    if (abs(result.reward - 1.0f) < 0.1f) {
       n_white_resign_++;
-    } else if (abs(r.reward + 1.0f) < 0.1f) {
+    } else if (abs(result.reward + 1.0f) < 0.1f) {
       n_black_resign_++;
     }
 
     counter_++;
     records_.feed(record);
 
-    if (r.num_move < 100)
+    if (result.num_move < 100)
       move0_100++;
-    else if (r.num_move < 200)
+    else if (result.num_move < 200)
       move100_200++;
-    else if (r.num_move < 300)
+    else if (result.num_move < 300)
       move200_300++;
     else
       move300_up++;
@@ -281,10 +276,10 @@ struct SelfPlayRecord {
     num_weight_update_++;
   }
 
-  void fillInRequest(const ClientInfo&, MsgRequest* msg) const {
-    msg->client_ctrl.resign_thres = resign_threshold_;
-    msg->client_ctrl.never_resign_prob = 0.1;
-    msg->client_ctrl.async = options_.selfplay_async;
+  void fillInRequest(const ClientInfo&, Request* msg) const {
+    msg->resign_thres = resign_threshold_;
+    msg->never_resign_prob = 0.1;
+    msg->async = options_.selfplay_async;
   }
 
   std::string info() const {
@@ -355,21 +350,21 @@ class SelfPlaySubCtrl {
             options.resign_thres_lower_bound,
             options.resign_thres_upper_bound) {}
 
-  FeedResult feed(const Record& r) {
+  FeedResult feed(const Request &request, const Result &result, const Record& r) {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    resignThresholdCalculator_.feed(r);
+    resignThresholdCalculator_.feed(request, result);
 
-    if (!r.request.vers.is_selfplay())
+    if (!request.vers.is_selfplay())
       return NOT_SELFPLAY;
-    if (curr_ver_ != r.request.vers.black_ver)
+    if (curr_ver_ != request.vers.black_ver)
       return VERSION_MISMATCH;
 
-    auto* perf = find_or_null(r.request.vers.black_ver);
+    auto* perf = find_or_null(request.vers.black_ver);
     if (perf == nullptr)
       return NOT_REQUESTED;
 
-    perf->feed(r);
+    perf->feed(request, result, r);
     total_selfplay_++;
     if (total_selfplay_ % 1000 == 0) {
       std::cout << elf_utils::now()
@@ -430,7 +425,7 @@ class SelfPlaySubCtrl {
       return 0;
   }
 
-  void fillInRequest(const ClientInfo& info, MsgRequest* msg) {
+  void fillInRequest(const ClientInfo& info, Request* msg) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (curr_ver_ < 0) {

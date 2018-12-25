@@ -11,7 +11,7 @@
 #include <pybind11/stl_bind.h>
 
 #include "elf/base/game_context.h"
-#include "game_context.h"
+#include "../train/client_wrapper.h"
 
 namespace elfgames {
 namespace go {
@@ -26,12 +26,11 @@ void registerPy(pybind11::module& m) {
 
   m.def("get_elf_options", get_elf_options);
 
-  py::class_<Client>(m, "Client")
+  py::class_<ClientWrapper>(m, "ClientWrapper")
       .def(py::init<const GameOptionsSelfPlay&>())
-      .def("setGameContext", &Client::setGameContext)
-      .def("getParams", &Client::getParams)
-      .def("setRequest", &Client::setRequest)
-      .def("getGame", &Client::getGameC, ref);
+      .def("getParams", &ClientWrapper::getParams)
+      .def("setRequest", &ClientWrapper::setRequest)
+      .def("getGame", &ClientWrapper::getGame, ref);
 
   py::class_<GoGameSelfPlay>(m, "GoGameSelfPlay")
       .def("showBoard", &GoGameSelfPlay::showBoard)

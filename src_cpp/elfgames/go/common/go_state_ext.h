@@ -25,6 +25,7 @@
 using elf::cs::StepStatus;
 using elf::cs::Record;
 using elf::cs::ThreadState;
+using elf::cs::ServerGame;
 
 enum FinishReason {
   FR_RESIGN = 0,
@@ -34,32 +35,6 @@ enum FinishReason {
   FR_ILLEGAL,
   FR_CHEAT_NEWER_WINS_HALF,
   FR_CHEAT_SELFPLAY_RANDOM_RESULT,
-};
-
-struct CoordRecord {
-    unsigned char prob[BOUND_COORD];
-};
-
-inline void from_json(const json &j, CoordRecord &cr) {
-  for (size_t k = 0; k < j.size(); k++) {
-    cr.prob[k] = j[k];
-  }
-}
-
-inline void from_json(const json &j, std::vector<CoordRecord> &cr) {
-  cr.clear();
-  for (size_t i = 0; i < j.size(); i ++) {
-    cr.emplace_back();
-    for (size_t k = 0; k < j[i].size(); k++) {
-      cr[i].prob[k] = j[i][k];
-    }
-  }
-}
-
-inline void to_json(json &j, const CoordRecord &cr) {
-  for (unsigned char c : cr.prob) {
-    j.push_back(c);
-  }
 };
 
 struct GoStateExt {
@@ -148,26 +123,28 @@ struct GoStateExt {
     addCurrentModel();
   }
 
-  json dumpRecord() const {
-    json j;
-    j["timestamp"] = elf_utils::sec_since_epoch_from_now();
-    j["thread_id"] = _game_idx;
-    j["seq"] = _seq;
-    curr_request_.setJsonFields(j["request"]);
+  Record dumpRecord() const {
+    Result result; 
 
-    json j_res;
+    result.reward = _state.getFinalValue();
+    result.content = coords2sgfstr(_state.getAllMoves());
+    result.never_resign = _resign_check.never_resign;
+    result.using_models =
+        std::vector<int64_t>(using_models_.begin(), using_models_.end());
+    result.policies = _mcts_policies;
+    result.num_move = _state.getPly() - 1;
+    result.values = _predicted_values;
 
-    j_res["reward"] = _state.getFinalValue();
-    j_res["content"] = coords2sgfstr(_state.getAllMoves());
-    j_res["never_resign"] = _resign_check.never_resign;
-    j_res["using_models"] = std::vector<int64_t>(using_models_.begin(), using_models_.end());
-    j_res["policies"] = _mcts_policies;
-    j_res["num_move"] = _state.getPly() - 1;
-    j_res["values"] = _predicted_values;
+    Record r;
 
-    j["result"] = j_res;
+    curr_request_.setJsonFields(r.request.state);
+    result.setJsonFields(r.result.reply);
 
-    return j;
+    r.timestamp = elf_utils::sec_since_epoch_from_now();
+    r.thread_id = _game_idx;
+    r.seq = _seq;
+
+    return r;
   }
 
   ThreadState getThreadState() const {
@@ -285,17 +262,16 @@ class GoStateExtOffline {
   GoStateExtOffline(int game_idx, const GameOptionsTrain& options)
       : _game_idx(game_idx), _bf(_state), _options(options) {}
 
-  void fromRecord(const json& j) {
-    // std::cout << "Convert to moves: " << r.content << std::endl;
-    auto jr = j["result"];
-    _offline_all_moves = sgfstr2coords(jr["content"]);
-    _offline_winner = jr["reward"] > 0 ? 1.0 : -1.0;
-    // std::cout << "Convert complete, #move = " << moves.size() << std::endl;
-    //
-    from_json(jr["policies"], _mcts_policies);
-    curr_request_.setJsonFields(jr["request"]);
-    _seq = j["seq"];
-    _predicted_values = jr["values"].get<decltype(_predicted_values)>();
+  void fromRecord(const Record& r) {
+    Result result = Result::createFromJson(r.result.reply);
+    
+    _offline_all_moves = sgfstr2coords(result.content);
+    _offline_winner = result.reward > 0 ? 1.0 : -1.0;
+
+    _mcts_policies = result.policies;
+    curr_request_ = Request::createFromJson(r.request.state);
+    _seq = r.seq;
+    _predicted_values = result.values;
     _state.reset();
   }
 

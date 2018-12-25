@@ -132,7 +132,7 @@ Coord GoGameSelfPlay::mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c) {
   return c;
 }
 
-StepStatus GoGameSelfPlay::finish_game(FinishReason reason, json *j) {
+StepStatus GoGameSelfPlay::finish_game(FinishReason reason, Record *r) {
   if (!_state_ext.currRequest().vers.is_selfplay() &&
       options_.cheat_eval_new_model_wins_half) {
     reason = FR_CHEAT_NEWER_WINS_HALF;
@@ -162,7 +162,7 @@ StepStatus GoGameSelfPlay::finish_game(FinishReason reason, json *j) {
     _ai2->endGame(_state_ext.state());
   }
 
-  *j = _state_ext.dumpRecord();
+  *r = _state_ext.dumpRecord();
 
   game_stats_.resetRankingIfNeeded(options_.num_reset_ranking);
   game_stats_.feedWinRate(_state_ext.state().getFinalValue());
@@ -248,11 +248,11 @@ void GoGameSelfPlay::restart() {
   }
 }
 
-bool GoGameSelfPlay::onReceive(const json& req, MsgReply* reply) {
+bool GoGameSelfPlay::onReceive(const MsgRequest& req, MsgReply* reply) {
   if (*reply == UPDATE_COMPLETE)
     return false;
 
-  Request request = Request::createFromJson(req);
+  Request request = Request::createFromJson(req.state);
 
   bool is_waiting = request.vers.wait();
   bool is_prev_waiting = _state_ext.currRequest().vers.wait();
@@ -304,7 +304,7 @@ ThreadState GoGameSelfPlay::getThreadState() const {
   return _state_ext.getThreadState(); 
 }
 
-StepStatus GoGameSelfPlay::step(elf::game::Base* base, json *j) {
+StepStatus GoGameSelfPlay::step(elf::game::Base* base, Record *r) {
   base_ = base;
   auto *client = base_->client();
 
@@ -321,7 +321,7 @@ StepStatus GoGameSelfPlay::step(elf::game::Base* base, json *j) {
   if (_human_player != nullptr) {
     do {
       if (s.terminated()) {
-        return finish_game(FR_ILLEGAL, j);
+        return finish_game(FR_ILLEGAL, r);
       }
 
       GoHumanInfo info;
@@ -342,19 +342,19 @@ StepStatus GoGameSelfPlay::step(elf::game::Base* base, json *j) {
       
       if (reply.c == M_CLEAR) {
         if (!_state_ext.state().justStarted()) {
-          return finish_game(FR_CLEAR, j);
+          return finish_game(FR_CLEAR, r);
         }
         return StepStatus::RUNNING;
       }
 
       if (reply.c == M_RESIGN) {
-        return finish_game(FR_RESIGN, j);
+        return finish_game(FR_RESIGN, r);
       }
       // Otherwise we forward.
       if (_state_ext.forward(reply.c)) {
         if (_state_ext.state().isTwoPass()) {
           // If the human opponent pass, we pass as well.
-          return finish_game(FR_TWO_PASSES, j);
+          return finish_game(FR_TWO_PASSES, r);
         }
         return StepStatus::RUNNING;
       }
@@ -413,12 +413,12 @@ StepStatus GoGameSelfPlay::step(elf::game::Base* base, json *j) {
 
   const bool shouldResign = _state_ext.shouldResign(&base_->rng());
   if (shouldResign && s.getPly() >= 50) {
-    return finish_game(FR_RESIGN, j);
+    return finish_game(FR_RESIGN, r);
   }
 
   if (_preload_sgf.numMoves() > 0) {
     if (_sgf_iter.done()) {
-      return finish_game(FR_MAX_STEP, j);
+      return finish_game(FR_MAX_STEP, r);
     }
     Coord new_c = _sgf_iter.getCurrMove().move;
     logger_->info(
@@ -446,10 +446,12 @@ StepStatus GoGameSelfPlay::step(elf::game::Base* base, json *j) {
     auto reason = s.isTwoPass()
         ? FR_TWO_PASSES
         : s.getPly() >= BOARD_MAX_MOVE ? FR_MAX_STEP : FR_ILLEGAL;
-    return finish_game(reason, j);
+    return finish_game(reason, r);
   }
 
   if (options_.move_cutoff > 0 && s.getPly() >= options_.move_cutoff) {
-    return finish_game(FR_MAX_STEP, j);
+    return finish_game(FR_MAX_STEP, r);
   }
+
+  return StepStatus::RUNNING;
 }

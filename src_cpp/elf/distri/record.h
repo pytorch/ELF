@@ -89,11 +89,12 @@ struct Record {
   uint64_t timestamp = 0;
   uint64_t thread_id = 0;
   int seq = 0;
+  bool offline = false;
 
   std::string info() const {
     std::stringstream ss;
     ss << "[t=" << timestamp << "][id=" << thread_id << "][seq=" << seq
-       << "]" << std::endl;
+       << "][offline=" << offline << "]" << std::endl;
     // ss << request.info() << std::endl;
     // ss << result.info() << std::endl;
     return ss.str();
@@ -105,6 +106,7 @@ struct Record {
     JSON_SAVE(j, timestamp);
     JSON_SAVE(j, thread_id);
     JSON_SAVE(j, seq);
+    JSON_SAVE(j, offline);
   }
 
   static Record createFromJson(const json& j) {
@@ -115,6 +117,7 @@ struct Record {
     JSON_LOAD(r, j, timestamp);
     JSON_LOAD(r, j, thread_id);
     JSON_LOAD(r, j, seq);
+    JSON_LOAD(r, j, offline);
     return r;
   }
 

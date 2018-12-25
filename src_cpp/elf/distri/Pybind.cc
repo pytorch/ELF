@@ -30,14 +30,12 @@ void registerPy(pybind11::module& m) {
   py::class_<Server>(m, "Server")
       .def(py::init<const Options&>())
       .def("setGameContext", &Server::setGameContext)
-      .def("setFactory", &Server::setFactory)
-      .def("getParams", &Server::getParams);
+      .def("setInterface", &Server::setInterface);
 
   py::class_<Client>(m, "Client")
       .def(py::init<const Options&>())
       .def("setGameContext", &Client::setGameContext)
-      .def("setFactory", &Client::setFactory)
-      .def("getParams", &Client::getParams);
+      .def("setInterface", &Client::setInterface);
 }
 
 }  // namespace cs

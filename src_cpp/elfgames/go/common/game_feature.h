@@ -11,6 +11,7 @@
 #include "../base/go_state.h"
 #include "go_game_specific.h"
 #include "go_state_ext.h"
+#include "../mcts/ai.h"
 
 #include "elf/interface/extractor.h"
 
@@ -179,7 +180,8 @@ class GoFeature {
     *ver = msg.model_ver;
   }
 
-  void registerExtractor(int batchsize, elf::Extractor& e) {
+  elf::Extractor registerExtractor(int batchsize) {
+    elf::Extractor e;
     // Register multiple fields.
     auto& s = e.addField<float>("s").addExtents(
         batchsize, {batchsize, _num_plane, BOARD_SIZE, BOARD_SIZE});
@@ -239,6 +241,8 @@ class GoFeature {
 
     e.addClass<MsgVersion>().addFunction<int64_t>(
         "selfplay_ver", extractSelfplayVersion);
+
+    return e;
   }
 
   std::map<std::string, int> getParams() const {
