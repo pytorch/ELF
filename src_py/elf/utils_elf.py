@@ -59,7 +59,7 @@ class NameConverter:
             info.stride = [i * v.element_size() for i in v.stride()]
             info.p = v.data_ptr()
             if type_name is None:
-                info.type = self.torch2c(v) 
+                info.type = self.torch2c(v)
             else:
                 info.type = type_name
         elif isinstance(v, np.ndarray):
@@ -67,7 +67,7 @@ class NameConverter:
             info.p = v.ctypes.data
             info.stride = v.strides
             if type_name is None:
-                info.type = self.numpy2c(v) 
+                info.type = self.numpy2c(v)
             else:
                 info.type = type_name
         else:
@@ -76,7 +76,7 @@ class NameConverter:
 
 class Allocator(object):
     ''' A wrapper class for batch data'''
-    def __init__(self, GC, game_obj, batchsize, spec, batchdim=0, histdim=None, 
+    def __init__(self, GC, game_obj, batchsize, spec, batchdim=0, histdim=None,
             use_numpy=False, default_gpu=None, num_recv=1):
         self.converter = NameConverter()
 
@@ -584,7 +584,7 @@ def allocExtractor(e, batchsize, spec):
             "a": { "uint32_t", (action_size) }
         }
     }
-    
+
     '''
     desc = {}
     for name, spec_one in spec.items():
@@ -596,7 +596,7 @@ def allocExtractor(e, batchsize, spec):
             desc[name][sel] = list()
             for entry, spec in spec_one[sel].items():
                 func_name = "addField_" + spec[0]
-                sz = [batchsize] + list(spec[1]) if isinstance(spec[1], (tuple,list)) else [spec[1]]
+                sz = [bs] + (list(spec[1]) if isinstance(spec[1], (tuple,list)) else [spec[1]])
 
                 eval(f"e.{func_name}(\"{entry}\", {bs}, {sz})")
                 desc[name][sel].append(entry)

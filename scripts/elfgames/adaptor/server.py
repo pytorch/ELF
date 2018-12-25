@@ -46,6 +46,7 @@ class RunGC(object):
         width = 210 // 2
         height = 160 // 2
         T = 6
+        num_action = 4
 
         spec = {}
         spec["actor"] = dict(
