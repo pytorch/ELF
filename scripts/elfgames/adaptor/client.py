@@ -32,6 +32,7 @@ while True:
     terminal = False
     while not terminal:
         wrapper.wrapper.sendAndWaitReply()
+        # print(mem["a"])
         n += 1
         if n == 20:
             elapsed = time.perf_counter() - start

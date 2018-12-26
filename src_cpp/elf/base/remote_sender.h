@@ -32,16 +32,25 @@ class _Server {
     : send_q_(send_q), recv_q_(recv_q) {
     server_.reset(new msg::Server(netOptions));
 
-    auto replier = [&](const std::string& identity, std::string* reply_msg) {
-      (void)identity;
+    auto replier = [&](std::string* identity, std::string* reply_msg) {
       // Send request
       // std::cout << "Wait message .." << std::endl;
-      int dummy;
-      *reply_msg = send_q_[identity].dumpClear(&dummy);
-      return true;
+      auto func = [&](const std::string &id, SendQ::value_type *q) {
+        int num_records;
+        *reply_msg = q->dumpClear(&num_records);
+        if (num_records > 0) {
+          *identity = id;
+          // std::cout << "Reply back with size: " << num_records << ", size: " << reply_msg->size() << ", id: " << id << std::endl;
+          return true;
+        } else return false;
+      };
+
+      std::lock_guard<std::mutex> lock(mutex_);
+      return send_q_.findFirst(ids_, func) ? msg::MORE_REPLY : msg::NO_REPLY;
     };
 
     auto proc = [&](const std::string& identity, const std::string& recv_msg) {
+      // std::cout << "Get message from .." << identity << ", size: " << recv_msg.size() << std::endl;
       recv_q_[identity].parseAdd(recv_msg);
       return true;
     };
@@ -50,10 +59,18 @@ class _Server {
     server_->start();
   }
 
+  void regId(const std::string &id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ids_.insert(id);
+  }
+
  private:
   std::unique_ptr<msg::Server> server_;
   SendQ &send_q_;
   RecvQ &recv_q_;
+
+  std::mutex mutex_;
+  std::set<std::string> ids_;
 };
 
 class Servers : public Interface {
@@ -88,33 +105,35 @@ class Servers : public Interface {
       // Final labels.
       std::lock_guard<std::mutex> lock(mutex_);
       identities_[identity].labels = labels;
-      return true;
     };
 
     // Setup ctrl_server_
-    auto replier = [&](const std::string& identity, std::string* reply_msg) {
+    auto replier = [&](std::string* p_identity, std::string* reply_msg) {
+      const auto &identity = *p_identity;
       std::vector<std::string> labels;
       {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto &client = identities_[identity];
-        if (! client.new_client) return false;
+        if (! client.new_client) return msg::NO_REPLY;
         labels = client.labels;
       }
 
       json info;
       info["valid"] = true;
       info["labels"] = labels;
-      int start_port = rng_() % kPortPerServer;
+      int server_idx = rng_() % kPortPerServer;
+      // Randomly assign kPortPerClient out of kPortPerServer to the client.
       for (int i = 0; i < kPortPerClient; ++i) {
-        int curr_port = netOptions_.port + start_port;
+        int curr_port = netOptions_.port + server_idx;
 
         const std::string id = identity + "_" + std::to_string(curr_port) + "_" + std::to_string(rng_() % 10000);
         send_q_.addQ(id, labels);
         recv_q_.addQ(id, labels);
+        servers_[server_idx]->regId(id);
 
         info["client_identity"].push_back(id);
         info["port"].push_back(curr_port);
-        start_port = (start_port + 1) % kPortPerServer;
+        server_idx = (server_idx + 1) % kPortPerServer;
       }
 
       {
@@ -124,7 +143,7 @@ class Servers : public Interface {
       }
 
       *reply_msg = info.dump();
-      return true;
+      return msg::FINAL_REPLY;
     };
 
     auto proc = [&](const std::string& identity, const std::string& recv_msg) {

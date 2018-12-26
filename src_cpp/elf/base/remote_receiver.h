@@ -26,26 +26,34 @@ class _Client {
      send_q_ = &send_q.addQ(id, labels);
      recv_q_ = &recv_q.addQ(id, labels);
 
-     auto receiver = [&](const std::string& recv_msg) -> int64_t {
+     auto receiver = [&](const std::string& recv_msg) {
        // Get data
        // if (recv_msg.size() > 20) {
        //  std::cout << "recv #size: " << recv_msg.size() << std::endl;
        // }
+       // std::cout << "Get reply. " << recv_msg.size() << std::endl;
        recv_q_->parseAdd(recv_msg);
-       return -1;
      };
 
-     auto sender = [&]() {
+     auto sender = [&](std::string *msg) {
        // std::cout << timestr() << ", Dump data" << std::endl;
        int num_record;
-       std::string s = send_q_->dumpClear(&num_record);
-       if (num_record == 0) {
-         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+       *msg = send_q_->dumpClear(&num_record);
+       if (num_record > 0) {
+         // std::cout << "Send with #record: " << num_record << std::endl;
+         return msg::FINAL_REPLY;
+       } else {
+         // std::cout << "#record: " << num_record << std::endl;
+         return msg::NO_REPLY;
        }
-       return s;
      };
 
-     client_->setCallbacks(sender, receiver);
+     auto timer = [&]() {
+       int num_record;
+       return send_q_->dumpClear(&num_record);
+     };
+
+     client_->setCallbacks(sender, receiver, timer);
      client_->start();
    }
 
@@ -79,10 +87,11 @@ class Clients : public Interface {
     ctrl_client_.reset(new msg::Client(netOptions_));
     netOptions_.hello_message = "";
 
-    auto receiver = [&](const std::string& recv_msg) -> int64_t {
+    auto receiver = [&](const std::string& recv_msg) {
       // Get data
+      // std::cout << "\"" << recv_msg << "\"" << std::endl;
       json j = json::parse(recv_msg);
-      if (!j["valid"]) return -1;
+      if (!j["valid"]) return;
 
       assert(j["port"].size() == kPortPerClient);
 
@@ -99,12 +108,12 @@ class Clients : public Interface {
         clients_.emplace_back(new _Client(netOptions));
         clients_.back()->start(j["labels"], send_q_, recv_q_);
       }
-      return -1;
     };
 
-    auto sender = [&]() {
+    auto sender = [&](std::string *msg) {
       // std::cout << "In sender... " << std::endl;
-      return "";
+      *msg = "";
+      return msg::FINAL_REPLY;
     };
 
     ctrl_client_->setCallbacks(sender, receiver);

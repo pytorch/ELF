@@ -1,6 +1,9 @@
 #pragma once
 
 #include "elf/concurrency/ConcurrentQueue.h"
+#include "elf/utils/utils.h"
+
+#include <set>
 
 namespace elf {
 namespace remote {
@@ -146,10 +149,12 @@ class RecvSingle : public RecvSingleInterface, public SingleQBase {
 template <typename T>
 class QBase {
  public:
+  using value_type = T;
   using Ls = std::vector<std::string>;
   using Gen = std::function<std::unique_ptr<T> (const Ls &)>;
 
   using SafeFunc = std::function<bool (const Ls &, const std::vector<T *> &)>;
+  using FilterFunc = std::function<bool (const std::string &, T *)>;
 
   QBase() : rng_(time(NULL)) { }
   void setGen(Gen gen) { gen_ = gen; }
@@ -161,7 +166,7 @@ class QBase {
     auto info = msg_qs_.insert(make_pair(identity, nullptr));
     if (! info.second) {
       std::cout << "addQ: identity " << identity << " has already been added!" << std::endl;
-      assert(false);
+      elf_utils::check(false);
     }
 
     for (const auto &label : labels) {
@@ -176,10 +181,30 @@ class QBase {
     std::lock_guard<std::mutex> locker(mutex_);
     auto it = msg_qs_.find(identity);
     if (it == msg_qs_.end()) {
-      std::cout << "QBase: Cannot find " << identity << std::endl;
-      assert(false);
+      std::cout << "QBase: Cannot find \"" << identity << "\"" << std::endl;
+      elf_utils::check(false);
     }
     return *it->second;
+  }
+
+  bool findFirst(FilterFunc func) {
+    // TODO: better release the locker when calling the function.
+    std::lock_guard<std::mutex> locker(mutex_);
+    for (auto &p : msg_qs_) {
+      if (func(p.first, p.second.get())) return true;
+    }
+    return false;
+  }
+
+  bool findFirst(const std::set<std::string> &ids, FilterFunc func) {
+    // TODO: better release the locker when calling the function.
+    std::lock_guard<std::mutex> locker(mutex_);
+    for (const auto &id : ids) {
+      auto it = msg_qs_.find(id);
+      assert(it != msg_qs_.end());
+      if (func(id, it->second.get())) return true;
+    }
+    return false;
   }
 
  private:

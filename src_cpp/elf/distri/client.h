@@ -13,7 +13,7 @@
 
 #include "game_interface.h"
 
-namespace elf { 
+namespace elf {
 
 namespace cs {
 
@@ -119,32 +119,33 @@ class WriterCallback {
  public:
   WriterCallback(ThreadedWriter* writer, Ctrl& ctrl)
       : ctrl_(ctrl), records_(writer->identity()) {
+    using std::placeholders::_1;
+
     writer->setCallbacks(
-        std::bind(&WriterCallback::OnSend, this),
-        std::bind(&WriterCallback::OnRecv, this, std::placeholders::_1));
+        std::bind(&WriterCallback::OnSend, this, _1),
+        std::bind(&WriterCallback::OnRecv, this, _1),
+        std::bind(&WriterCallback::OnTimer, this));
     writer->start();
   }
 
-  int64_t OnRecv(const std::string& smsg) {
+  void OnRecv(const std::string& smsg) {
     // Send data.
     std::cout << "WriterCB: RecvMsg: " << smsg << std::endl;
-    ctrl_.sendMail("dispatcher", 
+    ctrl_.sendMail("dispatcher",
         MsgRequest::createFromJson(json::parse(smsg)));
-    return -1;
   }
 
-  std::string OnSend() {
+  msg::ReplyStatus OnSend(std::string *msg) {
     size_t sz = records_.size();
-    std::string msg = records_.dumpAndClear();
+    if (sz == 0) return msg::NO_REPLY;
+
+    *msg = records_.dumpAndClear();
     std::cout << "WriterCB: SendMsg: " << sz << std::endl;
+    return msg::FINAL_REPLY;
+  }
 
-    // If there is no record, wait a few seconds then send (to reduce server's load)
-    if (sz == 0) {
-      // TODO: OpenGo this is 60 seconds
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-
-    return msg;
+  std::string OnTimer() {
+    return records_.dumpAndClear();
   }
 
   void addRecord(Record &&r) {
@@ -226,7 +227,7 @@ class Client {
     ClientGame *game_ = nullptr;
     int counter_ = 0;
 
-    _Game(int game_idx, Client *client) 
+    _Game(int game_idx, Client *client)
       : game_idx_(game_idx), c_(client) {
       game_ = c_->client_interface_->createGame(game_idx);
     }

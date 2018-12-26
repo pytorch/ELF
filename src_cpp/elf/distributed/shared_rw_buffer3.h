@@ -41,80 +41,49 @@ class Base {
   }
 
  protected:
-  // Receive message, and return RecvStatus, std::string * returns the content
-  // it obtained.
-  virtual RecvStatus onReceive(std::string*) = 0;
+  // Receive message, and return RecvStatus.
+  virtual RecvStatus onReceive() = 0;
 
-  // Send message given the content it receives. Derived class needs to deal
-  // with case that the content is nullptr (error happens).
-  virtual int64_t onSend(const std::string*) = 0;
-
-  int64_t getSeq() const {
-    return seq_;
-  }
+  // Send message.
+  // if onSend actually sends data return true, else return false;
+  virtual bool onSend() = 0;
 
  private:
-  void _send(const std::string* msg) {
-    int64_t msg_seq = onSend(msg);
-    if (msg_seq >= 0 && msg_seq != seq_) {
-      std::cout << "Warning! The sequence number [" << msg_seq
-                << "] in the msg is different from " << seq_ << std::endl;
-    } else {
-      seq_ = msg_seq + 1;
-    }
-    usec_since_last_sent_ = elf_utils::usec_since_epoch_from_now();
-  }
+  void main_loop() {
+    uint64_t now = elf_utils::usec_since_epoch_from_now();
 
-  void onRecvNoContent(uint64_t dt) {
+    RecvStatus recv_status = onReceive();
+    if (recv_status == RECV_ERROR) {
+      throw std::runtime_error(name_ + " receive error!!");
+    }
+    auto dt = now - usec_last_sent_;
+    bool received = (recv_status == RECV_OK);
+
     if (options_.verbose) {
-      std::cout << elf_utils::now() << ", " << name_
-                << ", no message, seq=" << seq_ << ", since_last_usec=" << dt
-                << std::endl;
+      if (! received) {
+        std::cout << elf_utils::now() << ", " << name_
+          << ", no message, since_last_usec=" << dt
+          << std::endl;
+      } else {
+        std::cout << elf_utils::now() << ", " << name_
+          << ", In reply func: Message got. since_last_usec=" << dt
+          << std::endl;
+      }
     }
 
-    if (options_.usec_resend_when_no_msg < 0 ||
-        dt < (uint64_t)options_.usec_resend_when_no_msg) {
+    bool sent = false;
+    if (onSend()) {
+      usec_last_sent_ = elf_utils::usec_since_epoch_from_now();
+      sent = true;
+    }
+
+    if (! sent && ! received) {
       if (options_.verbose) {
         std::cout << name_ << ", sleep for " << options_.usec_sleep_when_no_msg
                   << " usec .. " << std::endl;
       }
       std::this_thread::sleep_for(
           std::chrono::microseconds(options_.usec_sleep_when_no_msg));
-    } else {
-      if (options_.verbose) {
-        std::cout << ", no reply for too long (" << dt << '>'
-                  << options_.usec_resend_when_no_msg << " usec), resending"
-                  << std::endl;
-      }
-      _send(nullptr);
-    }
-  }
-
-  void onRecvOk(uint64_t dt, const std::string& smsg) {
-    if (options_.verbose) {
-      std::cout << elf_utils::now() << ", " << name_
-                << ", In reply func: Message got. since_last_usec=" << dt
-                << ", seq=" << seq_ << std::endl;
-    }
-    _send(&smsg);
-  }
-
-  void main_loop() {
-    uint64_t now = elf_utils::usec_since_epoch_from_now();
-
-    std::string smsg;
-    RecvStatus recv_status = onReceive(&smsg);
-    auto dt = now - usec_since_last_sent_;
-
-    switch (recv_status) {
-      case RECV_OK:
-        onRecvOk(dt, smsg);
-        break;
-      case RECV_NO_MSG:
-        onRecvNoContent(dt);
-        break;
-      case RECV_ERROR:
-        throw std::runtime_error(name_ + " receive error!!");
     }
   }
 
@@ -122,30 +91,45 @@ class Base {
   elf::shared::Options options_;
   std::shared_ptr<spdlog::logger> logger_;
 
+  uint64_t usec_since_last_sent() const {
+    return elf_utils::usec_since_epoch_from_now() - usec_last_sent_;
+  }
+
  private:
   std::unique_ptr<std::thread> thread_;
   std::atomic_bool done_;
 
   const std::string name_;
 
-  uint64_t usec_since_last_sent_ = elf_utils::usec_since_epoch_from_now();
-  int64_t seq_ = 0;
+  uint64_t usec_last_sent_ = elf_utils::usec_since_epoch_from_now();
 };
+
+enum ReplyStatus { NO_REPLY, MORE_REPLY, FINAL_REPLY };
 
 class Server : public Base {
  public:
+  // Return true if the message is processed correctly.
+  // false if there is error during processing.
   using ProcessFunc = std::function<
       bool(const std::string& identity, const std::string& recv_msg)>;
 
+  // Deal with first time control message.
+  using CtrlFunc = std::function<
+      void(const std::string& identity, const std::string& recv_msg)>;
+
+  // Reply function. Return MORE_REPLY / FINAL_REPLY if there is a message to be sent.
+  // Reply function will be called repeatedly until the return value is NO_REPLY or FINAL_REPLY.
+  // identity was initially set to the current identity (can be empty string if there is no message received in this pass).
+  //   and can be specified if we want to send the message to other identities.
   using ReplyFunc =
-      std::function<bool(const std::string& identity, std::string* reply_msg)>;
+      std::function<ReplyStatus (std::string* identity, std::string* reply_msg)>;
 
   Server(const elf::shared::Options& opt)
       : Base("elf::msg::Server", opt),
         receiver_(opt.port, opt.use_ipv6),
         rng_(time(NULL)) {}
 
-  void setCallbacks(ProcessFunc proc_func, ReplyFunc replier = nullptr, ProcessFunc ctrl_func = nullptr) {
+  void setCallbacks(ProcessFunc proc_func, ReplyFunc replier = nullptr, CtrlFunc ctrl_func = nullptr) {
     proc_func_ = proc_func;
     ctrl_func_ = ctrl_func;
     replier_ = replier;
@@ -165,8 +149,8 @@ class Server : public Base {
   ProcessFunc proc_func_ = nullptr;
   ReplyFunc replier_ = nullptr;
 
-  // Get called when the server first get data from the client. 
-  ProcessFunc ctrl_func_ = nullptr;
+  // Get called when the server first get data from the client.
+  CtrlFunc ctrl_func_ = nullptr;
 
   // Current identity;
   std::string curr_identity_;
@@ -176,62 +160,76 @@ class Server : public Base {
   int num_package_ = 0, num_failed_ = 0, num_skipped_ = 0;
 
  protected:
-  RecvStatus onReceive(std::string* msg) override {
-    if (!receiver_.recv_noblock(&curr_identity_, &curr_title_, msg)) {
+  RecvStatus onReceive() override {
+    std::string msg;
+    if (!receiver_.recv_noblock(&curr_identity_, &curr_title_, &msg)) {
       curr_identity_.clear();
       curr_title_.clear();
       return RECV_NO_MSG;
-    } else {
-      return RECV_OK;
     }
-  }
-
-  // Send message given the content it receives. Derived class needs to deal
-  // with case that the content is nullptr (error happens).
-  int64_t onSend(const std::string* msg) override {
-    if (msg == nullptr)
-      return -1;
 
     if (curr_title_ == "ctrl") {
       if (ctrl_func_ != nullptr) {
-        ctrl_func_(curr_identity_, *msg);
+        ctrl_func_(curr_identity_, msg);
       }
       client_size_++;
       if (options_.verbose) {
         std::cout << elf_utils::now() << " Ctrl from " << curr_identity_ << "["
-                  << client_size_ << "]: " << *msg << std::endl;
+          << client_size_ << "]: " << msg << std::endl;
       }
       // receiver_.send(identity, "ctrl", "");
     } else if (curr_title_ == "content") {
-      if (!proc_func_(curr_identity_, *msg)) {
+      if (!proc_func_(curr_identity_, msg)) {
         std::cout << "Msg processing error! from " << curr_identity_
-                  << std::endl;
+          << std::endl;
         num_failed_++;
       } else {
         num_package_++;
       }
     } else {
       std::cout << elf_utils::now() << " Skipping unknown title: \""
-                << curr_title_ << "\", identity: \"" << curr_identity_ << "\""
-                << std::endl;
+        << curr_title_ << "\", identity: \"" << curr_identity_ << "\""
+        << std::endl;
       num_skipped_++;
     }
+    return RECV_OK;
+  }
 
+  // Send message given the content it receives. Derived class needs to deal
+  // with case that the content is nullptr (error happens).
+  bool onSend() override {
+    // For server, if received == false then curr_identity_ is also empty.
     // Send reply if there is any.
-    if (replier_ != nullptr) {
+    if (replier_ == nullptr) return false;
+
+    bool sent = false;
+    ReplyStatus status;
+    do {
       std::string reply;
-      if (replier_(curr_identity_, &reply)) {
-        receiver_.send(curr_identity_, "reply", reply);
+      std::string identity = curr_identity_;
+      status = replier_(&identity, &reply);
+      if (status != NO_REPLY) {
+        // std::cout << "Send reply. size: " << reply.size() << ", id: " << identity << std::endl;
+        receiver_.send(identity, "reply", reply);
+        sent = true;
       }
-    }
-    return -1;
+    } while (status == MORE_REPLY);
+    return sent;
   }
 };
 
 class Client : public Base {
  public:
-  using RecvFunc = std::function<int64_t(const std::string&)>;
-  using SendFunc = std::function<std::string()>;
+  // The function is called if we receive message from the server.
+  using RecvFunc = std::function<void (const std::string&)>;
+
+  // Return MORE_REPLY or FINAL_REPLY if the function has message to be sent
+  // It will be kept calleing until the return status becomes NO_REPLY or FINAL_REPLY.
+  using SendFunc = std::function<ReplyStatus (std::string *)>;
+
+  // IF for a long time no message is sent to the server, call this function
+  // to send one additional (to keep alive).
+  using TimerFunc = std::function<std::string()>;
 
   Client(const elf::shared::Options& netOptions)
       : Base("elf::msg::Client", netOptions) {
@@ -242,10 +240,10 @@ class Client : public Base {
         writer_->info(),
         currTimestamp);
 
-    auto msg = 
+    auto msg =
       netOptions.hello_message.size() > 0 ?
-        netOptions.hello_message : 
-        std::to_string(currTimestamp); 
+        netOptions.hello_message :
+        std::to_string(currTimestamp);
     writer_->Ctrl(msg);
   }
 
@@ -253,9 +251,10 @@ class Client : public Base {
     return writer_->identity();
   }
 
-  void setCallbacks(SendFunc send_func, RecvFunc recv_func) {
+  void setCallbacks(SendFunc send_func, RecvFunc recv_func, TimerFunc timer_func = nullptr) {
     send_func_ = send_func;
     recv_func_ = recv_func;
+    timer_func_ = timer_func;
   }
 
  protected:
@@ -263,26 +262,43 @@ class Client : public Base {
 
   SendFunc send_func_ = nullptr;
   RecvFunc recv_func_ = nullptr;
+  TimerFunc timer_func_ = nullptr;
 
-  RecvStatus onReceive(std::string* msg) override {
-    if (!writer_->getReplyNoblock(msg)) {
+  RecvStatus onReceive() override {
+    std::string msg;
+    if (!writer_->getReplyNoblock(&msg)) {
       return RECV_NO_MSG;
     } else {
+      recv_func_(msg);
       return RECV_OK;
     }
   }
 
   // Send message given the content it receives. Derived class needs to deal
   // with case that the content is nullptr (error happens).
-  int64_t onSend(const std::string* msg) override {
-    int64_t msg_seq = getSeq();
-    if (msg != nullptr) {
-      msg_seq = recv_func_(*msg);
-    }
+  bool onSend() override {
     assert(send_func_ != nullptr);
-    std::string s = send_func_();
-    writer_->Insert(s);
-    return msg_seq;
+
+    bool sent = false;
+    ReplyStatus status;
+
+    do {
+      std::string s;
+      status = send_func_(&s);
+      if (status != NO_REPLY) {
+        writer_->Insert(s);
+        sent = true;
+      }
+    } while (status == MORE_REPLY);
+
+    if (! sent && timer_func_ != nullptr && usec_since_last_sent() >= 1000000) {
+      // If time permits, we send a timer message.
+      // If nothing happens in 1s we send a timer.
+      writer_->Insert(timer_func_());
+      sent = true;
+    }
+
+    return sent;
   }
 };
 

@@ -12,7 +12,7 @@
 #include "shared_rw_buffer3.h"
 
 namespace elf {
-namespace msg { 
+namespace msg {
 
 struct Stats {
   std::atomic<int> client_size;
@@ -91,17 +91,20 @@ class DataOnlineLoader {
     };
 
     auto replier_func =
-        [&, interface](const std::string& identity, std::string* msg) -> bool {
-      interface->OnReply(identity, msg);
+        [&, interface](std::string* identity, std::string* msg) {
+      if (identity->empty()) return NO_REPLY;
+
+      interface->OnReply(*identity, msg);
 
       if (logger_->should_log(spdlog::level::level_enum::debug)) {
         logger_->debug(
             "Replier: about to send: recipient {}; msg {}; reader {}",
-            identity,
+            *identity,
             *msg,
             server_->info());
       }
-      return true;
+      // Only send one message back.
+      return FINAL_REPLY;
     };
 
     server_->setCallbacks(proc_func, replier_func);

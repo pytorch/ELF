@@ -293,7 +293,7 @@ class SharedMemRemote : public SharedMem {
       auto &curr_smem = remote_smem_[identities_.size()];
       identities_.push_back(identity);
 
-     //  std::cout << elf_utils::now() << "remote_smem info: " << curr_smem.info() << std::endl;
+      // std::cout << elf_utils::now() << "remote_smem info: " << curr_smem.info() << std::endl;
 
       SMemFromJson(json::parse(msg), curr_smem);
       cum_batchsize_ += curr_smem.getEffectiveBatchSize();
