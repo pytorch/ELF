@@ -5,6 +5,7 @@ import torch
 from elf import GCWrapper, allocExtractor
 from elf.options import auto_import_options, PyOptionSpec
 from model import MyModel
+import psutil
 
 import _elf as elf
 
@@ -80,10 +81,19 @@ class RunGC(object):
         if has_gpu:
             self.model.cuda(self.options.gpu)
         # self.optim = torch.optimi.Adam(self.model.parameters())
+        self.n = 0
 
     def on_actor(self, batch):
-        res = self.model(batch["s"])
+        res = self.model(batch)
         m = torch.distributions.Categorical(res["pi"].data)
+        self.n += 1
+        if self.n == 20:
+            # gives a single float value
+            #print(psutil.cpu_percent())
+            # gives an object with many fields
+            #print(psutil.virtual_memory())
+            self.n = 0
+
         return dict(a=m.sample(), pi=res["pi"].data, V=res["V"].data)
 
     def on_train(self, batch):

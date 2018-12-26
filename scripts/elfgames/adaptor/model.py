@@ -8,6 +8,7 @@ import os
 
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 
 from elf.options import auto_import_options, PyOptionSpec
 
@@ -34,11 +35,11 @@ class MyModel(nn.Module):
         self.latent_dim = latent_dim
 
     def forward(self, x):
-        s = self._var(x["s"])
+        s = Variable(x["s"])
 
         s = self.trunk(s.view(-1, self.input_dim))
         s = self.relu(s)
-        
+
         pi = self.pi_linear(s)
         logpi = self.logsoftmax(pi)
         pi = logpi.exp()

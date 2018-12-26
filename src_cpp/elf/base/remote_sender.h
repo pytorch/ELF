@@ -28,15 +28,16 @@ namespace remote {
 
 class _Server {
  public:
-  _Server(const elf::shared::Options& netOptions, SendQ &send_q, RecvQ &recv_q) 
-    : send_q_(send_q), recv_q_(recv_q) { 
+  _Server(const elf::shared::Options& netOptions, SendQ &send_q, RecvQ &recv_q)
+    : send_q_(send_q), recv_q_(recv_q) {
     server_.reset(new msg::Server(netOptions));
 
     auto replier = [&](const std::string& identity, std::string* reply_msg) {
       (void)identity;
       // Send request
       // std::cout << "Wait message .." << std::endl;
-      *reply_msg = send_q_[identity].dumpClear();
+      int dummy;
+      *reply_msg = send_q_[identity].dumpClear(&dummy);
       return true;
     };
 
@@ -59,7 +60,7 @@ class Servers : public Interface {
  public:
   using Ls = std::vector<std::string>;
 
-  Servers(const elf::shared::Options &netOptions, const std::vector<std::string> &labels) 
+  Servers(const elf::shared::Options &netOptions, const std::vector<std::string> &labels)
     : netOptions_(netOptions), rng_(time(NULL)), labels_(labels) {
     std::sort(labels_.begin(), labels_.end());
 
@@ -77,14 +78,14 @@ class Servers : public Interface {
       netOptions_.port = base_port + i;
       servers_.emplace_back(new _Server(netOptions_, send_q_, recv_q_));
     }
-    netOptions_.port = base_port; 
+    netOptions_.port = base_port;
 
     auto controller = [&](const std::string& identity, const std::string& msg) {
       json j = json::parse(msg);
       // std::cout << j << std::endl;
       std::vector<std::string> labels = getIntersect(labels_, j["labels"]);
 
-      // Final labels. 
+      // Final labels.
       std::lock_guard<std::mutex> lock(mutex_);
       identities_[identity].labels = labels;
       return true;
@@ -95,7 +96,7 @@ class Servers : public Interface {
       std::vector<std::string> labels;
       {
         std::lock_guard<std::mutex> lock(mutex_);
-        const auto &client = identities_[identity]; 
+        const auto &client = identities_[identity];
         if (! client.new_client) return false;
         labels = client.labels;
       }
@@ -105,20 +106,20 @@ class Servers : public Interface {
       info["labels"] = labels;
       int start_port = rng_() % kPortPerServer;
       for (int i = 0; i < kPortPerClient; ++i) {
-        int curr_port = netOptions_.port + start_port; 
+        int curr_port = netOptions_.port + start_port;
 
         const std::string id = identity + "_" + std::to_string(curr_port) + "_" + std::to_string(rng_() % 10000);
         send_q_.addQ(id, labels);
         recv_q_.addQ(id, labels);
 
         info["client_identity"].push_back(id);
-        info["port"].push_back(curr_port); 
+        info["port"].push_back(curr_port);
         start_port = (start_port + 1) % kPortPerServer;
       }
 
       {
         std::lock_guard<std::mutex> lock(mutex_);
-        auto &client = identities_[identity]; 
+        auto &client = identities_[identity];
         client.new_client = false;
       }
 
@@ -155,16 +156,16 @@ class Servers : public Interface {
   std::unordered_map<std::string, IdentityInfo> identities_;
 
   static std::vector<std::string> getIntersect(
-        const std::vector<std::string> &labels1, 
+        const std::vector<std::string> &labels1,
         const std::vector<std::string> &labels2) {
-      // Compute an intersection of j["labels"] and our labels. 
+      // Compute an intersection of j["labels"] and our labels.
       std::unordered_map<std::string, int> tmp_counts;
       for (const auto &label : labels1) tmp_counts[label] ++;
       for (const auto &label : labels2) tmp_counts[label] ++;
 
       std::vector<std::string> final_labels;
-      for (const auto &p : tmp_counts) 
-        if (p.second == 2) 
+      for (const auto &p : tmp_counts)
+        if (p.second == 2)
           final_labels.push_back(p.first);
       return final_labels;
   }

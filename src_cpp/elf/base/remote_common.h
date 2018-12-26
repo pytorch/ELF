@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include "elf/concurrency/ConcurrentQueue.h"
 
@@ -32,7 +32,7 @@ class SendSingleInterface {
     (void)msg;
   }
 
-  virtual std::string dumpClear() = 0;
+  virtual std::string dumpClear(int *) = 0;
 };
 
 class RecvSingleInterface {
@@ -41,15 +41,15 @@ class RecvSingleInterface {
     (void)label;
     (void)msg;
   }
-  virtual bool retrieveNow(const std::string &label, std::string *msg) { 
+  virtual bool retrieveNow(const std::string &label, std::string *msg) {
     (void)label;
     (void)msg;
-    return false; 
+    return false;
   }
-  virtual bool retrieveAnyNow(std::string *label, std::string *msg) { 
+  virtual bool retrieveAnyNow(std::string *label, std::string *msg) {
     (void)label;
     (void)msg;
-    return false; 
+    return false;
   }
   virtual void parseAdd(const std::string &s) = 0;
 };
@@ -58,21 +58,21 @@ class SingleQBase {
  public:
   using Q = Queue<std::string>;
 
-  SingleQBase(const std::vector<std::string> &labels) 
-    : labels_(labels) { 
+  SingleQBase(const std::vector<std::string> &labels)
+    : labels_(labels) {
     for (const auto &label : labels) {
       msg_q_[label].reset(new Q);
     }
   }
 
  protected:
-  std::unordered_map<std::string, std::unique_ptr<Q>> msg_q_; 
+  std::unordered_map<std::string, std::unique_ptr<Q>> msg_q_;
   std::vector<std::string> labels_;
 };
 
 class SendSingle : public SendSingleInterface, public SingleQBase {
  public:
-  SendSingle(const std::vector<std::string> &labels) 
+  SendSingle(const std::vector<std::string> &labels)
     : SingleQBase(labels) {}
 
   void add(const std::string &label, const std::string &msg) override {
@@ -81,24 +81,26 @@ class SendSingle : public SendSingleInterface, public SingleQBase {
     it->second->push(msg);
   }
 
-  std::string dumpClear() override {
+  std::string dumpClear(int *num_record) override {
     json j;
+
+    *num_record = 0;
     for (const auto &p : msg_q_) {
       const auto &label = p.first;
       std::string msg;
       while (p.second->pop(&msg, std::chrono::milliseconds(0))) {
         j[label].push_back(msg);
+        (*num_record) ++;
       }
     }
-    
     return j.dump();
   }
 };
 
 class RecvSingle : public RecvSingleInterface, public SingleQBase {
  public:
-  RecvSingle(const std::vector<std::string> &labels) 
-    : SingleQBase(labels) {} 
+  RecvSingle(const std::vector<std::string> &labels)
+    : SingleQBase(labels) {}
 
   void retrieve(const std::string &label, std::string *msg) override {
     auto it = msg_q_.find(label);
@@ -142,9 +144,9 @@ class RecvSingle : public RecvSingleInterface, public SingleQBase {
 };
 
 template <typename T>
-class QBase { 
+class QBase {
  public:
-  using Ls = std::vector<std::string>; 
+  using Ls = std::vector<std::string>;
   using Gen = std::function<std::unique_ptr<T> (const Ls &)>;
 
   using SafeFunc = std::function<bool (const Ls &, const std::vector<T *> &)>;
@@ -154,7 +156,7 @@ class QBase {
 
   T &addQ(const std::string &identity, const Ls &labels) {
     assert(gen_ != nullptr);
-    
+
     std::lock_guard<std::mutex> locker(mutex_);
     auto info = msg_qs_.insert(make_pair(identity, nullptr));
     if (! info.second) {
@@ -211,7 +213,7 @@ class QBase {
             qs.push_back(msg_qs_[id].get());
           }
         }
-        
+
         if (f(identities, qs)) break;
       }
     }
@@ -237,7 +239,7 @@ class QBase {
 
 class SendQ : public QBase<SendSingleInterface> {
  public:
-  using Super = QBase<SendSingleInterface>; 
+  using Super = QBase<SendSingleInterface>;
   using Ls = typename Super::Ls;
   using Gen = typename Super::Gen;
 
@@ -256,7 +258,7 @@ class SendQ : public QBase<SendSingleInterface> {
 
 class RecvQ : public QBase<RecvSingleInterface> {
  public:
-  using Super = QBase<RecvSingleInterface>; 
+  using Super = QBase<RecvSingleInterface>;
   using Ls = typename Super::Ls;
   using Gen = typename Super::Gen;
 
@@ -270,7 +272,7 @@ class RecvQ : public QBase<RecvSingleInterface> {
         if (qs[idx]->retrieveNow(label, msg)) {
           id = idd;
           return true;
-        } 
+        }
       }
       std::this_thread::sleep_for(std::chrono::microseconds(10));
       return false;
@@ -290,7 +292,7 @@ class RecvQ : public QBase<RecvSingleInterface> {
         if (qs[idx]->retrieveAnyNow(label, msg)) {
           id = idd;
           return true;
-        } 
+        }
       }
       std::this_thread::sleep_for(std::chrono::microseconds(10));
       return false;
@@ -308,34 +310,34 @@ class Interface {
     auto gen_recv = [](const RecvQ::Ls &labels) { return std::make_unique<RecvSingle>(labels); };
     setSendGen(gen_send);
     setRecvGen(gen_recv);
-  } 
+  }
 
   void setSendGen(SendQ::Gen gen) { send_q_.setGen(gen); }
   void setRecvGen(RecvQ::Gen gen) { recv_q_.setGen(gen); }
 
-  // Send message to a given identity. 
+  // Send message to a given identity.
   void send(const std::string &label, const std::string &msg, const std::string& identity) {
     send_q_[identity].add(label, msg);
   }
 
-  // Send message to a random identity, wait if there is no identity yet, 
-  // and return the identity once the message is sent.  
+  // Send message to a random identity, wait if there is no identity yet,
+  // and return the identity once the message is sent.
   void sendToEligible(const std::string &label, const std::string &msg, std::string *identity) {
     *identity = send_q_.sample(label);
     send_q_[*identity].add(label, msg);
   }
 
-  // Get message from a given identity. Block if no message. 
+  // Get message from a given identity. Block if no message.
   void recv(const std::string &label, std::string *msg, const std::string& identity) {
     recv_q_[identity].retrieve(label, msg);
   }
 
-  // Get message from any identity. Block if no message. 
+  // Get message from any identity. Block if no message.
   void recvFromEligible(const std::string &label, std::string *msg, std::string *identity) {
     *identity = recv_q_.recvFromLabel(label, msg);
   }
 
-  // Get message from any identity. Block if no message. 
+  // Get message from any identity. Block if no message.
   void recvFromAll(std::string *label, std::string *msg, std::string *identity) {
     *identity = recv_q_.recvFromAll(label, msg);
   }

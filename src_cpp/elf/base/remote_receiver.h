@@ -16,25 +16,33 @@ namespace remote {
 class _Client {
  public:
    using Ls = std::vector<std::string>;
-   
+
    _Client(const elf::shared::Options &netOptions) {
      client_.reset(new msg::Client(netOptions));
    }
 
-   void start(const Ls& labels, SendQ &send_q, RecvQ &recv_q) { 
+   void start(const Ls& labels, SendQ &send_q, RecvQ &recv_q) {
      auto id = identity();
      send_q_ = &send_q.addQ(id, labels);
      recv_q_ = &recv_q.addQ(id, labels);
-          
+
      auto receiver = [&](const std::string& recv_msg) -> int64_t {
        // Get data
+       // if (recv_msg.size() > 20) {
+       //  std::cout << "recv #size: " << recv_msg.size() << std::endl;
+       // }
        recv_q_->parseAdd(recv_msg);
        return -1;
      };
 
      auto sender = [&]() {
        // std::cout << timestr() << ", Dump data" << std::endl;
-       return send_q_->dumpClear();
+       int num_record;
+       std::string s = send_q_->dumpClear(&num_record);
+       if (num_record == 0) {
+         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+       }
+       return s;
      };
 
      client_->setCallbacks(sender, receiver);
@@ -49,11 +57,11 @@ class _Client {
    RecvSingleInterface *recv_q_ = nullptr;
 };
 
-// A lot of msg::Client. 
+// A lot of msg::Client.
 // 1.  Try connecting to the server side and build connections.
 class Clients : public Interface {
  public:
-  Clients(const shared::Options &netOptions, const std::vector<std::string> &labels) 
+  Clients(const shared::Options &netOptions, const std::vector<std::string> &labels)
       : netOptions_(netOptions), labels_(labels) {
     std::sort(labels_.begin(), labels_.end());
 
@@ -95,6 +103,7 @@ class Clients : public Interface {
     };
 
     auto sender = [&]() {
+      // std::cout << "In sender... " << std::endl;
       return "";
     };
 
