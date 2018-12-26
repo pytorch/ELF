@@ -24,9 +24,9 @@ namespace cs {
 
 class DataHolder : public elf::msg::DataInterface {
  public:
-  DataHolder(const TrainCtrlOptions &options, 
-             const ClientManagerOptions &cm_options, 
-             ServerInterface *server_interface) 
+  DataHolder(const TrainCtrlOptions &options,
+             const ClientManagerOptions &cm_options,
+             ServerInterface *server_interface)
     : rng_(time(NULL)) {
     // Register sender for python thread.
     elf::shared::RQCtrl rq_ctrl;
@@ -43,7 +43,7 @@ class DataHolder : public elf::msg::DataInterface {
     assert(server_interface_ != nullptr);
   }
 
-  void OnStart() override { 
+  void OnStart() override {
     server_interface_->onStart();
   }
 
@@ -120,7 +120,6 @@ class Server {
       elf::msg::getNetOptions(options_.base, options_.net);
     // 10s
     netOptions.usec_sleep_when_no_msg = 10000000;
-    netOptions.usec_resend_when_no_msg = -1;
     onlineLoader_.reset(new elf::msg::DataOnlineLoader(netOptions));
     onlineLoader_->start(dataHolder_.get());
   }
@@ -150,7 +149,7 @@ class Server {
     Server *s_ = nullptr;
     ServerGame *game_ = nullptr;
 
-    _Game(int game_idx, Server *s) : game_idx_(game_idx), s_(s) { 
+    _Game(int game_idx, Server *s) : game_idx_(game_idx), s_(s) {
       game_ = s_->server_interface_->createGame(game_idx);
     }
 

@@ -82,8 +82,6 @@ class Servers : public Interface {
     std::sort(labels_.begin(), labels_.end());
 
     netOptions_.usec_sleep_when_no_msg = 10;
-    // Not used.
-    netOptions_.usec_resend_when_no_msg = 10000;
     netOptions_.verbose = false;
 
     // netOptions.msec_sleep_when_no_msg = 2000;

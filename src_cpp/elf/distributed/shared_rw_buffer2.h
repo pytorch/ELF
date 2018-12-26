@@ -36,7 +36,6 @@ struct Options {
   int port = 5556;
   bool use_ipv6 = true;
   bool verbose = false;
-  int64_t usec_resend_when_no_msg = -1;
   // 10s
   int64_t usec_sleep_when_no_msg = 10000000;
   std::string identity;
@@ -54,7 +53,6 @@ struct Options {
       ss << "Connect to " << addr << ":" << port;
     }
     ss << "usec_sleep_when_no_msg: " << usec_sleep_when_no_msg
-       << " usec, usec_resend_when_no_msg: " << usec_resend_when_no_msg
        << ", ipv6: " << elf_utils::print_bool(use_ipv6)
        << ", verbose: " << elf_utils::print_bool(verbose);
     return ss.str();
@@ -64,7 +62,7 @@ struct Options {
 class Writer {
  public:
   // Constructor.
-  Writer(const Options& opt) 
+  Writer(const Options& opt)
     : rng_(time(NULL)), options_(opt) {
     identity_ = options_.identity;
     if (! opt.no_prefix_on_identity) {

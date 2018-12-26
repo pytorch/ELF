@@ -182,7 +182,6 @@ class Client {
     // if no message, sleep every 10s
     netOptions.usec_sleep_when_no_msg = 10000000;
     // Resend after 900s
-    netOptions.usec_resend_when_no_msg = 900000000;
     writer_.reset(new ThreadedWriter(netOptions));
     writer_callback_.reset(new WriterCallback(writer_.get(), ctrl_));
 

@@ -74,9 +74,7 @@ class Clients : public Interface {
     std::sort(labels_.begin(), labels_.end());
 
     netOptions_.usec_sleep_when_no_msg = 1000000;
-    netOptions_.usec_resend_when_no_msg = -1;
     // netOptions_.msec_sleep_when_no_msg = 2000;
-    // netOptions_.msec_resend_when_no_msg = 2000;
     netOptions_.verbose = false;
 
     {
@@ -97,9 +95,7 @@ class Clients : public Interface {
 
       auto netOptions = netOptions_;
       netOptions.usec_sleep_when_no_msg = 1000;
-      netOptions.usec_resend_when_no_msg = 10;
       // netOptions.msec_sleep_when_no_msg = 2000;
-      // netOptions.msec_resend_when_no_msg = 2000;
 
       for (size_t i = 0; i < kPortPerClient; ++i) {
         netOptions.port = j["port"][i];
