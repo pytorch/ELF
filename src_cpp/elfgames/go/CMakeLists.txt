@@ -9,9 +9,9 @@ set(ELFGAMES_GO_SOURCES
     base/go_state.cc
     base/board.cc
     sgf/sgf.cc
-    common/game_selfplay.cc
-    common/go_state_ext.cc
-    train/Pybind.cc
+    state/go_state_ext.cc
+    elf_adaptor/game_selfplay.cc
+    elf_adaptor/train/Pybind.cc
 )
 
 set(ELFGAMES_GO_INFERENCE_SOURCES
@@ -20,9 +20,9 @@ set(ELFGAMES_GO_INFERENCE_SOURCES
     base/go_state.cc
     base/board.cc
     sgf/sgf.cc
-    common/game_selfplay.cc
-    common/go_state_ext.cc
-    inference/Pybind.cc
+    state/go_state_ext.cc
+    elf_adaptor/game_selfplay.cc
+    elf_adaptor/inference/Pybind.cc
 )
 
 # Main Go library
@@ -56,14 +56,14 @@ target_link_libraries(elfgames_go9 PUBLIC
 
 # Python bindings
 
-pybind11_add_module(_elfgames_go train/pybind_module.cc)
+pybind11_add_module(_elfgames_go elf_adaptor/train/pybind_module.cc)
 target_link_libraries(_elfgames_go PRIVATE
     elfgames_go
     zmq
 )
 
 
-pybind11_add_module(_elfgames_go_inference inference/pybind_module.cc)
+pybind11_add_module(_elfgames_go_inference elf_adaptor/inference/pybind_module.cc)
 target_link_libraries(_elfgames_go_inference PRIVATE
     elfgames_go_inference
 )

@@ -6,9 +6,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "../common/go_game_specific.h"
-#include "../common/go_state_ext.h"
-#include "../common/record.h"
+#include "../state/go_game_specific.h"
+#include "../state/go_state_ext.h"
+#include "../state/record.h"
 #include "elf/distri/game_interface.h"
 
 using elf::cs::ServerGame;

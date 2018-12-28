@@ -7,9 +7,7 @@
  */
 
 #include "game_selfplay.h"
-#include "../mcts/ai.h"
-#include "../mcts/mcts.h"
-#include "go_game_specific.h"
+#include "./mcts/mcts.h"
 
 ////////////////// GoGame /////////////////////
 GoGameSelfPlay::GoGameSelfPlay(

@@ -1,16 +1,15 @@
 #pragma once
 
 #include <chrono>
-#include "../common/game_selfplay.h"
-#include "../common/record.h"
+#include "../state/record.h"
 #include "elf/base/game_context.h"
 #include "elf/distributed/addrs.h"
 #include "elf/distributed/options.h"
 #include "elf/distributed/shared_rw_buffer3.h"
 
-#include "../mcts/mcts.h"
-#include "elf/ai/tree_search/mcts.h"
-#include "../common/game_selfplay.h"
+#include "./mcts/mcts.h"
+
+#include "game_selfplay.h"
 
 #include "elf/distri/client.h"
 

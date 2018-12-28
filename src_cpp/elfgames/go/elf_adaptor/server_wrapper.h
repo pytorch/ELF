@@ -7,13 +7,15 @@
 #include <vector>
 
 #include "../base/board_feature.h"
-#include "../common/game_feature.h"
-#include "../common/record.h"
+#include "../state/record.h"
+#include "../ctrl/game_ctrl.h"
+
 #include "elf/base/game_context.h"
 #include "elf/distributed/data_loader.h"
 #include "elf/distributed/addrs.h"
 #include "elf/logging/IndexedLoggerFactory.h"
-#include "game_ctrl.h"
+
+#include "game_feature.h"
 #include "game_train.h"
 
 #include "elf/distri/server.h"

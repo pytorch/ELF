@@ -15,7 +15,7 @@
 #include <thread>
 #include <vector>
 
-#include "game_utils.h"
+#include "../../state/game_utils.h"
 
 class GameStats {
  public:

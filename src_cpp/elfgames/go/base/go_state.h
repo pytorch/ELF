@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "elfgames/go/sgf/sgf.h"
+#include "../sgf/sgf.h"
 
 #include "board.h"
 #include "board_feature.h"

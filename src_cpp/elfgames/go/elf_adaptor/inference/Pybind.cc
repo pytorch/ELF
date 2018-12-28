@@ -11,7 +11,7 @@
 #include <pybind11/stl_bind.h>
 
 #include "elf/base/game_context.h"
-#include "../train/client_wrapper.h"
+#include "../client_wrapper.h"
 
 namespace elfgames {
 namespace go {

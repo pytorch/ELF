@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <deque>
 
-#include "../common/go_game_specific.h"
+#include "../state/go_game_specific.h"
 #include "elf/distri/client_manager.h"
 #include "ctrl_utils.h"
 

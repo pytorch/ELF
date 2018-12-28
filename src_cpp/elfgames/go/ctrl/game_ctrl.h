@@ -28,9 +28,9 @@
 
 #include "elf/distri/game_interface.h"
 
-#include "../common/game_stats.h"
-#include "../common/go_game_specific.h"
-#include "../common/go_state_ext.h"
+#include "./stats/game_stats.h"
+#include "../state/go_game_specific.h"
+#include "../state/go_state_ext.h"
 
 using namespace std::chrono_literals;
 using elf::cs::ReplayBuffer;

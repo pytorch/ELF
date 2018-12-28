@@ -15,10 +15,11 @@
 #include "elf/interface/game_base.h"
 #include "elf/logging/IndexedLoggerFactory.h"
 
-#include "../mcts/mcts.h"
 #include "../sgf/sgf.h"
+#include "../ctrl/stats/game_stats.h"
+
+#include "./mcts/mcts.h"
 #include "game_feature.h"
-#include "game_stats.h"
 
 #include "elf/distri/game_interface.h"
 

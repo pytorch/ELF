@@ -10,8 +10,8 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#include "server_wrapper.h"
-#include "client_wrapper.h"
+#include "../server_wrapper.h"
+#include "../client_wrapper.h"
 #include "elf/base/game_context.h"
 #include "elf/options/reflection_option.h"
 #include "elf/utils/pybind.h"

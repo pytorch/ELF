@@ -11,7 +11,7 @@
 #include <iostream>
 
 #include "elf/ai/tree_search/mcts.h"
-#include "elfgames/go/mcts/ai.h"
+#include "ai.h"
 
 struct MCTSActorParams {
   std::string actor_name;

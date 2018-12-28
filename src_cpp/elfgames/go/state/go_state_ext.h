@@ -14,18 +14,16 @@
 #include <random>
 #include <set>
 #include "../base/go_state.h"
-#include "game_utils.h"
 #include "go_game_specific.h"
 #include "record.h"
+#include "game_utils.h"
 
 #include "elf/ai/tree_search/tree_search_base.h"
 
 #include "elf/distri/game_interface.h"
 
-using elf::cs::StepStatus;
 using elf::cs::Record;
 using elf::cs::ThreadState;
-using elf::cs::ServerGame;
 
 enum FinishReason {
   FR_RESIGN = 0,

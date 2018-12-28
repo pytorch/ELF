@@ -9,9 +9,8 @@
 #pragma once
 
 #include "../base/go_state.h"
-#include "go_game_specific.h"
-#include "go_state_ext.h"
-#include "../mcts/ai.h"
+#include "../state/go_state_ext.h"
+#include "./mcts/ai.h"
 
 #include "elf/interface/extractor.h"
 

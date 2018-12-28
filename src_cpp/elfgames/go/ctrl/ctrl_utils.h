@@ -10,7 +10,11 @@
 
 #include <fstream>
 #include <mutex>
-#include "../common/record.h"
+#include "../state/record.h"
+
+// TODO: get rid of this
+#include "elf/distri/record.h"
+using elf::cs::Record;
 
 struct RecordBufferSimple {
  public:
