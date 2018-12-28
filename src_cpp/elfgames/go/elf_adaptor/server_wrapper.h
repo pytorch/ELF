@@ -40,21 +40,15 @@ class ServerWrapper : public ServerInterface {
 
     auto *ctx = server_->ctx();
 
-    threaded_ctrl_.reset(
-        new ThreadedCtrl(
-          ctrl_, 
-          ctx->getClient(), 
-          server_->getReplayBuffer(), 
-          options_));
+    auto clear_func = [&]() { server_->getReplayBuffer()->clear(); };
+
+    threaded_ctrl_.reset(new ThreadedCtrl(ctx->getClient(), options_, clear_func));
 
     ctx->getExtractor().merge(goFeature_.registerExtractor(ctx->options().batchsize));
     server_->setInterface(this);
   }
 
   void onStart() override { 
-    // Call by shared_rw thread or any thread that will call OnReceive.
-    ctrl_.reg("train_ctrl");
-    ctrl_.addMailbox<int>();
     threaded_ctrl_->Start();
   }
   
@@ -109,8 +103,10 @@ class ServerWrapper : public ServerInterface {
     return insert_info;
   }
 
-  void fillInRequest(const ClientInfo &info, MsgRequest *request) override {
-    threaded_ctrl_->fillInRequest(info, request);
+  void fillInRequest(const ClientInfo &info, MsgRequest *msg_request) override {
+    Request request;
+    threaded_ctrl_->fillInRequest(info, &request);
+    request.setJsonFields(msg_request->state);
   }
 
   ServerGame *createGame(int idx) override {
@@ -154,8 +150,6 @@ class ServerWrapper : public ServerInterface {
 
  private:
   const GameOptionsTrain options_;
-
-  Ctrl ctrl_;
   std::unique_ptr<ThreadedCtrl> threaded_ctrl_;
 
   int recv_count_ = 0;

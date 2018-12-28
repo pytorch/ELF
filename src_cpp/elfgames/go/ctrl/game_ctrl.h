@@ -26,14 +26,13 @@
 #include "elf/concurrency/ConcurrentQueue.h"
 #include "elf/concurrency/Counter.h"
 
-#include "elf/distri/game_interface.h"
+#include "elf/interface/game_interface.h"
 
 #include "./stats/game_stats.h"
 #include "../state/go_game_specific.h"
 #include "../state/go_state_ext.h"
 
 using namespace std::chrono_literals;
-using elf::cs::ReplayBuffer;
 using elf::cs::MsgRequest;
 using ThreadedCtrlBase = elf::ThreadedCtrlBase;
 using Ctrl = elf::Ctrl;
@@ -41,33 +40,22 @@ using Addr = elf::Addr;
 
 class ThreadedCtrl : public ThreadedCtrlBase {
  public:
-  ThreadedCtrl(
-      Ctrl& ctrl,
-      elf::GameClientInterface* client,
-      ReplayBuffer* replay_buffer,
-      const GameOptionsTrain& options)
-      : ThreadedCtrlBase(ctrl, 10000),
-        replay_buffer_(replay_buffer),
+  using ClearBufferFunc = std::function<void ()>;
+  ThreadedCtrl(elf::GameClientInterface* client, const GameOptionsTrain& options, ClearBufferFunc clear_func = nullptr)
+      : ThreadedCtrlBase(ctrl_, 10000),
+        clear_func_(clear_func),
         options_(options),
         client_(client),
         rng_(time(NULL)) {
     selfplay_.reset(new SelfPlaySubCtrl(options));
     eval_.reset(new EvalSubCtrl(options));
     // std::cout << "Thread id: " << std::this_thread::get_id() << std::endl;
-
-    ctrl_.reg();
-    ctrl_.addMailbox<_ModelUpdateStatus>();
   }
 
   void Start() {
-    if (!ctrl_.isRegistered()) {
-      // std::cout << "Start(): id: " << std::this_thread::get_id() << ", not
-      // registered!" << std::endl;
-      ctrl_.reg();
-    } else {
-      // std::cout << "Start(): id: " << std::this_thread::get_id() <<", already
-      // registered!" << std::endl;
-    }
+    // Call by shared_rw thread or any thread that will call OnReceive.
+    ctrl_.reg(kTrainCtrl);
+    ctrl_.addMailbox<int>();
     ctrl_.addMailbox<_ModelUpdateStatus>();
     start<std::pair<Addr, int64_t>>();
   }
@@ -164,35 +152,33 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     return res;
   }
 
-  void fillInRequest(const ClientInfo& info, MsgRequest* msg_request) {
-    Request request;
-    request.vers.set_wait();
+  void fillInRequest(const ClientInfo& info, Request* request) {
+    request->vers.set_wait();
 
     switch (info.type()) {
       case CLIENT_SELFPLAY_ONLY:
         if (!eval_mode_) {
-          selfplay_->fillInRequest(info, &request);
+          selfplay_->fillInRequest(info, request);
         }
         break;
       case CLIENT_EVAL_THEN_SELFPLAY:
-        eval_->fillInRequest(info, &request);
-        if (request.vers.wait() && !eval_mode_) {
-          selfplay_->fillInRequest(info, &request);
+        eval_->fillInRequest(info, request);
+        if (request->vers.wait() && !eval_mode_) {
+          selfplay_->fillInRequest(info, request);
         }
         break;
       default:
         std::cout << "Warning! Invalid client_type! " << info.type() << std::endl;
         break;
     }
-
-    msg_request->client_ctrl.client_type = info.type();
-    request.setJsonFields(msg_request->state);
   }
 
  protected:
   enum _ModelUpdateStatus { MODEL_UPDATED };
 
-  ReplayBuffer* replay_buffer_ = nullptr;
+  Ctrl ctrl_;
+
+  ClearBufferFunc clear_func_ = nullptr;
   std::unique_ptr<SelfPlaySubCtrl> selfplay_;
   std::unique_ptr<EvalSubCtrl> eval_;
 
@@ -221,7 +207,8 @@ class ThreadedCtrl : public ThreadedCtrlBase {
               << std::endl;
     // A better model is found, clean up old games (or not?)
     if (!options_.keep_prev_selfplay) {
-      replay_buffer_->clear();
+      assert(clear_func_ != nullptr);
+      clear_func_();
     }
 
     // Data now prepared ready,

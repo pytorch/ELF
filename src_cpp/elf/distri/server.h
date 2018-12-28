@@ -68,6 +68,7 @@ class DataHolder : public elf::msg::DataInterface {
     MsgRequest request;
     server_interface_->fillInRequest(info, &request);
     request.client_ctrl.seq = info.seq();
+    request.client_ctrl.client_type = info.type();
     *msg = request.dumpJsonString();
     info.incSeq();
     std::cout << "TrainCtrl: ReplyMsg[" << identity << "]: " << *msg << std::endl;
