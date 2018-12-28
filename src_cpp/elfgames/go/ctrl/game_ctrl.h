@@ -33,7 +33,6 @@
 #include "../state/go_state_ext.h"
 
 using namespace std::chrono_literals;
-using elf::cs::MsgRequest;
 using ThreadedCtrlBase = elf::ThreadedCtrlBase;
 using Ctrl = elf::Ctrl;
 using Addr = elf::Addr;

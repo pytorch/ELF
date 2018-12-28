@@ -20,6 +20,7 @@
 
 #include "elf/distri/server.h"
 
+using elf::cs::MsgRequest;
 using elf::cs::ServerInterface;
 using elf::cs::ServerGame;
 using elf::cs::Records;
