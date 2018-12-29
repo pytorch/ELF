@@ -16,9 +16,6 @@
 #include "../state/go_game_specific.h"
 #include "stats/fair_pick.h"
 
-#include "elf/distri/client_manager.h"
-
-using ClientManager = elf::cs::ClientManager;
 using TSOptions = elf::ai::tree_search::TSOptions;
 
 constexpr int CLIENT_SELFPLAY_ONLY = 0;
@@ -33,13 +30,10 @@ class ModelPerf {
     EVAL_BLACK_NOTPASS
   };
 
-  ModelPerf(
-      const GameOptionsTrain& options,
-      const ClientManager& mgr,
-      const ModelPair& p)
+  ModelPerf(const GameOptionsTrain& options, const ModelPair& p)
       : options_(options), curr_pair_(p) {
     const size_t cushion = 5;
-    const size_t max_request_per_layer = mgr.getExpectedNum(CLIENT_EVAL_THEN_SELFPLAY) / 3;
+    const size_t max_request_per_layer = options.expected_eval_clients / 3;
     const size_t num_request = options.eval_num_games / 2 + cushion;
     const size_t num_eval_machine_per_layer =
         compute_num_eval_machine(num_request, max_request_per_layer);
@@ -78,12 +72,12 @@ class ModelPerf {
     return ss.str();
   }
 
-  EvalResult updateState(const ClientManager& mgr) {
+  EvalResult updateState(fair_pick::IsStuckFunc is_stuck_func) {
     if (sealed_)
       return eval_result_;
 
-    games_->checkStuck(mgr);
-    swap_games_->checkStuck(mgr);
+    games_->checkStuck(is_stuck_func);
+    swap_games_->checkStuck(is_stuck_func);
 
     eval_result_ = eval_check();
 
@@ -99,17 +93,17 @@ class ModelPerf {
     return eval_result_;
   }
 
-  void feed(const ClientInfo& c, const Request &request, const Result &result, const Record &r) {
+  void feed(const std::string &client_key, const Request &request, const Result &result, const Record &r) {
     if (request.player_swap) {
-      swap_games_->add(c, -result.reward);
+      swap_games_->add(client_key, -result.reward);
     } else {
-      games_->add(c, result.reward);
+      games_->add(client_key, result.reward);
     }
     record_.feed(r);
     recv_++;
   }
 
-  void fillInRequest(const ClientInfo& c, Request* msg) {
+  void fillInRequest(const std::string &k, Request* msg) {
     if (sealed_)
       return;
 
@@ -122,7 +116,7 @@ class ModelPerf {
     }
 
     for (const auto& g : games) {
-      fair_pick::RegisterResult res = g.first->reg(c);
+      fair_pick::RegisterResult res = g.first->reg(k);
       // cout << "a = " << a << ", a_swap: " << a_swap << endl;
       if (fair_pick::release_request(res))
         continue;
@@ -229,7 +223,7 @@ class EvalSubCtrl {
     options_.common.mcts.root_alpha = 0.0;
   }
 
-  int64_t updateState(const ClientManager& mgr) {
+  int64_t updateState(fair_pick::IsStuckFunc is_stuck_func) {
     // Note that models_to_eval_ might change during the loop.
     // So we need to make a copy.
     std::lock_guard<std::mutex> lock(mutex_);
@@ -237,9 +231,9 @@ class EvalSubCtrl {
 
     for (const auto& ver : models_to_eval) {
       // cout << "UpdateState: checking ver = " << ver << endl;
-      ModelPerf& perf = find_or_create(mgr, get_key(ver));
+      ModelPerf& perf = find_or_create(get_key(ver));
 
-      auto res = perf.updateState(mgr);
+      auto res = perf.updateState(is_stuck_func);
       switch (res) {
         case ModelPerf::EVAL_INVALID:
           std::cout << "res cannot be EVAL_INVALID" << std::endl;
@@ -260,7 +254,7 @@ class EvalSubCtrl {
     return -1;
   }
 
-  FeedResult feed(const ClientInfo& info, const Request &request, const Result &result, const Record& r) {
+  FeedResult feed(const std::string &k, const Request &request, const Result &result, const Record& r) {
     if (request.vers.is_selfplay())
       return NOT_EVAL;
 
@@ -270,7 +264,7 @@ class EvalSubCtrl {
     if (perf == nullptr)
       return NOT_REQUESTED;
 
-    perf->feed(info, request, result, r);
+    perf->feed(k, request, result, r);
     return FEEDED;
   }
 
@@ -279,7 +273,7 @@ class EvalSubCtrl {
     return best_baseline_model_;
   }
 
-  void fillInRequest(const ClientInfo& info, Request* msg) {
+  void fillInRequest(const std::string &k, Request* msg) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     // Go through all current models
@@ -288,8 +282,8 @@ class EvalSubCtrl {
     // Note that on_eval_status might change models_to_eval,
     for (const auto& ver : models_to_eval_) {
       // cout << "fillInRequests, checking ver = " << ver << endl;
-      ModelPerf& perf = find_or_create(info.getManager(), get_key(ver));
-      perf.fillInRequest(info, msg);
+      ModelPerf& perf = find_or_create(get_key(ver));
+      perf.fillInRequest(k, msg);
       if (!msg->vers.wait())
         break;
     }
@@ -363,11 +357,11 @@ class EvalSubCtrl {
     return false;
   }
 
-  ModelPerf& find_or_create(const ClientManager& mgr, const ModelPair& mp) {
+  ModelPerf& find_or_create(const ModelPair& mp) {
     auto it = perfs_.find(mp);
     if (it == perfs_.end()) {
       auto& ptr = perfs_[mp];
-      ptr.reset(new ModelPerf(options_, mgr, mp));
+      ptr.reset(new ModelPerf(options_, mp));
       return *ptr;
     }
     return *it->second;

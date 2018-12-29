@@ -6,12 +6,14 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "elf/distri/client_manager.h"
-using elf::cs::ClientInfo;
+#include <string>
+#include <functional>
+#include <vector>
 
 namespace fair_pick {
 
-using elf::cs::ClientManager;
+using Key = std::string;
+using IsStuckFunc = std::function<bool (const Key &, uint64_t *delay)>;
 
 struct Info {
   enum Status { WAIT, SETTLED, STUCK };
@@ -131,18 +133,17 @@ inline bool release_request(RegisterResult r) {
 
 class BatchRequest {
  public:
-  using Key = std::string;
+  BatchRequest(size_t max_num_request) 
+    : max_num_request_(max_num_request) {}
 
-  BatchRequest(size_t max_num_request) : max_num_request_(max_num_request) {}
-
-  RegisterResult Reg(const ClientInfo& c) {
-    auto it = requests_.find(c.id());
+  RegisterResult Reg(const Key &id) {
+    auto it = requests_.find(id);
     if (it == requests_.end()) {
       if (requests_.size() >= max_num_request_) {
         // We are at capacity and won't register anymore.
         return AT_CAPACITY;
       } else {
-        requests_.insert(make_pair(c.id(), Info()));
+        requests_.insert(make_pair(id, Info()));
         return NEWLY_REGISTERED;
       }
     } else {
@@ -154,8 +155,8 @@ class BatchRequest {
     }
   }
 
-  AddResult Add(const ClientInfo& c, float r) {
-    auto it = requests_.find(c.id());
+  AddResult Add(const Key &id, float r) {
+    auto it = requests_.find(id);
     if (it == requests_.end()) {
       // cout << hex << "[" << this << "]" << dec << " msg from \"" << c.id() <<
       // "\" is not registered." << endl;
@@ -172,9 +173,7 @@ class BatchRequest {
     return NEWLY_ADDED;
   }
 
-  void CheckStuck(const ClientManager& mgr) {
-    auto curr_timestamp = mgr.getCurrTimeStamp();
-
+  void CheckStuck(IsStuckFunc is_stuck_func) {
     stucks_.clear();
     nonstuck_zero_.clear();
     for (auto& p : requests_) {
@@ -182,9 +181,7 @@ class BatchRequest {
         continue;
 
       uint64_t delay = 0;
-      const ClientInfo* c = mgr.getClientC(p.first);
-
-      if (c == nullptr || c->IsStuck(curr_timestamp, &delay)) {
+      if (is_stuck_func(p.first, &delay)) {
         p.second.status = Info::STUCK;
         stucks_.push_back(p.first);
       } else if (p.second.status == Info::WAIT) {
@@ -261,19 +258,19 @@ class Pick {
     set_new_request();
   }
 
-  RegisterResult reg(const ClientInfo& c) {
-    return request_->Reg(c);
+  RegisterResult reg(const Key& k) {
+    return request_->Reg(k);
   }
 
   // Simple rule: first register, then add.
   // Any results without registration will be discarded. This is because
   // these results may have potential bias.
-  AddResult add(const ClientInfo& c, float r) {
-    return request_->Add(c, r);
+  AddResult add(const Key& k, float r) {
+    return request_->Add(k, r);
   }
 
-  void checkStuck(const ClientManager& cm) {
-    request_->CheckStuck(cm);
+  void checkStuck(IsStuckFunc is_stuck_func) {
+    request_->CheckStuck(is_stuck_func);
 
     // Check whether the layers are done.
     if (request_->IsDone()) {

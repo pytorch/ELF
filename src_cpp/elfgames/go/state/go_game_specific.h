@@ -165,6 +165,11 @@ DEF_FIELD(
     eval_thres,
     0.55f,
     "In sync mode (AGZ), winrate thres to acknowledge the new model is better");
+DEF_FIELD(
+    int,
+    expected_eval_clients,
+    205,
+    "In sync mode (AGZ), expected number of evaluation clients");
 
 DEF_FIELD(
     int,

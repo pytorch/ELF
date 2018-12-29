@@ -13,13 +13,11 @@
 #include <deque>
 
 #include "../state/go_game_specific.h"
-#include "elf/distri/client_manager.h"
 #include "ctrl_utils.h"
 
 #include "elf/ai/tree_search/tree_search_options.h"
 
 using TSOptions = elf::ai::tree_search::TSOptions;
-using ClientManager = elf::cs::ClientManager;
 
 /**
  * This class keeps track of the appropriate value threshold for resigning.
@@ -276,7 +274,7 @@ struct SelfPlayRecord {
     num_weight_update_++;
   }
 
-  void fillInRequest(const ClientInfo&, Request* msg) const {
+  void fillInRequest(Request* msg) const {
     msg->resign_thres = resign_threshold_;
     msg->never_resign_prob = 0.1;
     msg->async = options_.selfplay_async;
@@ -425,7 +423,7 @@ class SelfPlaySubCtrl {
       return 0;
   }
 
-  void fillInRequest(const ClientInfo& info, Request* msg) {
+  void fillInRequest(Request* msg) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (curr_ver_ < 0) {
@@ -436,7 +434,7 @@ class SelfPlaySubCtrl {
       msg->vers.black_ver = curr_ver_;
       msg->vers.white_ver = -1;
       msg->vers.mcts_opt = options_.common.mcts;
-      perf->fillInRequest(info, msg);
+      perf->fillInRequest(msg);
       /*
          if (perf.n() % 10 == 0) {
          cout << elf_util::now() << ", #game: " << perf.n() << ", send msg: " <<

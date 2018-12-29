@@ -27,6 +27,8 @@ using elf::cs::Records;
 using elf::cs::ReplayBuffer;
 using elf::Extractor;
 using elf::cs::Server;
+using elf::cs::ClientInfo;
+using elf::cs::ClientManager;
 
 class ServerWrapper : public ServerInterface {
  public:
@@ -82,8 +84,16 @@ class ServerWrapper : public ServerInterface {
     }
 
     std::vector<FeedResult> eval_res =
-        threaded_ctrl_->onEvalGames(info, rs.records);
-    threaded_ctrl_->checkNewModel(server_->getClientManager());
+        threaded_ctrl_->onEvalGames(info.id(), rs.records);
+
+    auto *cm = server_->getClientManager();
+    auto curr_timestamp = cm->getCurrTimeStamp();
+    auto f = [&](const std::string &id, uint64_t *delay) {
+      const ClientInfo* c = cm->getClientC(id);
+      return (c == nullptr || c->IsStuck(curr_timestamp, delay));
+    };
+
+    threaded_ctrl_->checkNewModel(f);
 
     recv_count_++;
     if (recv_count_ % 1000 == 0) {
@@ -106,7 +116,7 @@ class ServerWrapper : public ServerInterface {
 
   void fillInRequest(const ClientInfo &info, MsgRequest *msg_request) override {
     Request request;
-    threaded_ctrl_->fillInRequest(info, &request);
+    threaded_ctrl_->fillInRequest(info.id(), info.type(), &request);
     request.setJsonFields(msg_request->state);
   }
 

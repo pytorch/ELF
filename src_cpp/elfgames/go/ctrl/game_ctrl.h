@@ -81,8 +81,8 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     ctrl_.waitMail(&dummy);
   }
 
-  bool checkNewModel(ClientManager* manager) {
-    int64_t new_model = eval_->updateState(*manager);
+  bool checkNewModel(fair_pick::IsStuckFunc is_stuck_func) {
+    int64_t new_model = eval_->updateState(is_stuck_func);
 
     // If there is at least one true eval.
     if (new_model >= 0) {
@@ -137,7 +137,7 @@ class ThreadedCtrl : public ThreadedCtrlBase {
   }
 
   std::vector<FeedResult> onEvalGames(
-      const ClientInfo& info,
+      const std::string &client_key, 
       const std::vector<Record>& records) {
     // Receive selfplay/evaluation games.
     std::vector<FeedResult> res(records.size());
@@ -145,29 +145,29 @@ class ThreadedCtrl : public ThreadedCtrlBase {
     for (size_t i = 0; i < records.size(); ++i) {
       Request request = Request::createFromJson(records[i].request.state);
       Result result = Result::createFromJson(records[i].result.reply);
-      res[i] = eval_->feed(info, request, result, records[i]);
+      res[i] = eval_->feed(client_key, request, result, records[i]);
     }
 
     return res;
   }
 
-  void fillInRequest(const ClientInfo& info, Request* request) {
+  void fillInRequest(const std::string& client_key, int client_type, Request* request) {
     request->vers.set_wait();
 
-    switch (info.type()) {
+    switch (client_type) {
       case CLIENT_SELFPLAY_ONLY:
         if (!eval_mode_) {
-          selfplay_->fillInRequest(info, request);
+          selfplay_->fillInRequest(request);
         }
         break;
       case CLIENT_EVAL_THEN_SELFPLAY:
-        eval_->fillInRequest(info, request);
+        eval_->fillInRequest(client_key, request);
         if (request->vers.wait() && !eval_mode_) {
-          selfplay_->fillInRequest(info, request);
+          selfplay_->fillInRequest(request);
         }
         break;
       default:
-        std::cout << "Warning! Invalid client_type! " << info.type() << std::endl;
+        std::cout << "Warning! Invalid client_type! " << client_type << std::endl;
         break;
     }
   }
