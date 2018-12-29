@@ -99,7 +99,7 @@ Coord GoGameSelfPlay::mcts_make_diverse_move(MCTSGoAI* mcts_go_ai, Coord c) {
   }
   if (options_.policy_distri_training_for_all || diverse_policy) {
     // [TODO]: Warning: MCTS Policy might not correspond to move idx.
-    _state_ext.addMCTSPolicy(policy);
+    _state_ext.addMCTSPolicy(policy.policy);
   }
 
   return c;
@@ -160,7 +160,12 @@ StepStatus GoGameSelfPlay::finish_game(FinishReason reason, Record *r) {
     _ai2->endGame(_state_ext.state());
   }
 
-  *r = _state_ext.dumpRecord();
+  _state_ext.dumpResult().setJsonFields(r->result.reply);
+  _state_ext.currRequest().setJsonFields(r->request.state);
+  
+  r->timestamp = elf_utils::sec_since_epoch_from_now();
+  r->thread_id = _state_ext.gameIdx();
+  r->seq = _state_ext.seq();
 
   game_stats_.resetRankingIfNeeded(options_.num_reset_ranking);
   game_stats_.feedWinRate(_state_ext.state().getFinalValue());
@@ -299,7 +304,13 @@ bool GoGameSelfPlay::onReceive(const MsgRequest& req, MsgReply* reply) {
 }
 
 ThreadState GoGameSelfPlay::getThreadState() const {
-  return _state_ext.getThreadState(); 
+  ThreadState s;
+  s.thread_id = _state_ext.gameIdx();
+  s.seq = _state_ext.seq();
+  s.move_idx = _state_ext.state().getPly() - 1;
+  s.black = _state_ext.currRequest().vers.black_ver;
+  s.white = _state_ext.currRequest().vers.white_ver;
+  return s;
 }
 
 StepStatus GoGameSelfPlay::step(elf::game::Base* base, Record *r) {

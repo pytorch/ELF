@@ -45,7 +45,9 @@ class GoGameTrain : public ServerGame {
           }
           // std::cout << "[" << _game_idx << "][" << i << "] Has data.." <<
           // std::endl;
-          _state_ext[i]->fromRecord(*r);
+          Result result = Result::createFromJson(r->result.reply);
+          Request request = Request::createFromJson(r->request.state);
+          _state_ext[i]->fromData(r->seq, request, result);
 
           // Random pick one ply.
           if (_state_ext[i]->switchRandomMove(&base->rng()))

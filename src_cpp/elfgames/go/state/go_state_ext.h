@@ -18,13 +18,6 @@
 #include "record.h"
 #include "game_utils.h"
 
-#include "elf/ai/tree_search/tree_search_base.h"
-
-#include "elf/distri/game_interface.h"
-
-using elf::cs::Record;
-using elf::cs::ThreadState;
-
 enum FinishReason {
   FR_RESIGN = 0,
   FR_TWO_PASSES,
@@ -121,7 +114,7 @@ struct GoStateExt {
     addCurrentModel();
   }
 
-  Record dumpRecord() const {
+  Result dumpResult() const {
     Result result; 
 
     result.reward = _state.getFinalValue();
@@ -133,27 +126,9 @@ struct GoStateExt {
     result.num_move = _state.getPly() - 1;
     result.values = _predicted_values;
 
-    Record r;
-
-    curr_request_.setJsonFields(r.request.state);
-    result.setJsonFields(r.result.reply);
-
-    r.timestamp = elf_utils::sec_since_epoch_from_now();
-    r.thread_id = _game_idx;
-    r.seq = _seq;
-
-    return r;
+    return result;
   }
 
-  ThreadState getThreadState() const {
-    ThreadState s;
-    s.thread_id = _game_idx;
-    s.seq = _seq;
-    s.move_idx = _state.getPly() - 1;
-    s.black = curr_request_.vers.black_ver;
-    s.white = curr_request_.vers.white_ver;
-    return s;
-  }
   void saveCurrentTree(const std::string& tree_info) const {
     // Dump the tree as well.
     std::string filename = _options.dump_record_prefix + "_" +
@@ -168,10 +143,7 @@ struct GoStateExt {
     return _last_value;
   }
 
-  void addMCTSPolicy(
-      const elf::ai::tree_search::MCTSPolicy<Coord>& mcts_policy) {
-    const auto& policy = mcts_policy.policy;
-
+  void addMCTSPolicy(const std::vector<std::pair<Coord, float>> &policy) {
     // First find the max value
     float max_val = 0.0;
     for (size_t k = 0; k < policy.size(); k++) {
@@ -221,9 +193,8 @@ struct GoStateExt {
   const GoState& state() const {
     return _state;
   }
-  int seq() const {
-    return _seq;
-  }
+  int seq() const { return _seq; }
+  int gameIdx() const { return _game_idx; }
 
   bool finished() const {
     return _options.num_game_per_thread > 0 &&
@@ -260,15 +231,13 @@ class GoStateExtOffline {
   GoStateExtOffline(int game_idx, const GameOptionsTrain& options)
       : _game_idx(game_idx), _bf(_state), _options(options) {}
 
-  void fromRecord(const Record& r) {
-    Result result = Result::createFromJson(r.result.reply);
-    
+  void fromData(int seq, const Request &request, const Result &result) {
     _offline_all_moves = sgfstr2coords(result.content);
     _offline_winner = result.reward > 0 ? 1.0 : -1.0;
 
     _mcts_policies = result.policies;
-    curr_request_ = Request::createFromJson(r.request.state);
-    _seq = r.seq;
+    curr_request_ = request;
+    _seq = seq;
     _predicted_values = result.values;
     _state.reset();
   }
