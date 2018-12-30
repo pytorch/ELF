@@ -28,6 +28,13 @@ struct Reply {
   Reply(int num_action = 0) : pi(num_action) {
   }
 
+  void clear() {
+    r = 0;
+    V = 0;
+    a = -1;
+    terminal = 0;
+  }
+
   void reset() {
     tick = -1;
     cnt = -1;
@@ -329,6 +336,7 @@ class MyContext {
       // std::cout << "Get reply: a1: " << reply_.a1 << ", a2: " << reply_.a2 << std::endl;
       (void)base;
 
+      reply.clear();
       stacking.feedObs(game->feature());
 
       bool game_end = false;
@@ -345,7 +353,7 @@ class MyContext {
         replay.feedReplay(stacking.feature(), Reply(reply));
       }
 
-      if (replay.needSendReplay()) {
+      if (replay.needSendReplay() || game_end) {
         // std::cout << "Sending training to " << train_name << std::endl;
         TrainSender ts(replay);
         client->sendWait(train_name, ts);
