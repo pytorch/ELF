@@ -111,6 +111,12 @@ class ActorCritic(object):
         R = state_curr["V"].squeeze().data
         batchsize = R.size(0)
 
+        r = batch.hist(T - 1, key="r").squeeze()
+        term = batch.hist(T - 1, key="terminal").squeeze()
+        for i, terminal in enumerate(term):
+            if terminal:
+                R[i] = r[i]
+
         stats["init_reward"].feed(R.mean())
         ratio_clamp = 10
 
