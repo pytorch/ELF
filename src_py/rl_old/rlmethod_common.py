@@ -109,7 +109,7 @@ class ActorCritic(object):
 
         state_curr = m(batch.hist(T - 1))
         R = state_curr["V"].squeeze().data
-        batchsize = R.size(0)
+        batchsize = batch.batchsize
 
         r = batch.hist(T - 1, key="r").squeeze()
         term = batch.hist(T - 1, key="terminal").squeeze()
@@ -118,6 +118,7 @@ class ActorCritic(object):
                 R[i] = r[i]
 
         stats["init_reward"].feed(R.mean())
+        stats["reward"].feed(r.mean())
         ratio_clamp = 10
 
         for t in range(T - 2, -1, -1):
