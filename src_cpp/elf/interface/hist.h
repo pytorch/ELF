@@ -34,10 +34,14 @@ class HistTrait<std::vector<T>> {
     return v.size();
   }
 
+  T getUndefValue() const { return undef_value_; }
+
  private:
   int vec_size_;
   T undef_value_;
 };
+
+enum ExtractChoice { FULL_ONLY, CURR_SIZE };
 
 // Accumulate history buffer.
 template <typename T>
@@ -47,6 +51,7 @@ class HistT {
 
   HistT(size_t q_size) {
     q_ = std::vector<T>(q_size);
+    curr_size_ = 0;
   }
 
   void reset(Initializer initializer) {
@@ -55,41 +60,42 @@ class HistT {
         initializer(v);
       }
     }
+    curr_size_ = 0;
   }
 
-  size_t size() const { return q_.size(); }
+  size_t maxlen() const { return q_.size(); }
+  size_t currSize() const { return curr_size_; }
+
+  bool isFull() const { return q_.size() == curr_size_; }
 
   T &push(T &&v) {
     // q_idx_ always points to the most recent entry.
     q_idx_ = (q_idx_ + 1) % q_.size();
     q_[q_idx_] = std::move(v);
+    if (curr_size_ < q_.size()) curr_size_ ++;
     return q_[q_idx_];
-  }
-
-  size_t accumulate(std::function<size_t (const T &)> func) const {
-    size_t sz = 0;
-    for (const T &v : q_) {
-      sz += func(v);
-    }
-    return sz;
   }
 
   // From oldest to most recent.
   template <typename S>
-  void extractForward(S* s, size_t (T::*extractor)(S *) const) const {
+  void extractForward(ExtractChoice ch, S* s, size_t (T::*extractor)(S *) const) const {
     auto f = [=](const T &v, S *s) {
       return (v.*extractor)(s);
     };
-    this->template extractForward<S>(s, f);
+    this->template extractForward<S>(ch, s, f);
   }
 
   template <typename S>
-  void extractForward(S* s, std::function<size_t (const T &, S *)> extractor) const {
+  void extractForward(ExtractChoice ch, S* s, std::function<size_t (const T &, S *)> extractor) const {
     assert(extractor != nullptr);
-    // one sample = dim per feature * time length
-    size_t idx = q_idx_;
 
-    for (size_t i = 0; i < q_.size(); ++i) {
+    if (ch == FULL_ONLY) assert(isFull());
+
+    // one sample = dim per feature * time length
+    size_t idx = q_idx_ + q_.size() - curr_size_;
+    if (idx >= q_.size()) idx -= q_.size();
+
+    for (size_t i = 0; i < curr_size_; ++i) {
       idx ++;
       if (idx >= q_.size()) idx = 0;
 
@@ -100,19 +106,22 @@ class HistT {
 
   // From most recent to oldest.
   template <typename S>
-  void extractReverse(S* s, size_t (T::*extractor)(S *) const) const {
+  void extractReverse(ExtractChoice ch, S* s, size_t (T::*extractor)(S *) const) const {
     auto f = [=](const T &v, S *s) {
       return (v.*extractor)(s);
     };
-    this->template extractReverse<S>(s, f);
+    this->template extractReverse<S>(ch, s, f);
   }
 
   template <typename S>
-  void extractReverse(S* s, std::function<size_t (const T &, S *)> extractor) const {
+  void extractReverse(ExtractChoice ch, S* s, std::function<size_t (const T &, S *)> extractor) const {
     assert(extractor != nullptr);
+
+    if (ch == FULL_ONLY) assert(isFull());
+
     // one sample = dim per feature * time length
     size_t idx = q_idx_;
-    for (size_t i = 0; i < q_.size(); ++i) {
+    for (size_t i = 0; i < curr_size_; ++i) {
       const T &v = q_[idx];
       s += extractor(v, s);
 
@@ -142,6 +151,7 @@ class HistT {
  private:
   std::vector<T> q_;
   size_t q_idx_ = 0;
+  size_t curr_size_ = 0;
 };
 
 } // namespace elf

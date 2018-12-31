@@ -38,6 +38,7 @@ struct Reply {
   void reset() {
     tick = -1;
     cnt = -1;
+    clear();
   }
 
   void setPi(const float *ppi) { assert(pi.size() > 0); std::copy(ppi, ppi + pi.size(), pi.begin()); }
@@ -50,7 +51,7 @@ struct Reply {
   size_t getTick(int *t) const { *t = tick; return 1; }
   size_t getCnt(int *t) const { *t = cnt; return 1; }
   size_t getReward(float *rr) const { *rr = r; return 1; }
-  size_t getTerminal(int *tterminal) const { *tterminal = r; return 1; }
+  size_t getTerminal(int *tterminal) const { *tterminal = terminal; return 1; }
 };
 
 using Replay = elf::decorator::ShortReplayBuffer<Reply>;
@@ -82,7 +83,7 @@ struct ActorSender {
 
   ActorSender(const decorator::FrameStacking &stacking, Reply &reply) : stacking(stacking), reply(reply) { }
 
-  void getFeature(float *f) const { stacking.getFeature(f); }
+  void getFeature(float *f) const { auto ff = stacking.feature(); std::copy(ff.begin(), ff.end(), f); }
   void getCnt(int *cnt) const { reply.getCnt(cnt); }
   void getTick(int *t) const { reply.getTick(t); }
 
@@ -131,12 +132,12 @@ struct TrainSender {
   TrainSender(const Replay &replay) : replay(replay) { }
 
   void getFeature(float *s) const { replay.getFeatureForward(s); }
-  void getPi(float *pi) const { replay.histReply().extractForward(pi, &Reply::getPi); }
-  void getValue(float *V) const { replay.histReply().extractForward(V, &Reply::getValue); }
-  void getAction(int64_t *a) const { replay.histReply().extractForward(a, &Reply::getAction); }
-  void getTick(int *tick) const { replay.histReply().extractForward(tick, &Reply::getTick); }
-  void getReward(float *reward) const { replay.histReply().extractForward(reward, &Reply::getReward); }
-  void getTerminal(int *terminal) const { replay.histReply().extractForward(terminal, &Reply::getTerminal); }
+  void getPi(float *pi) const { replay.histReply().extractForward(elf::FULL_ONLY, pi, &Reply::getPi); }
+  void getValue(float *V) const { replay.histReply().extractForward(elf::FULL_ONLY, V, &Reply::getValue); }
+  void getAction(int64_t *a) const { replay.histReply().extractForward(elf::FULL_ONLY, a, &Reply::getAction); }
+  void getTick(int *tick) const { replay.histReply().extractForward(elf::FULL_ONLY, tick, &Reply::getTick); }
+  void getReward(float *reward) const { replay.histReply().extractForward(elf::FULL_ONLY, reward, &Reply::getReward); }
+  void getTerminal(int *terminal) const { replay.histReply().extractForward(elf::FULL_ONLY, terminal, &Reply::getTerminal); }
 
   static Extractor reg(const GameInterface &game, int batchsize, int T, int frame_stack) {
      Extractor e;
@@ -353,7 +354,7 @@ class MyContext {
         replay.feedReplay(stacking.feature(), Reply(reply));
       }
 
-      if (replay.needSendReplay() || game_end) {
+      if (replay.needSendReplay() || (game_end && replay.isFull())) {
         // std::cout << "Sending training to " << train_name << std::endl;
         TrainSender ts(replay);
         client->sendWait(train_name, ts);

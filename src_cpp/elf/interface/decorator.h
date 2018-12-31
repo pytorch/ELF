@@ -8,8 +8,8 @@ class FrameStacking {
  public:
   using Hist = elf::HistT<std::vector<float>>;
 
-  FrameStacking(size_t framestack, size_t dim)
-      : frame_stack_(framestack), dim_(dim), trait_(dim, 0), hist_(framestack) {
+  FrameStacking(size_t framestack, size_t dim, float default_value = 0.0f)
+      : frame_stack_(framestack), dim_(dim), trait_(dim, default_value), hist_(framestack) {
           reset();
       }
 
@@ -22,15 +22,9 @@ class FrameStacking {
     hist_.push(std::move(f));
   }
 
-  void getFeature(float *s) const {
-    hist_.extractReverse<float>(s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
-  }
-
   std::vector<float> feature() const {
-    size_t total_size = hist_.accumulate([](const std::vector<float> &v) { return v.size(); });
-    assert(total_size == dim_ * frame_stack_);
-    std::vector<float> v(total_size);
-    getFeature(&v[0]);
+    std::vector<float> v(dim_ * frame_stack_, trait_.getUndefValue());
+    hist_.extractReverse<float>(CURR_SIZE, &v[0], [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
     return v;
   }
 
@@ -70,17 +64,19 @@ class ShortReplayBuffer {
   }
 
   bool needSendReplay() {
-    if (curr_step_ - last_step_ == hist_.size()) {
+    if (isFull() && (curr_step_ - last_step_ == hist_.maxlen())) {
       last_step_ = curr_step_ - 1;
       return true;
     } else return false;
   }
 
+  bool isFull() const { return hist_.isFull() && hist_reply_.isFull(); }
+
   void getFeatureForward(float *s) const {
-    hist_.extractForward<float>(s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
+    hist_.extractForward<float>(FULL_ONLY, s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
   }
   void getFeatureReverse(float *s) const {
-    hist_.extractReverse<float>(s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
+    hist_.extractReverse<float>(FULL_ONLY, s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
   }
 
   const Hist& hist() const { return hist_; }
