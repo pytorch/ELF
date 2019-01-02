@@ -64,6 +64,7 @@ class GameInterface {
   virtual std::vector<int> dims() const = 0;
   virtual int numActions() const = 0;
   virtual std::unordered_map<std::string, int> getParams() const = 0;
+
   // return false if the game has come to an end, and change the reply.
   virtual bool step(Reply *) = 0;
   virtual void reset() = 0;
@@ -183,22 +184,26 @@ DEF_STRUCT(Options)
   DEF_FIELD(int, T, 6, "len of history")
   DEF_FIELD(int, frame_stack, 4, "Framestack")
   DEF_FIELD(float, reward_clip, 1.0f, "Reward clip")
+  DEF_FIELD(int, num_eval_games, 0, "number of evaluation games")
   // DEF_FIELD_NODEFAULT(elf::Options, base, "ELF options")
 DEF_END
 
 class Summary {
 public:
     Summary()
-      : _accu_reward(0), _accu_reward_all_game(0),
-        _accu_reward_last_game(0), _n_complete_game(0), _n_merged(0) { }
+      : _accu_reward(0), _accu_step(0), _accu_reward_all_game(0),
+        _accu_reward_last_game(0), _n_episode(0), _n_step(0), _n_merged(0) { }
 
     void feed(float curr_reward) {
       _accu_reward = _accu_reward + curr_reward;
+      _accu_step ++;
     }
 
-    void feed(const Summary &other) {
+    void merge(const Summary &other) {
       _accu_reward_all_game = _accu_reward_all_game + other._accu_reward_all_game;
-      _n_complete_game = _n_complete_game + other._n_complete_game;
+      _n_episode = _n_episode + other._n_episode;
+      _n_step = _n_step + other._n_step;
+      _accu_step = _accu_step + other._accu_step;
 
       _accu_reward_last_game = _accu_reward_last_game + other._accu_reward_last_game;
       _n_merged ++;
@@ -207,32 +212,39 @@ public:
     void reset() {
       _accu_reward_all_game = _accu_reward_all_game + _accu_reward;
       _accu_reward_last_game = _accu_reward + 0;
+      _n_step += _accu_step;
+      _n_episode ++;
+
+      _accu_step = 0;
       _accu_reward = 0;
-      _n_complete_game ++;
     }
 
     std::string print() const {
       std::stringstream ss;
-      if (_n_complete_game > 0) {
-        ss << "Accumulated: " << (float)_accu_reward_all_game / _n_complete_game << "[" << _n_complete_game << "]";
+      ss << "Total step: " << static_cast<float>(_n_step + _accu_step) / 1e6 << "M, ";
+      ss << "#step (completed episode): " << static_cast<float>(_n_step) / 1e6 << "M " << std::endl;
+      if (_n_episode > 0) {
+        ss << "Accumulated: " << (float)_accu_reward_all_game / _n_episode << "[" << _n_episode << "]";
       } else {
         ss << "0[0]";
       }
       if (_n_merged > 0) {
-        ss << ", Avg last episode:" << (float)_accu_reward_last_game / _n_merged << "[" << _n_merged << "]";
+        ss << ", Avg last episode: " << (float)_accu_reward_last_game / _n_merged << "[" << _n_merged << "]";
       } else {
         ss << "0[0]";
       }
 
-      ss << " current accumulated reward: " << _accu_reward;
+      ss << " current accu. reward: " << _accu_reward;
       return ss.str();
     }
 
 private:
     std::atomic<float> _accu_reward;
+    std::atomic<int> _accu_step;
     std::atomic<float> _accu_reward_all_game;
     std::atomic<float> _accu_reward_last_game;
-    std::atomic<int> _n_complete_game;
+    std::atomic<int> _n_episode;
+    std::atomic<int> _n_step;
     std::atomic<int> _n_merged;
 };
 
@@ -254,7 +266,9 @@ class MyContext {
      for (int i = 0; i < num_games; ++i) {
        auto* g = ctx->getGame(i);
        if (g != nullptr) {
-         games_.emplace_back(new _Bundle(i, options_, ctx->getClient(), factory_, eval_name_, train_name_));
+         games_.emplace_back(
+             new _Bundle(i, i >= num_games - options_.num_eval_games, 
+               options_, ctx->getClient(), factory_, eval_name_, train_name_));
          g->setCallbacks(std::bind(&_Bundle::OnAct, games_[i].get(), _1));
        }
      }
@@ -276,10 +290,22 @@ class MyContext {
 
    std::string getSummary() {
      Summary summary;
+     Summary summary_eval;
+
+     int n_eval = 0;
      for (const auto &g : games_) {
-       summary.feed(g->summary);
+       if (g->eval_mode) {
+         summary_eval.merge(g->summary); 
+         n_eval ++;
+       } else {
+         summary.merge(g->summary);
+       }
      }
-     return summary.print();
+
+     if (n_eval == 0) return summary.print(); 
+     else {
+       return "Train: \n" + summary.print() + "\nEval:\n" + summary_eval.print();
+     }
    }
 
    Spec getBatchSpec() const { return spec_; }
@@ -298,6 +324,7 @@ class MyContext {
     decorator::FrameStacking stacking;
     Replay replay;
 
+    bool eval_mode;
     Summary summary;
 
     GameClientInterface *client;
@@ -305,11 +332,12 @@ class MyContext {
     std::string train_name;
     const Options opt;
 
-    _Bundle(int idx, const Options &opt, GameClientInterface *client, GameFactory factory,
+    _Bundle(int idx, bool eval_mode, const Options &opt, GameClientInterface *client, GameFactory factory,
             const std::string &eval_name, const std::string &train_name)
       : game(factory.f(idx)), reply(game->numActions()),
         stacking(opt.frame_stack, game->dim()),
         replay(opt.T, opt.frame_stack * game->dim()),
+        eval_mode(eval_mode),
         client(client),
         eval_name(eval_name),
         train_name(train_name),
@@ -345,13 +373,29 @@ class MyContext {
       ActorSender as(stacking, reply);
       // std::cout << "Send wait" << std::endl;
       if (client->sendWait(eval_name, as)) {
+        if (eval_mode) {
+          // Find max from reply.pi.
+          int a = 0;
+          float best_pi = -1;
+          for (size_t i = 0; i < reply.pi.size(); ++i) {
+            if (best_pi < reply.pi[i]) {
+              best_pi = reply.pi[i];
+              a = i;
+            }
+          }
+          reply.a = a;
+        }
+
         game_end = ! game->step(&reply);
         summary.feed(reply.r);
-        if (opt.reward_clip > 0) {
-          reply.r = std::min(std::max(reply.r, -opt.reward_clip), opt.reward_clip);
+
+        if (! eval_mode) {
+          if (opt.reward_clip > 0) {
+            reply.r = std::min(std::max(reply.r, -opt.reward_clip), opt.reward_clip);
+          }
+          reply.terminal = game_end ? 1 : 0;
+          replay.feedReplay(stacking.feature(), Reply(reply));
         }
-        reply.terminal = game_end ? 1 : 0;
-        replay.feedReplay(stacking.feature(), Reply(reply));
       }
 
       if (replay.needSendReplay() || (game_end && replay.isFull())) {
