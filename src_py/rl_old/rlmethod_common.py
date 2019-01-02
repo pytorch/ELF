@@ -12,6 +12,23 @@ import torch.nn as nn
 from torch.autograd import Variable
 import math
 
+def average_norm_clip(grad, clip_val):
+    '''
+    Compute the norm and clip it if necessary.
+    The first dimension will be batchsize.
+    Args:
+        grad(Tensor): the gradient
+        clip_val(float): value to clip to
+    '''
+    batchsize = grad.size(0)
+    avg_l2_norm = 0.0
+    for i in range(batchsize):
+        avg_l2_norm += grad[i].data.norm()
+    avg_l2_norm /= batchsize
+    if avg_l2_norm > clip_val:
+        # print("l2_norm: %.5f clipped to %.5f" % (avg_l2_norm, clip_val))
+        grad *= clip_val / avg_l2_norm
+
 # Methods.
 
 # Actor critic model.
@@ -40,6 +57,16 @@ class ActorCritic(object):
             '',
             1e-6)
 
+        spec.addFloatOption(
+            'adv_clip',
+            '',
+            0.0)
+
+        spec.addFloatOption(
+            'ratio_clamp',
+            '',
+            10.0)
+
         return spec
 
     @auto_import_options
@@ -57,14 +84,14 @@ class ActorCritic(object):
         else:
             grad_clip_norm = args.grad_clip_norm
 
-        self.policy_gradient_weights = None
+        self.advantage = None
 
         def _policy_backward(layer, grad_input, grad_output):
-            if self.policy_gradient_weights is None: return
+            if self.advantage is None: return
             # Multiply gradient weights
 
             # This works only on pytorch 0.2.0
-            grad_input[0].data.mul_(self.policy_gradient_weights.view(-1, 1))
+            grad_input[0].data.mul_(self.advantage.view(-1, 1))
             if grad_clip_norm is not None:
                 average_norm_clip(grad_input[0], grad_clip_norm)
 
@@ -119,7 +146,6 @@ class ActorCritic(object):
 
         stats["init_reward"].feed(R.mean())
         stats["reward"].feed(r.mean())
-        ratio_clamp = 10
 
         for t in range(T - 2, -1, -1):
             state_curr = m(batch.hist(t))
@@ -143,11 +169,14 @@ class ActorCritic(object):
             # We need to set it beforehand.
             # Note that the samples we collect might be off-policy, so we need
             # to do importance sampling.
-            self.policy_gradient_weights = R - V.data
+            self.advantage = R - V.data
+            # truncate adv. 
+            if self.options.adv_clip > 1e-5:
+                self.advantage.clamp_(min=-self.options.adv_clip, max=self.options.adv_clip)
 
             # Cap it.
-            coeff = torch.clamp(pi.data.div(old_pi), max=ratio_clamp).gather(1, a.view(-1, 1)).squeeze()
-            self.policy_gradient_weights.mul_(coeff)
+            coeff = torch.clamp(pi.data.div(old_pi), max=self.options.ratio_clamp).gather(1, a.view(-1, 1)).squeeze()
+            self.advantage.mul_(coeff)
             # There is another term (to compensate clamping), but we omit it for
             # now.
 
@@ -162,7 +191,7 @@ class ActorCritic(object):
             overall_err = policy_err + entropy_err * args.entropy_ratio + value_err
             overall_err.backward()
 
-            stats["rms_advantage"].feed(self.policy_gradient_weights.norm() / math.sqrt(batchsize))
+            stats["rms_advantage"].feed(self.advantage.norm() / math.sqrt(batchsize))
             stats["cost"].feed(overall_err.item())
             stats["predict_reward"].feed(V.mean())
             stats["reward"].feed(r.mean())
