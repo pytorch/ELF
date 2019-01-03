@@ -71,7 +71,7 @@ class GameInterface {
 };
 
 struct GameFactory {
-  using Func = std::function<GameInterface *(int game_idx)>;
+  using Func = std::function<GameInterface *(int game_idx, bool)>;
   Func f = nullptr;
 
   GameFactory() { }
@@ -188,30 +188,78 @@ DEF_STRUCT(Options)
   // DEF_FIELD_NODEFAULT(elf::Options, base, "ELF options")
 DEF_END
 
+class Stats;
+
 class Summary {
+ public:
+    std::string print() const {
+      std::stringstream ss;
+      ss << "Total step: " << static_cast<float>(_total_step + _total_ongoing_step) / 1e6 << "M, ";
+      ss << "#step (completed episode): " << static_cast<float>(_total_step) / 1e6 << "M " << std::endl;
+      if (_total_episode > 0) {
+        ss << "Accumulated: " << (float)_total_reward / _total_episode << "[" << _total_episode << "]";
+      } else {
+        ss << "0[0]";
+      }
+      if (_n_merged > 0) {
+        ss << ", Last episode[" << _n_merged << "] Avg: " << (float)_total_reward_last_game / _n_merged 
+           << ", Min: " << _min_reward_last_game << ", Max: " << _max_reward_last_game << std::endl;
+      } else {
+        ss << "N/A";
+      }
+      return ss.str();
+    }
+
+    friend class Stats;
+
+ private:
+    float _total_reward = 0;
+    int _total_episode = 0;
+    int _total_step = 0;
+    int _total_ongoing_step = 0;
+
+    float _total_reward_last_game = 0.0;
+    float _max_reward_last_game = -std::numeric_limits<float>::max();
+    float _min_reward_last_game = std::numeric_limits<float>::max();
+
+    int _n_merged = 0;
+};
+
+class Stats {
 public:
-    Summary()
-      : _accu_reward(0), _accu_step(0), _accu_reward_all_game(0),
-        _accu_reward_last_game(0), _n_episode(0), _n_step(0), _n_merged(0) { }
+    Stats() {}
 
     void feed(float curr_reward) {
-      _accu_reward = _accu_reward + curr_reward;
+      std::lock_guard<std::mutex> lock(mutex_);
+      _started = true;
+      _accu_reward += curr_reward;
       _accu_step ++;
     }
 
-    void merge(const Summary &other) {
-      _accu_reward_all_game = _accu_reward_all_game + other._accu_reward_all_game;
-      _n_episode = _n_episode + other._n_episode;
-      _n_step = _n_step + other._n_step;
-      _accu_step = _accu_step + other._accu_step;
+    void export2summary(Summary &s) const {
+      std::lock_guard<std::mutex> lock(mutex_);
 
-      _accu_reward_last_game = _accu_reward_last_game + other._accu_reward_last_game;
-      _n_merged ++;
+      if (! _started) return;
+
+      s._total_reward += _accu_reward_all_game;
+      s._total_episode += _n_episode;
+      s._total_step += _n_step;
+      s._total_ongoing_step += _accu_step;
+
+      if (_n_episode > 0) {
+        // We already have a previous game.
+        s._total_reward_last_game += _accu_reward_last_game;
+        s._max_reward_last_game = std::max(s._max_reward_last_game, _accu_reward_last_game);
+        s._min_reward_last_game = std::min(s._min_reward_last_game, _accu_reward_last_game);
+        s._n_merged ++;
+      }
     }
 
     void reset() {
-      _accu_reward_all_game = _accu_reward_all_game + _accu_reward;
-      _accu_reward_last_game = _accu_reward + 0;
+      if (! _started) return;
+
+      _accu_reward_all_game += _accu_reward;
+      _accu_reward_last_game = _accu_reward;
       _n_step += _accu_step;
       _n_episode ++;
 
@@ -219,33 +267,17 @@ public:
       _accu_reward = 0;
     }
 
-    std::string print() const {
-      std::stringstream ss;
-      ss << "Total step: " << static_cast<float>(_n_step + _accu_step) / 1e6 << "M, ";
-      ss << "#step (completed episode): " << static_cast<float>(_n_step) / 1e6 << "M " << std::endl;
-      if (_n_episode > 0) {
-        ss << "Accumulated: " << (float)_accu_reward_all_game / _n_episode << "[" << _n_episode << "]";
-      } else {
-        ss << "0[0]";
-      }
-      if (_n_merged > 0) {
-        ss << ", Avg last episode: " << (float)_accu_reward_last_game / _n_merged << "[" << _n_merged << "]";
-      } else {
-        ss << "0[0]";
-      }
-
-      ss << " current accu. reward: " << _accu_reward;
-      return ss.str();
-    }
-
 private:
-    std::atomic<float> _accu_reward;
-    std::atomic<int> _accu_step;
-    std::atomic<float> _accu_reward_all_game;
-    std::atomic<float> _accu_reward_last_game;
-    std::atomic<int> _n_episode;
-    std::atomic<int> _n_step;
-    std::atomic<int> _n_merged;
+    mutable std::mutex mutex_;
+
+    bool _started = false;
+
+    float _accu_reward = 0.0;
+    int _accu_step = 0;
+    float _accu_reward_all_game = 0.0;
+    float _accu_reward_last_game = 0.0;
+    int _n_episode = 0;
+    int _n_step = 0;
 };
 
 class MyContext {
@@ -295,10 +327,10 @@ class MyContext {
      int n_eval = 0;
      for (const auto &g : games_) {
        if (g->eval_mode) {
-         summary_eval.merge(g->summary); 
+         g->stats.export2summary(summary_eval); 
          n_eval ++;
        } else {
-         summary.merge(g->summary);
+         g->stats.export2summary(summary);
        }
      }
 
@@ -325,7 +357,7 @@ class MyContext {
     Replay replay;
 
     bool eval_mode;
-    Summary summary;
+    Stats stats;
 
     GameClientInterface *client;
     std::string eval_name;
@@ -334,7 +366,7 @@ class MyContext {
 
     _Bundle(int idx, bool eval_mode, const Options &opt, GameClientInterface *client, GameFactory factory,
             const std::string &eval_name, const std::string &train_name)
-      : game(factory.f(idx)), reply(game->numActions()),
+      : game(factory.f(idx, eval_mode)), reply(game->numActions()),
         stacking(opt.frame_stack, game->dim()),
         replay(opt.T, opt.frame_stack * game->dim()),
         eval_mode(eval_mode),
@@ -356,7 +388,7 @@ class MyContext {
       game->reset();
       stacking.reset();
       replay.reset([](Reply &r) { r.reset(); });
-      summary.reset();
+      stats.reset();
       reply.tick = 0;
       reply.cnt ++;
     }
@@ -387,7 +419,7 @@ class MyContext {
         }
 
         game_end = ! game->step(&reply);
-        summary.feed(reply.r);
+        stats.feed(reply.r);
 
         if (! eval_mode) {
           if (opt.reward_clip > 0) {
