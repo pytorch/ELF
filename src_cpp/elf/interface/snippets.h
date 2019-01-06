@@ -68,6 +68,8 @@ class GameInterface {
   // return false if the game has come to an end, and change the reply.
   virtual bool step(Reply *) = 0;
   virtual void reset() = 0;
+
+  virtual ~GameInterface() = default;
 };
 
 struct GameFactory {
@@ -202,7 +204,7 @@ class Summary {
         ss << "0[0]";
       }
       if (_n_merged > 0) {
-        ss << ", Last episode[" << _n_merged << "] Avg: " << (float)_total_reward_last_game / _n_merged 
+        ss << ", Last episode[" << _n_merged << "] Avg: " << (float)_total_reward_last_game / _n_merged
            << ", Min: " << _min_reward_last_game << ", Max: " << _max_reward_last_game << std::endl;
       } else {
         ss << "N/A";
@@ -299,7 +301,7 @@ class MyContext {
        auto* g = ctx->getGame(i);
        if (g != nullptr) {
          games_.emplace_back(
-             new _Bundle(i, i >= num_games - options_.num_eval_games, 
+             new _Bundle(i, i >= num_games - options_.num_eval_games,
                options_, ctx->getClient(), factory_, eval_name_, train_name_));
          g->setCallbacks(std::bind(&_Bundle::OnAct, games_[i].get(), _1));
        }
@@ -309,14 +311,19 @@ class MyContext {
    }
 
    std::unordered_map<std::string, int> getParams() const {
-     assert(! games_.empty());
-     const GameInterface &game = *games_[0]->game;
+     const GameInterface *game = nullptr;
+     if (games_.empty()) {
+       game = factory_.f(0, false);
+     } else {
+       game = games_[0]->game.get();
+     }
 
-     auto params = game.getParams();
+     auto params = game->getParams();
 
-     params["num_action"] = game.numActions();
+     params["num_action"] = game->numActions();
      params["frame_stack"] = options_.frame_stack;
      params["T"] = options_.T;
+     if (games_.empty()) delete game;
      return params;
    }
 
@@ -327,14 +334,14 @@ class MyContext {
      int n_eval = 0;
      for (const auto &g : games_) {
        if (g->eval_mode) {
-         g->stats.export2summary(summary_eval); 
+         g->stats.export2summary(summary_eval);
          n_eval ++;
        } else {
          g->stats.export2summary(summary);
        }
      }
 
-     if (n_eval == 0) return summary.print(); 
+     if (n_eval == 0) return summary.print();
      else {
        return "Train: \n" + summary.print() + "\nEval:\n" + summary_eval.print();
      }
@@ -454,19 +461,25 @@ class MyContext {
   }
 
   void regFunc(elf::GCInterface *ctx) {
-    assert(! games_.empty());
-    const GameInterface &game = *games_[0]->game;
+    const GameInterface *game = nullptr;
+    if (games_.empty()) {
+      game = factory_.f(0, false);
+    } else {
+      game = games_[0]->game.get();
+    }
 
     Extractor& e = ctx->getExtractor();
     int batchsize = ctx->options().batchsize;
-    
-    Extractor e_actor = ActorSender::reg(game, batchsize, options_.frame_stack);
+
+    Extractor e_actor = ActorSender::reg(*game, batchsize, options_.frame_stack);
     spec_[eval_name_] = getSpec(e_actor);
     e.merge(std::move(e_actor));
 
-    Extractor e_train = TrainSender::reg(game, batchsize, options_.T, options_.frame_stack);
-    spec_[train_name_] = getSpec(e_train); 
+    Extractor e_train = TrainSender::reg(*game, batchsize, options_.T, options_.frame_stack);
+    spec_[train_name_] = getSpec(e_train);
     e.merge(std::move(e_train));
+
+    if (games_.empty()) delete game;
   }
 };
 
