@@ -79,8 +79,9 @@ class BatchSender : public GameContext {
 
         const std::string &label = opts.getLabel();
         std::string identity;
-        PRINT("sending now");
-        remote_comm_.sendToEligible(label, j.dump(), &identity);
+        auto data = j.dump();
+        PRINT("sending now, #size: " << data.size());
+        remote_comm_.sendToEligible(label, data, &identity);
         PRINT("sending complete");
 
         auto &q = getQ(opts);

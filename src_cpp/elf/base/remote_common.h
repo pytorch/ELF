@@ -5,13 +5,12 @@
 
 #include <set>
 
-/*
+#ifdef REMOTE_DEBUG
 #define PRINT(...) \
-  std::cout << elf_utils::msec_since_epoch_from_now() << " [" << std::this_thread::get_id() << "] " << __VA_ARGS__ << std::endl;
-*/
-
-// Simple debugging.
+    std::cout << elf_utils::msec_since_epoch_from_now() << " [" << std::this_thread::get_id() << "] " << __VA_ARGS__ << std::endl;
+#else
 #define PRINT(...)
+#endif
 
 namespace elf {
 namespace remote {

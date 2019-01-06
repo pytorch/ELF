@@ -4,6 +4,12 @@
 #include "../utils/base64.h"
 #include "sharedmem.h"
 
+#include <gzip/compress.hpp>
+#include <gzip/config.hpp>
+#include <gzip/decompress.hpp>
+#include <gzip/utils.hpp>
+#include <gzip/version.hpp>
+
 using json = nlohmann::json;
 
 namespace comm {
@@ -75,7 +81,9 @@ void to_json(json& j, const AnyP& anyp) {
   j["type_size"] = anyp.field().getSizeOfType();
   j["size_byte"] = anyp.getByteSize();
 
-  j["p"] = base64_encode(anyp.getPtr(), j["size_byte"]);
+  // j["p"] = base64_encode(anyp.getPtr(), j["size_byte"]);
+  auto compressed = gzip::compress(reinterpret_cast<const char *>(anyp.getPtr()), j["size_byte"]);
+  j["p"] = base64_encode(reinterpret_cast<const unsigned char *>(compressed.c_str()), compressed.size());
 
   /*
   std::cout << "to_json: name: " << anyp.field().getName()
@@ -101,12 +109,15 @@ void from_json(const json& j, AnyP& anyp) {
   assert(j["name"] == anyp.field().getName());
   assert(j["type_size"] == anyp.field().getSizeOfType());
   if (j["size_byte"] != anyp.getByteSize()) {
-    std::cout << "j[\"size_byte\"] = " << j["size_byte"] 
+    std::cout << "j[\"size_byte\"] = " << j["size_byte"]
               << " != anyp.getByteSize(): " << anyp.getByteSize() << std::endl;
     assert(false);
   }
 
-  std::string content = base64_decode(j["p"]);
+  // std::string content = base64_decode(j["p"]);
+  //
+  std::string decoded = base64_decode(j["p"]);
+  std::string content = gzip::decompress(decoded.c_str(), decoded.size());
   assert(j["size_byte"] == content.size());
   ::memcpy(anyp.getPtr(), content.c_str(), content.size());
 

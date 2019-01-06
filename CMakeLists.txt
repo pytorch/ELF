@@ -67,6 +67,7 @@ endfunction(add_cpp_tests)
 # Include everything in src_cpp
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src_cpp/)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/gzip-hpp/include)
 
 # Main ELF library
 

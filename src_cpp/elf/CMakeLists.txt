@@ -32,6 +32,7 @@ target_compile_definitions(elf PUBLIC
 
 target_link_libraries(elf PUBLIC
     #${Boost_LIBRARIES}
+    z
     concurrentqueue
     nlohmann_json
     pybind11
