@@ -273,6 +273,10 @@ class Batch:
                     "Batch(): specified key: %s or %s not found!" %
                     (key, key_with_last))
 
+    def __setitem__(self, key, v):
+        assert key in self.batch
+        self.batch[key] = v
+
     def add(self, key, value):
         '''Add key=value in Batch.
 
