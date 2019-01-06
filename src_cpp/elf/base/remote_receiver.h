@@ -32,6 +32,7 @@ class _Client {
        //  std::cout << "recv #size: " << recv_msg.size() << std::endl;
        // }
        // std::cout << "Get reply. " << recv_msg.size() << std::endl;
+       PRINT("_Client: Get message from .. size: " << recv_msg.size());
        recv_q_->parseAdd(recv_msg);
      };
 

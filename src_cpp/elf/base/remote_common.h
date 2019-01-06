@@ -5,6 +5,14 @@
 
 #include <set>
 
+/*
+#define PRINT(...) \
+  std::cout << elf_utils::msec_since_epoch_from_now() << " [" << std::this_thread::get_id() << "] " << __VA_ARGS__ << std::endl;
+*/
+
+// Simple debugging.
+#define PRINT(...)
+
 namespace elf {
 namespace remote {
 
