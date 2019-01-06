@@ -50,7 +50,7 @@ class _Server {
     };
 
     auto proc = [&](const std::string& identity, const std::string& recv_msg) {
-      // std::cout << "Get message from .." << identity << ", size: " << recv_msg.size() << std::endl;
+      PRINT("_Server: Get message from .." << identity << ", size: " << recv_msg.size());
       recv_q_[identity].parseAdd(recv_msg);
       return true;
     };

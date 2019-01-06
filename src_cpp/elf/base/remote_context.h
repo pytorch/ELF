@@ -74,17 +74,20 @@ class BatchSender : public GameContext {
       func = [&](SharedMemData* smem_data) {
         const SharedMemOptions &opts = smem_data->getSharedMemOptions();
         json j;
+        PRINT("converting smem to json");
         SMemToJson(*smem_data, input_keys_, j);
 
         const std::string &label = opts.getLabel();
         std::string identity;
+        PRINT("sending now");
         remote_comm_.sendToEligible(label, j.dump(), &identity);
+        PRINT("sending complete");
 
         auto &q = getQ(opts);
         q.pop(&j);
-        // std::cout << ", got reply_j: "<< std::endl;
+        PRINT("got reply_j: ");
         SMemFromJson(j, *smem_data);
-        // std::cout << ", after parsing smem: "<< std::endl;
+        PRINT("after parsing smem");
         //
         /*
         const AnyP *anyp = smem_data->get("hash");
@@ -269,12 +272,12 @@ class SharedMemRemote : public SharedMem {
       identities_.clear();
       switch (mode_) {
         case RECV_SMEM:
-          // std::cout << "RECV_SMEM" << std::endl;
+          PRINT("RECV_SMEM");
           remote_smem_.emplace_back(smem_);
           // std::cout << "smem info: " << remote_smem_.back().info() << std::endl;
           break;
         case RECV_ENTRY:
-          // std::cout << "RECV_ENTRY" << std::endl;
+          PRINT("RECV_ENTRY");
           for (int i = 0; i < smem_.getSharedMemOptions().getBatchSize(); ++i) {
             remote_smem_.emplace_back(smem_.copySlice(i));
             std::cout << "smem info: " << remote_smem_.back().info() << std::endl;
@@ -287,24 +290,27 @@ class SharedMemRemote : public SharedMem {
     const auto& opt = smem_.getSharedMemOptions();
     do {
       std::string identity, msg;
+      PRINT("remote_smem waiting...");
       remote_comm_.recvFromEligible(opt.getLabel(), &msg, &identity);
 
       // std::cout << "smem info: " << smem_.info() << std::endl;
       auto &curr_smem = remote_smem_[identities_.size()];
       identities_.push_back(identity);
 
-      // std::cout << elf_utils::now() << "remote_smem info: " << curr_smem.info() << std::endl;
+      PRINT("remote_smem info: " << curr_smem.info() << ", id.size(): " << identities_.size());
 
       SMemFromJson(json::parse(msg), curr_smem);
       cum_batchsize_ += curr_smem.getEffectiveBatchSize();
     } while (identities_.size() < remote_smem_.size());
+
+    PRINT("get all remote_smem remote_smem.size(): " << remote_smem_.size());
 
     if (stats_ != nullptr)
       stats_->feed(opt.getLabelIdx(), smem_.getEffectiveBatchSize());
     smem_.setEffectiveBatchSize(cum_batchsize_);
     // Note that all remote_smem_ shared memory with smem_.
     // After waitBatchFillMem() return, smem_ has all the content ready.
-    // std::cout << elf_utils::now() << "remote_smem batch received.. " << std::endl;
+    PRINT("remote_smem batch received.. ");
   }
 
   void waitReplyReleaseBatch(comm::ReplyStatus batch_status) override {
@@ -324,13 +330,13 @@ class SharedMemRemote : public SharedMem {
       const auto &remote = remote_smem_[i];
 
       json j;
-      // std::cout << elf_utils::now() << "About to reply: remote_smem info: " << remote.info() << std::endl;
+      PRINT("About to reply: remote_smem info: " << remote.info());
       SMemToJsonExclude(remote, input_keys_, j);
 
       // Notify that we should send the content to remote back.
       remote_comm_.send(opt.getLabel(), j.dump(), identity);
     }
-    // std::cout << elf_utils::now() << "remote_smem sent.. " << std::endl;
+    PRINT("Remote_smem sent.. ");
     identities_.clear();
     cum_batchsize_ = 0;
   }
