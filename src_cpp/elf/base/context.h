@@ -27,6 +27,15 @@
 #include "sharedmem.h"
 #include "elf/interface/game_client_interface.h"
 
+// #define CONTEXT_DEBUG
+
+#ifdef CONTEXT_DEBUG
+#define C_PRINT(...) \
+    std::cout << elf_utils::msec_since_epoch_from_now() << " [" << std::this_thread::get_id() << "] " << __VA_ARGS__ << std::endl;
+#else
+#define C_PRINT(...)
+#endif
+
 namespace elf {
 
 class Collectors;
@@ -62,7 +71,7 @@ class GameClient : public GameClientInterface {
     return prepareToStop_.load();
   }
 
-  Binder getBinder() const override; 
+  Binder getBinder() const override;
 
   comm::ReplyStatus sendWait(
       const std::vector<std::string>& targets,
@@ -77,7 +86,7 @@ class GameClient : public GameClientInterface {
   }
 
   comm::ReplyStatus sendBatchesWait(
-      const std::vector<std::string>& targets, 
+      const std::vector<std::string>& targets,
       const std::vector<std::vector<FuncsWithState*>>& funcs,
       const std::vector<comm::SuccessCallback>& callbacks) override {
     return client_->sendBatchesWait(funcs, targets, callbacks);
@@ -217,6 +226,8 @@ class GameStateCollector {
     // Each collector has its own shared memory.
     // min_batchsize = 1 and wait indefinitely (timeout = 0).
     smem_->start();
+    const std::string &label = smem_->data().getSharedMemOptions().getLabel();
+    (void)label;
 
     while (true) {
       _Msg msg;
@@ -233,16 +244,18 @@ class GameStateCollector {
           break;
         }
       }
+
+      C_PRINT("Receiver[" << label << "] Batch received. #batch = " << smem_->data().getEffectiveBatchSize());
       smem_->waitBatchFillMem();
-      // std::cout << "Receiver[" << smem_->data().getSharedMemOptions().getLabel() 
-      //           << "] Batch received. #batch = " << smem_->data().getEffectiveBatchSize() << std::endl;
+
+      C_PRINT("Receiver[" << label << "] Batch received. #batch = " << smem_->data().getEffectiveBatchSize());
       comm::ReplyStatus batch_status = collect_func_(&smem_->data());
 
-      // std::cout << "Receiver[" << smem_->data().getSharedMemOptions().getLabel() 
-      //           << "] Batch releasing. #batch = " << smem_->data().getEffectiveBatchSize() << std::endl;
+      C_PRINT("Receiver[" << label << "] Batch releasing. #batch = " << smem_->data().getEffectiveBatchSize());
 
       // LOG(INFO) << "Receiver: Release batch" << std::endl;
       smem_->waitReplyReleaseBatch(batch_status);
+      C_PRINT("Receiver[" << label << "] Batch released. ");
     }
   }
 };
@@ -513,8 +526,8 @@ class BatchContext {
 };
 
 
-inline Binder GameClient::getBinder() const { 
-  return Binder(context_->getExtractor(), 
+inline Binder GameClient::getBinder() const {
+  return Binder(context_->getExtractor(),
       [&](const std::string &name) { return context_->getSMemKeys(name); });
 }
 

@@ -8,6 +8,16 @@
 #include "decorator.h"
 #include "game_interface.h"
 
+// #define SNIPPET_DEBUG
+
+#ifdef SNIPPET_DEBUG
+#define PRINT(...) \
+    if (reply.game_idx == 0) \
+    std::cout << elf_utils::msec_since_epoch_from_now() << " [" << std::this_thread::get_id() << "][idx=" << reply.game_idx << "][" << reply.tick << "][" << reply.cnt << "] " << __VA_ARGS__ << std::endl;
+#else
+#define PRINT(...)
+#endif
+
 namespace elf {
 
 namespace snippet {
@@ -410,8 +420,10 @@ class MyContext {
       bool game_end = false;
       // std::cout << "reply.size() = " << reply.pi.size() << std::endl;
       ActorSender as(stacking, reply);
-      // std::cout << "Send wait" << std::endl;
+
+      PRINT("Send wait");
       if (client->sendWait(eval_name, as)) {
+        PRINT("Get reply..");
         if (eval_mode) {
           // Find max from reply.pi.
           int a = 0;
@@ -426,6 +438,7 @@ class MyContext {
         }
 
         game_end = ! game->step(&reply);
+        PRINT("Game stepped..");
         stats.feed(reply.r);
 
         if (! eval_mode) {
@@ -434,16 +447,20 @@ class MyContext {
           }
           reply.terminal = game_end ? 1 : 0;
           replay.feedReplay(stacking.feature(), Reply(reply));
+          PRINT("Replay fed to buffer..");
         }
       }
 
-      if (replay.needSendReplay() || (game_end && replay.isFull())) {
+      if (! train_name.empty() && (replay.needSendReplay() || (game_end && replay.isFull())) ) {
         // std::cout << "Sending training to " << train_name << std::endl;
         TrainSender ts(replay);
+        PRINT("Send replay..");
         client->sendWait(train_name, ts);
+        PRINT("Send replay done..");
       }
 
       if (game_end) {
+        PRINT("Resetting..");
         reset();
       } else {
         reply.tick ++;
@@ -475,9 +492,11 @@ class MyContext {
     spec_[eval_name_] = getSpec(e_actor);
     e.merge(std::move(e_actor));
 
-    Extractor e_train = TrainSender::reg(*game, batchsize, options_.T, options_.frame_stack);
-    spec_[train_name_] = getSpec(e_train);
-    e.merge(std::move(e_train));
+    if (! train_name_.empty()) {
+      Extractor e_train = TrainSender::reg(*game, batchsize, options_.T, options_.frame_stack);
+      spec_[train_name_] = getSpec(e_train);
+      e.merge(std::move(e_train));
+    }
 
     if (games_.empty()) delete game;
   }
