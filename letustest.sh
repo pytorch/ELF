@@ -17,7 +17,7 @@ PYTHONPATH=$PYTHONPATH:$ROOTDIR/elf/:$ROOTDIR/:$ROOTDIR/build/:$ROOTDIR/src_cpp/
 
 cd scripts/elfgames/tasks
 
-./start_server_mini.sh
+./start_server_mini.sh &
 #sleep 5
 #${ROOTDIR}/viewserverlog.sh
 sleep 1

@@ -13,4 +13,4 @@ do
 echo $i
 vim $i
 done
-#find ~/newtasks -iname $1 
+echo `find ${ROOTDIR}/ -iname $1 | grep "\/task"`
