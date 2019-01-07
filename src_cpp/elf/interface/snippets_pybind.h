@@ -17,12 +17,14 @@ namespace py = pybind11;
 void reg_pybind11(py::module &m) {
   options::PyInterface<Options>(m, "Options");
 
-  py::class_<GameFactory>(m, "GameFactory");
+  auto ref = py::return_value_policy::reference_internal;
+
+  py::class_<Interface>(m, "_Interface");
 
   py::class_<MyContext>(m, "MyContext")
     .def(py::init<const Options &, const std::string&, const std::string &>())
     .def("setGameContext", &MyContext::setGameContext)
-    .def("setGameFactory", &MyContext::setGameFactory)
+    .def("setInterface", &MyContext::setInterface, ref)
     .def("getParams", &MyContext::getParams)
     .def("getSummary", &MyContext::getSummary)
     .def("getBatchSpec", &MyContext::getBatchSpec);

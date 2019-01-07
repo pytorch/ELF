@@ -67,27 +67,25 @@ struct Reply {
 using Replay = elf::decorator::ShortReplayBuffer<Reply>;
 
 // Game has the following interface:
-class GameInterface {
+class Game {
  public:
   virtual std::vector<float> feature() const = 0;
-  virtual int dim() const = 0;
-  virtual std::vector<int> dims() const = 0;
-  virtual int numActions() const = 0;
-  virtual std::unordered_map<std::string, int> getParams() const = 0;
 
   // return false if the game has come to an end, and change the reply.
   virtual bool step(Reply *) = 0;
   virtual void reset() = 0;
 
-  virtual ~GameInterface() = default;
+  virtual ~Game() = default;
 };
 
-struct GameFactory {
-  using Func = std::function<GameInterface *(int game_idx, bool)>;
-  Func f = nullptr;
+class Interface {
+ public:
+  virtual int dim() const = 0;
+  virtual std::vector<int> dims() const = 0;
+  virtual int numActions() const = 0;
+  virtual std::unordered_map<std::string, int> getParams() const = 0;
 
-  GameFactory() { }
-  GameFactory(Func f) : f(f) { }
+  virtual Game *createGame(int game_idx, bool) const = 0;
 };
 
 struct ActorSender {
@@ -104,9 +102,9 @@ struct ActorSender {
   void setPi(const float *pi) { reply.setPi(pi); }
   void setAction(const int64_t *a) { reply.setAction(a); }
 
-  static Extractor reg(const GameInterface &game, int batchsize, int frame_stack) {
+  static Extractor reg(const Interface &interface, int batchsize, int frame_stack) {
      Extractor e;
-     std::vector<int> dims = game.dims();
+     std::vector<int> dims = interface.dims();
 
      dims.insert(dims.begin(), batchsize);
      dims[1] *= frame_stack;
@@ -128,7 +126,7 @@ struct ActorSender {
        .addFunction<ActorSender>(&ActorSender::setValue);
 
      e.addField<float>("pi")
-       .addExtents(batchsize, {batchsize, game.numActions()})
+       .addExtents(batchsize, {batchsize, interface.numActions()})
        .addFunction<ActorSender>(&ActorSender::setPi);
 
      e.addField<int64_t>("a")
@@ -152,10 +150,10 @@ struct TrainSender {
   void getReward(float *reward) const { replay.histReply().extractForward(elf::FULL_ONLY, reward, &Reply::getReward); }
   void getTerminal(int *terminal) const { replay.histReply().extractForward(elf::FULL_ONLY, terminal, &Reply::getTerminal); }
 
-  static Extractor reg(const GameInterface &game, int batchsize, int T, int frame_stack) {
+  static Extractor reg(const Interface &interface, int batchsize, int T, int frame_stack) {
      Extractor e;
 
-     std::vector<int> dims = game.dims();
+     std::vector<int> dims = interface.dims();
      dims.insert(dims.begin(), T);
      dims.insert(dims.begin(), batchsize);
      dims[2] *= frame_stack;
@@ -165,7 +163,7 @@ struct TrainSender {
        .addFunction<TrainSender>(&TrainSender::getFeature);
 
      e.addField<float>("pi_")
-       .addExtents(batchsize, {batchsize, T, game.numActions()})
+       .addExtents(batchsize, {batchsize, T, interface.numActions()})
        .addFunction<TrainSender>(&TrainSender::getPi);
 
      e.addField<float>("V_")
@@ -298,7 +296,7 @@ class MyContext {
      : options_(opt), eval_name_(eval_name), train_name_(train_name) {
      }
 
-   void setGameFactory(GameFactory factory) {
+   void setInterface(Interface *factory) {
      factory_ = factory;
    }
 
@@ -321,19 +319,11 @@ class MyContext {
    }
 
    std::unordered_map<std::string, int> getParams() const {
-     const GameInterface *game = nullptr;
-     if (games_.empty()) {
-       game = factory_.f(0, false);
-     } else {
-       game = games_[0]->game.get();
-     }
+     auto params = factory_->getParams();
 
-     auto params = game->getParams();
-
-     params["num_action"] = game->numActions();
+     params["num_action"] = factory_->numActions();
      params["frame_stack"] = options_.frame_stack;
      params["T"] = options_.T;
-     if (games_.empty()) delete game;
      return params;
    }
 
@@ -361,13 +351,13 @@ class MyContext {
 
  private:
   Options options_;
-  GameFactory factory_;
+  Interface *factory_ = nullptr;
   std::string eval_name_;
   std::string train_name_;
   Spec spec_;
 
   struct _Bundle {
-    std::unique_ptr<GameInterface> game;
+    std::unique_ptr<Game> game;
     Reply reply;
 
     decorator::FrameStacking stacking;
@@ -381,11 +371,11 @@ class MyContext {
     std::string train_name;
     const Options opt;
 
-    _Bundle(int idx, bool eval_mode, const Options &opt, GameClientInterface *client, GameFactory factory,
+    _Bundle(int idx, bool eval_mode, const Options &opt, GameClientInterface *client, Interface* factory,
             const std::string &eval_name, const std::string &train_name)
-      : game(factory.f(idx, eval_mode)), reply(game->numActions()),
-        stacking(opt.frame_stack, game->dim()),
-        replay(opt.T, opt.frame_stack * game->dim()),
+      : game(factory->createGame(idx, eval_mode)), reply(factory->numActions()),
+        stacking(opt.frame_stack, factory->dim()),
+        replay(opt.T, opt.frame_stack * factory->dim()),
         eval_mode(eval_mode),
         client(client),
         eval_name(eval_name),
@@ -393,7 +383,7 @@ class MyContext {
         opt(opt) {
 
        assert(game.get() != nullptr);
-       assert(game->numActions() > 0);
+       assert(factory->numActions() > 0);
        reset();
 
        reply.game_idx = idx;
@@ -478,27 +468,18 @@ class MyContext {
   }
 
   void regFunc(elf::GCInterface *ctx) {
-    const GameInterface *game = nullptr;
-    if (games_.empty()) {
-      game = factory_.f(0, false);
-    } else {
-      game = games_[0]->game.get();
-    }
-
     Extractor& e = ctx->getExtractor();
     int batchsize = ctx->options().batchsize;
 
-    Extractor e_actor = ActorSender::reg(*game, batchsize, options_.frame_stack);
+    Extractor e_actor = ActorSender::reg(*factory_, batchsize, options_.frame_stack);
     spec_[eval_name_] = getSpec(e_actor);
     e.merge(std::move(e_actor));
 
     if (! train_name_.empty()) {
-      Extractor e_train = TrainSender::reg(*game, batchsize, options_.T, options_.frame_stack);
+      Extractor e_train = TrainSender::reg(*factory_, batchsize, options_.T, options_.frame_stack);
       spec_[train_name_] = getSpec(e_train);
       e.merge(std::move(e_train));
     }
-
-    if (games_.empty()) delete game;
   }
 };
 
