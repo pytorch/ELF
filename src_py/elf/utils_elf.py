@@ -109,15 +109,15 @@ class Allocator(object):
 
             for _ in range(num_recv):
                 smem = GC.allocateSharedMem(smem_opts, keys)
-                spec = dict((
-                    self._alloc(
-                        smem[field], field, this_gpu, use_numpy=use_numpy)
-                    for field in keys
-                ))
+                spec_local = dict()
+                for field in keys:
+                    assert smem[field] is not None, f"{field} is not in keys = {str(keys)}"
+                    name_, v_ = self._alloc(smem[field], field, this_gpu, use_numpy=use_numpy)
+                    spec_local[name_] = v_
 
                 # Split spec.
-                spec_input = {key: spec[key] for key in v["input"]}
-                spec_reply = {key: spec[key] for key in v["reply"]}
+                spec_input = {key: spec_local[key] for key in v["input"]}
+                spec_reply = {key: spec_local[key] for key in v["reply"]}
 
                 self.batches.append(
                     dict(input=spec_input, reply=spec_reply, gpu=this_gpu))
