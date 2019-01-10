@@ -33,14 +33,16 @@ MCTSGoAI* GoGameSelfPlay::init_ai(
     float puct_override,
     int mcts_rollout_per_batch_override,
     int mcts_rollout_per_thread_override,
+    float virtual_loss_override,
     int64_t model_ver) {
   logger_->info(
       "Initializing actor {}; puct_override: {}; batch_override: {}; "
-      "per_thread_override: {}",
+      "per_thread_override: {}, virtual_loss_override: {}",
       actor_name,
       puct_override,
       mcts_rollout_per_batch_override,
-      mcts_rollout_per_thread_override);
+      mcts_rollout_per_thread_override,
+      virtual_loss_override);
 
   MCTSActorParams params;
   params.actor_name = actor_name;
@@ -68,6 +70,13 @@ MCTSGoAI* GoGameSelfPlay::init_ai(
         opt.num_rollouts_per_thread,
         mcts_rollout_per_thread_override);
     opt.num_rollouts_per_thread = mcts_rollout_per_thread_override;
+  }
+  if (virtual_loss_override > 0) {
+    logger_->warn(
+        "virtual_loss overridden: {} -> {}",
+        opt.virtual_loss,
+        virtual_loss_override);
+    opt.virtual_loss = virtual_loss_override;
   }
   if (opt.verbose) {
     opt.log_prefix = "ts-game" + std::to_string(_game_idx) + "-mcts";
@@ -169,6 +178,7 @@ void GoGameSelfPlay::restart() {
         -1.0,
         -1,
         -1,
+        -1.0,
         async ? -1 : request.vers.black_ver));
     if (request.vers.white_ver >= 0) {
       _ai2.reset(init_ai(
@@ -177,6 +187,7 @@ void GoGameSelfPlay::restart() {
           _state_ext.options().white_puct,
           _state_ext.options().white_mcts_rollout_per_batch,
           _state_ext.options().white_mcts_rollout_per_thread,
+          _state_ext.options().white_virtual_loss,
           async ? -1 : request.vers.white_ver));
     }
     if (!request.vers.is_selfplay() && request.client_ctrl.player_swap) {
@@ -190,6 +201,7 @@ void GoGameSelfPlay::restart() {
         -1.0,
         -1,
         -1,
+        -1.0,
         request.vers.black_ver));
     _human_player.reset(new AI(client_, {"human_actor"}));
   } else {

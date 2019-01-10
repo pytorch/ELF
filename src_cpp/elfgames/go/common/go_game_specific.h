@@ -90,6 +90,8 @@ struct GameOptions {
   int white_mcts_rollout_per_batch = -1;
   int white_mcts_rollout_per_thread = -1;
 
+  float white_virtual_loss = -1.0f;
+
   int eval_num_games = 400;
   float eval_thres = 0.55;
 
@@ -260,9 +262,9 @@ struct GameOptions {
       selfplay_update_num,
       selfplay_async,
       white_puct,
+      white_virtual_loss,
       white_mcts_rollout_per_batch,
       white_mcts_rollout_per_thread,
-      eval_thres,
       keep_prev_selfplay,
       expected_num_clients);
 };

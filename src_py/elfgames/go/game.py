@@ -154,6 +154,10 @@ class Loader(object):
             'white_mcts_rollout_per_thread',
             'white mcts rollout per thread',
             -1)
+        spec.addIntOption(
+            'white_virtual_loss',
+            'white virtual loss',
+            -1)
         spec.addBoolOption(
             'use_df_feature',
             'TODO: fill this help message in',
@@ -324,6 +328,7 @@ class Loader(object):
             self.options.white_mcts_rollout_per_batch
         opt.white_mcts_rollout_per_thread = \
             self.options.white_mcts_rollout_per_thread
+        opt.white_virtual_loss = self.options.white_virtual_loss
 
         opt.client_max_delay_sec = self.options.client_max_delay_sec
         opt.print_result = self.options.print_result

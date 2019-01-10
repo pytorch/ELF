@@ -65,6 +65,7 @@ class GoGameSelfPlay : public GoGameBase {
       float second_puct,
       int second_mcts_rollout_per_batch,
       int second_mcts_rollout_per_thread,
+      float virtual_loss_override,
       int64_t model_ver);
   Coord mcts_make_diverse_move(MCTSGoAI* curr_ai, Coord c);
   Coord mcts_update_info(MCTSGoAI* mcts_go_ai, Coord c);
