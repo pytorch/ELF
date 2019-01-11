@@ -529,6 +529,8 @@ class GCWrapper:
                     "Missing keys %s absent in reply!" %
                     str(keys_missing))
 
+        return self.allocator.idx2name[idx]
+
     def _check_callbacks(self):
         # Check whether all callbacks are assigned properly.
         for key, indices in self.allocator.name2idx.items():
@@ -551,10 +553,13 @@ class GCWrapper:
         # smem = self.GC.ctx().wait()
 
         # print("before calling")
-        self._call(smem, *args, **kwargs)
+        label = self._call(smem, *args, **kwargs)
 
         # print("before_step")
         self.GC.step()
+
+        # Return the label for the callback being invoked
+        return label
 
     def start(self):
         '''Start all game environments'''
