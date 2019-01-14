@@ -169,7 +169,7 @@ class Model_PolicyValue(Model):
     def __init__(self, option_map, params):
         super().__init__(option_map, params)
 
-        self.board_size = 1  #params["board_size"]
+        self.board_size = None  #params["board_size"]
         self.num_future_actions = OUTSIZE #params["num_future_actions"]
         self.num_planes = params["num_planes"]
         #print("my board size is " + str(self.board_size))
@@ -188,14 +188,14 @@ class Model_PolicyValue(Model):
         self.init_conv = self._conv_layer(last_planes)
         #print("self.options.dim=", self.options.dim)
 
-        self.pi_final_conv = self._conv_layer(self.options.dim, 50, 19)#256, OUTSIZE)
+        self.pi_final_conv = self._conv_layer(2,2,1) #self.options.dim, 2, 8)#self.num_planes)
         self.value_final_conv = self._conv_layer(self.options.dim, 1, 1)
 
         d = OUTSIZE # FIXME self.board_size ** 2
 
         # Plus 1 for pass.
-        self.pi_linear = nn.Linear(50, OUTSIZE) #d * 2, d + 1)    # FIXME: at most 256 actions...
-        self.value_linear1 = nn.Linear(1,256)  #(d, 256)
+        self.pi_linear = nn.Linear(128,192)#OUTSIZE/3)#OUTSIZE)   #d * 3, d + 1)    # FIXME: at most 256 actions...
+        self.value_linear1 = nn.Linear(64, 256)  #(d, 256)
         self.value_linear2 = nn.Linear(256, 1)
 
 #        self.pi_final_conv = self._conv_layer(self.options.dim, OUTSIZE, 1)#256, OUTSIZE)
@@ -331,33 +331,41 @@ class Model_PolicyValue(Model):
     def forward(self, x):
         #print("forward1")
         s = self._var(x["s"])
-        #print("forward2")
+        print("forward2   initial s = ", s.size(), "      should be batchsize x channels x h x v")
+
 
         s = self.init_conv(s)
-        #print("forward3")
+        print("forward3", s.size(), " this s should be  batchsize x channels' x h x v")
         s = self.resnet(s)
-        #print("forward4")
+        print("forward4", s.size(), " should be batchsize x channels' x h x v")
 
         # FIXME: should we have d equal to the action space cardinality ? more precisely an upper bound
         # on the action space cardinality ?
-        d = 1  #self.board_size ** 2    FIXME FIXME
+        d = None #64 #1  #self.board_size ** 2    FIXME FIXME
         #print("forward5")
 
         pi = self.pi_final_conv(s)
-        #print("forward6" + str(pi.size()))
-        pi = self.pi_linear(pi.view(-1, 50))    # This 256 is weird... we just take care of misalign, otherwise it's 2. FIXME
-        #print("forward7" + str(pi.size()))
+        print("forward6 " + str(pi.size()) + " should be of size batchsize x 2 x h x v")
+        pi = pi.view(-1, 128)
+        print("forward6.5 " + str(pi.size()) + " should be of size xxx, is ")
+        pi = self.pi_linear(pi)    # This 256 is weird... we just take care of misalign, otherwise it's 2. FIXME
+        print("forward7 " + str(pi.size()) + " should be of size batchsize x num_actions")
         logpi = self.logsoftmax(pi)
-        #print("forward8" + str(logpi.size()))
+        print("forward8 " + str(logpi.size()))
         pi = logpi.exp()
-        #print("forward9" + str(pi.size()))
+        print("forward9" + str(pi.size()))
 
         V = self.value_final_conv(s)
-        #print("forward10")
-        V = self.relu(self.value_linear1(V.view(-1, d)))
+        print("forward10", V.size(), " should be batchsize x h*v")
+        V2 = V.view(-1, 64)
+        V3 = self.value_linear1(V2)
+        V = self.relu(V3) 
+        print(V.size(), " should be batchsize x 256")
+        #V = self.relu(self.value_linear1(V.view(-1, d)))
         #print("forward11")
+        print("")
         V = self.value_linear2(V)
-        #print("forward12")
+        print("forward12", V.size(), " instead of batchsize x 1")
         V = self.tanh(V)
         #print("forward13")
 

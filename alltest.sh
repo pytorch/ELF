@@ -10,6 +10,7 @@
 
 ./allkill.sh
 
+sleep 1
 set -e -x
 make -j
 

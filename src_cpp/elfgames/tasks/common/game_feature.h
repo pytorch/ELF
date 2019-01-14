@@ -210,7 +210,7 @@ class ChouFleurFeature {
     e.addField<int64_t>("a").addExtent(batchsize);
     e.addField<int64_t>("rv").addExtent(batchsize);
     e.addField<int64_t>("offline_a")
-        .addExtents(batchsize, {batchsize, options_.num_future_actions});
+        .addExtents(batchsize, {batchsize, static_cast<int>(BOARD_NUM_ACTION)}); //options_.num_future_actions});
     e.addField<float>({"V", "winner", "predicted_value"}).addExtent(batchsize);
     e.addField<float>({"pi", "mcts_scores"})
         .addExtents(batchsize, {batchsize, static_cast<int>(BOARD_NUM_ACTION)});
