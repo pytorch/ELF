@@ -13,15 +13,11 @@ class Visitor {
   }
 };
 
-struct Options {
-  DEF_INIT(Options);
-
+DEF_STRUCT(Options) 
   DEF_FIELD(int, id, 0, "The id");
   DEF_FIELD(std::string, name, "", "The name");
   DEF_FIELD(float, salary, 0.0, "The salary");
-
-  DEF_END;
-};
+DEF_END
 
 int main() {
   Options options;
