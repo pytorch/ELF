@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from .actor_critic import ActorCritic
+from .ppo import PPO
 from .rnn_actor_critic import RNNActorCritic
 from .q_learning import Q_learning
 from .policy_gradient import PolicyGradient
