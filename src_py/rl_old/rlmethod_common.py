@@ -67,6 +67,16 @@ class ActorCritic(object):
             '',
             10.0)
 
+        spec.addFloatOption(
+            'ppo_eps',
+            '',
+            0.2)
+
+        spec.addBoolOption(
+            "use_a2c", 
+            "",
+            False)
+
         return spec
 
     @auto_import_options
@@ -169,16 +179,24 @@ class ActorCritic(object):
             # We need to set it beforehand.
             # Note that the samples we collect might be off-policy, so we need
             # to do importance sampling.
-            self.advantage = R - V.data
+            A = R - V.data
             # truncate adv. 
             if self.options.adv_clip > 1e-5:
-                self.advantage.clamp_(min=-self.options.adv_clip, max=self.options.adv_clip)
+                A.clamp_(min=-self.options.adv_clip, max=self.options.adv_clip)
 
             # Cap it.
-            coeff = torch.clamp(pi.data.div(old_pi), max=self.options.ratio_clamp).gather(1, a.view(-1, 1)).squeeze()
-            self.advantage.mul_(coeff)
+            ratio = pi.data.div(old_pi).gather(1, a.view(-1, 1)).squeeze() 
+            if not self.options.use_a2c:
+                # Use PPO by default
+                ratio_clamp = torch.clamp(ratio, min=1-self.options.ppo_eps, max=1+self.options.ppo_eps)
+                A = torch.min(A * ratio_clamp, A * ratio)
+            else:
+                ratio_clamp = torch.clamp(ratio, max=self.options.ratio_clamp)
+                A.mul_(ratio_clamp)
             # There is another term (to compensate clamping), but we omit it for
             # now.
+
+            self.advantage = A
 
             # Compute policy gradient error:
             errs = self._compute_policy_entropy_err(pi, a)
