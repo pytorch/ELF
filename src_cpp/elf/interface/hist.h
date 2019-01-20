@@ -41,65 +41,6 @@ class HistTrait<std::vector<T>> {
   T undef_value_;
 };
 
-class HistIterator {
- public:
-  explicit HistIterator(size_t q_idx, size_t q_size) 
-    : q_idx_(q_idx), q_size_(q_size) {
-    if (q_size_ > 0) q_idx_ %= q_size_;
-  }
-
-  HistIterator() {}
-
-  HistIterator &operator++() {
-    q_idx_ ++;
-    if (q_idx_ >= q_size_) q_idx_ = 0;
-    return *this;
-  }
-
-  friend HistIterator operator+(const HistIterator &h, size_t l) {
-    HistIterator it = h;
-    it.q_idx_ += l;
-    it.q_idx_ %= it.q_size_;
-    return it;
-  }
-
-  friend HistIterator operator-(const HistIterator &h, size_t l) {
-    HistIterator it = h;
-    it.q_idx_ += it.q_size_ - (l % it.q_size_);
-    it.q_idx_ %= it.q_size_;
-    return it;
-  }
-
-  friend size_t operator-(const HistIterator &it1, const HistIterator &it2) {
-    assert(it1.q_size_ == it2.q_size_);
-    size_t delta = it1.q_size_ + it1.q_idx_ - it2.q_idx_;
-    return delta % it1.q_size_;
-  }
-
-  HistIterator &operator--() {
-    if (q_idx_ == 0) q_idx_ = q_size_ - 1;
-    else q_idx_ --;
-    return *this;
-  }
-
-  friend bool operator==(const HistIterator &it1, const HistIterator &it2) {
-    assert(it1.q_size_ == it2.q_size_);
-    return it1.q_idx_ == it2.q_idx_;
-  }
-
-  friend bool operator!=(const HistIterator &it1, const HistIterator &it2) {
-    return ! (it1 == it2);
-  }
-
-  size_t operator*() {
-    return q_idx_;
-  }
-
- protected:
-  size_t q_idx_ = 0;
-  size_t q_size_ = 0;
-};
-
 enum ExtractChoice { FULL_ONLY, CURR_SIZE };
 
 // Accumulate history buffer.
@@ -112,11 +53,11 @@ class HistT {
    public:
     HistInterval(const HistT<T> &h) 
       : h_(h) {
-        b_ = h_.begin();
-        e_ = h_.end();
+        b_ = 0;
+        e_ = h_.currSize();
     }
 
-    HistInterval(const HistT<T> &h, HistIterator b, size_t l) 
+    HistInterval(const HistT<T> &h, size_t b, size_t l) 
       : h_(h) {
         b_ = b;
         e_ = b + l;
@@ -124,18 +65,18 @@ class HistT {
 
     // From oldest to most recent.
     void forward(std::function<void (const T &)> extractor) const {
-      for (auto it = b_; it != e_; ++it) {
-        extractor(h_.q_[*it]);
+      for (auto i = b_; i != e_; ++i) {
+        extractor(h_[i]);
       }
     }
 
     // From most recent to oldest
     void backward(std::function<void (const T &)> extractor) const {
-      auto it = e_;
+      auto i = e_;
       do {
-        --it;
-        extractor(h_.q_[*it]);
-      } while (it != b_);
+        --i;
+        extractor(h_[i]);
+      } while (i != b_);
     }
 
     size_t length() const { return e_ - b_; }
@@ -148,8 +89,7 @@ class HistT {
 
    private:
     const HistT<T> &h_;
-    HistIterator b_;
-    HistIterator e_;
+    size_t b_, e_;
   };
 
   HistT(size_t q_size) {
@@ -179,27 +119,29 @@ class HistT {
     return q_[q_idx_];
   }
 
-  HistIterator begin() const {
-    size_t idx = q_idx_ + q_.size() - curr_size_ + 1;
-    return HistIterator(idx, q_.size());
-  }
-
-  HistIterator end() const {
-    return HistIterator(q_idx_ + 1, q_.size());
-  }
+  // From the oldest to the newest.
+  const T& operator[](size_t i) const { return q_[_offset(i)]; }
+  T& operator[](size_t i) { return q_[_offset(i)]; }
 
   HistInterval getInterval() const {
     return HistInterval(*this);
   }
 
   HistInterval getEmptyInterval() const {
-    return HistInterval(*this, end(), 0);
+    return HistInterval(*this, curr_size_, 0);
   }
 
  private:
   std::vector<T> q_;
   size_t q_idx_ = 0;
   size_t curr_size_ = 0;
+
+  size_t _offset(size_t i) const {
+    assert(i < curr_size_);
+    size_t idx = q_idx_ + q_.size() + i - curr_size_ + 1;
+    if (idx >= q_.size()) idx -= q_.size();
+    return idx;
+  }
 };
 
 } // namespace elf

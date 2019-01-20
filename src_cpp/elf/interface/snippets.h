@@ -424,7 +424,7 @@ class MyContext {
 
       reply.clear();
       stacking.feedObs(game->feature());
-      reply.s = std::move(stacking.feature());
+      reply.setS(stacking.feature());
 
       bool game_end = false;
       // std::cout << "reply.size() = " << reply.pi.size() << std::endl;
