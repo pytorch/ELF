@@ -93,9 +93,11 @@ class PPO:
 
         inputs = batch.hist(T - 1, None)
         outputs = model(inputs)
-        self.discounted_reward.setR(outputs["V"].squeeze().detach(), stats)
-
-        # self._print_batch(batch, True)
+        self.discounted_reward.setR(
+                inputs["r"],
+                inputs["terminal"].float(),
+                outputs["V"].squeeze().detach(), 
+                stats)
 
         # err = 0
         for t in range(T - 2, -1, -1):

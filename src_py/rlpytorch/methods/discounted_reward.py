@@ -5,10 +5,11 @@ class DiscountedReward:
     def __init__(self, gamma):
         self.gamma = gamma
 
-    def setR(self, R, stats):
+    def setR(self, r, terminal, V, stats):
         """Set rewards and feed to stats."""
-        self.R = R
-        stats["reward_init"].feed(R.mean())
+        self.R = terminal * r + (1 - terminal) * V
+        stats["reward"].feed(r.mean())
+        stats["reward_init"].feed(self.R.mean())
 
     def feed(self, r, terminal, stats):
         """Update discounted reward and feed to stats.
