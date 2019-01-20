@@ -41,6 +41,65 @@ class HistTrait<std::vector<T>> {
   T undef_value_;
 };
 
+class HistIterator {
+ public:
+  explicit HistIterator(size_t q_idx, size_t q_size) 
+    : q_idx_(q_idx), q_size_(q_size) {
+    if (q_size_ > 0) q_idx_ %= q_size_;
+  }
+
+  HistIterator() {}
+
+  HistIterator &operator++() {
+    q_idx_ ++;
+    if (q_idx_ >= q_size_) q_idx_ = 0;
+    return *this;
+  }
+
+  friend HistIterator operator+(const HistIterator &h, size_t l) {
+    HistIterator it = h;
+    it.q_idx_ += l;
+    it.q_idx_ %= it.q_size_;
+    return it;
+  }
+
+  friend HistIterator operator-(const HistIterator &h, size_t l) {
+    HistIterator it = h;
+    it.q_idx_ += it.q_size_ - (l % it.q_size_);
+    it.q_idx_ %= it.q_size_;
+    return it;
+  }
+
+  friend size_t operator-(const HistIterator &it1, const HistIterator &it2) {
+    assert(it1.q_size_ == it2.q_size_);
+    size_t delta = it1.q_size_ + it1.q_idx_ - it2.q_idx_;
+    return delta % it1.q_size_;
+  }
+
+  HistIterator &operator--() {
+    if (q_idx_ == 0) q_idx_ = q_size_ - 1;
+    else q_idx_ --;
+    return *this;
+  }
+
+  friend bool operator==(const HistIterator &it1, const HistIterator &it2) {
+    assert(it1.q_size_ == it2.q_size_);
+    return it1.q_idx_ == it2.q_idx_;
+  }
+
+  friend bool operator!=(const HistIterator &it1, const HistIterator &it2) {
+    return ! (it1 == it2);
+  }
+
+  size_t operator*() {
+    return q_idx_;
+  }
+
+ protected:
+  size_t q_idx_ = 0;
+  size_t q_size_ = 0;
+};
+
 enum ExtractChoice { FULL_ONLY, CURR_SIZE };
 
 // Accumulate history buffer.
@@ -49,8 +108,52 @@ class HistT {
  public:
   using Initializer = std::function<void (T &)>;
 
+  class HistInterval {
+   public:
+    HistInterval(const HistT<T> &h) 
+      : h_(h) {
+        b_ = h_.begin();
+        e_ = h_.end();
+    }
+
+    HistInterval(const HistT<T> &h, HistIterator b, size_t l) 
+      : h_(h) {
+        b_ = b;
+        e_ = b + l;
+    }
+
+    // From oldest to most recent.
+    void forward(std::function<void (const T &)> extractor) const {
+      for (auto it = b_; it != e_; ++it) {
+        extractor(h_.q_[*it]);
+      }
+    }
+
+    // From most recent to oldest
+    void backward(std::function<void (const T &)> extractor) const {
+      auto it = e_;
+      do {
+        --it;
+        extractor(h_.q_[*it]);
+      } while (it != b_);
+    }
+
+    size_t length() const { return e_ - b_; }
+
+    HistInterval sample(int l, std::mt19937 &rng) const {
+      size_t span = e_ - b_;
+      size_t idx = rng() % (span + 1 - l);
+      return HistInterval(h_, b_ + idx, l);
+    }
+
+   private:
+    const HistT<T> &h_;
+    HistIterator b_;
+    HistIterator e_;
+  };
+
   HistT(size_t q_size) {
-    q_ = std::vector<T>(q_size);
+    q_ = std::vector<T>(q_size + 1);
     curr_size_ = 0;
   }
 
@@ -63,90 +166,35 @@ class HistT {
     curr_size_ = 0;
   }
 
-  size_t maxlen() const { return q_.size(); }
+  size_t maxlen() const { return q_.size() - 1; }
   size_t currSize() const { return curr_size_; }
 
-  bool isFull() const { return q_.size() == curr_size_; }
+  bool isFull() const { return maxlen() == curr_size_; }
 
   T &push(T &&v) {
     // q_idx_ always points to the most recent entry.
     q_idx_ = (q_idx_ + 1) % q_.size();
     q_[q_idx_] = std::move(v);
-    if (curr_size_ < q_.size()) curr_size_ ++;
+    if (curr_size_ < maxlen()) curr_size_ ++;
     return q_[q_idx_];
   }
 
-  // From oldest to most recent.
-  template <typename S>
-  void extractForward(ExtractChoice ch, S* s, size_t (T::*extractor)(S *) const) const {
-    auto f = [=](const T &v, S *s) {
-      return (v.*extractor)(s);
-    };
-    this->template extractForward<S>(ch, s, f);
+  HistIterator begin() const {
+    size_t idx = q_idx_ + q_.size() - curr_size_ + 1;
+    return HistIterator(idx, q_.size());
   }
 
-  template <typename S>
-  void extractForward(ExtractChoice ch, S* s, std::function<size_t (const T &, S *)> extractor) const {
-    assert(extractor != nullptr);
-
-    if (ch == FULL_ONLY) assert(isFull());
-
-    // one sample = dim per feature * time length
-    size_t idx = q_idx_ + q_.size() - curr_size_;
-    if (idx >= q_.size()) idx -= q_.size();
-
-    for (size_t i = 0; i < curr_size_; ++i) {
-      idx ++;
-      if (idx >= q_.size()) idx = 0;
-
-      const T &v = q_[idx];
-      s += extractor(v, s);
-    }
-  } 
-
-  // From most recent to oldest.
-  template <typename S>
-  void extractReverse(ExtractChoice ch, S* s, size_t (T::*extractor)(S *) const) const {
-    auto f = [=](const T &v, S *s) {
-      return (v.*extractor)(s);
-    };
-    this->template extractReverse<S>(ch, s, f);
+  HistIterator end() const {
+    return HistIterator(q_idx_ + 1, q_.size());
   }
 
-  template <typename S>
-  void extractReverse(ExtractChoice ch, S* s, std::function<size_t (const T &, S *)> extractor) const {
-    assert(extractor != nullptr);
-
-    if (ch == FULL_ONLY) assert(isFull());
-
-    // one sample = dim per feature * time length
-    size_t idx = q_idx_;
-    for (size_t i = 0; i < curr_size_; ++i) {
-      const T &v = q_[idx];
-      s += extractor(v, s);
-
-      if (idx == 0) idx = q_.size() - 1;
-      else idx --;
-    }
-  } 
-
-  /* 
-  void extractHistBatch(S* s, int batchsize, int batch_idx, Extractor extractor) const {
-    assert(extractor != nullptr);
-
-    S* start = s + batch_idx * vec_size_;
-    int stride = batchsize * vec_size_;
-    size_t idx = q_idx_;
-    for (size_t i = 0; i < q_.size(); ++i) {
-      const T &v = q_[idx];
-      extractor(v, s);
-      start += stride;
-
-      if (idx == 0) idx = q_.size() - 1;
-      else idx --;
-    }
+  HistInterval getInterval() const {
+    return HistInterval(*this);
   }
-  */
+
+  HistInterval getEmptyInterval() const {
+    return HistInterval(*this, end(), 0);
+  }
 
  private:
   std::vector<T> q_;

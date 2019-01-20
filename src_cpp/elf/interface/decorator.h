@@ -24,7 +24,8 @@ class FrameStacking {
 
   std::vector<float> feature() const {
     std::vector<float> v(dim_ * frame_stack_, trait_.getUndefValue());
-    hist_.extractReverse<float>(CURR_SIZE, &v[0], [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
+    float *p = &v[0];
+    hist_.getInterval().backward([&](const std::vector<float> &v) { p += trait_.Extract(v, p); });
     return v;
   }
 
@@ -37,58 +38,42 @@ class FrameStacking {
   Hist hist_;
 };
 
-
 template <typename Reply>
 class ShortReplayBuffer {
  public:
-  using Hist = elf::HistT<std::vector<float>>;
-  using HistR = elf::HistT<Reply>;
+  using Hist = elf::HistT<Reply>;
 
-  ShortReplayBuffer(int T, int dim) 
-     : dim_(dim), trait_(dim, 0), hist_(T), hist_reply_(T) {
+  ShortReplayBuffer(int T) : hist_(T) {
   }
 
   void reset(std::function<void (Reply &)> resetter = nullptr) {
-    hist_.reset([&](std::vector<float> &v) { return trait_.Initialize(v); });
-    hist_reply_.reset(resetter);
+    hist_.reset(resetter);
     last_step_ = 0;
     curr_step_ = 0; 
   }
 
-  void feedReplay(std::vector<float> &&f, Reply &&reply) {
+  void feedReplay(Reply &&reply) {
     // std::cout << "feedReplay: " << f.size() << std::endl;
-    assert(f.size() == dim_);
-    hist_.push(std::move(f));
-    hist_reply_.push(std::move(reply));
+    hist_.push(std::move(reply));
     curr_step_ ++;
   }
 
   bool needSendReplay() {
     if (isFull() && (curr_step_ - last_step_ == hist_.maxlen())) {
+      // std::cout << "last_step: " << last_step_ << ", curr_step: " << curr_step_ << std::endl;
       last_step_ = curr_step_ - 1;
       return true;
     } else return false;
   }
 
-  bool isFull() const { return hist_.isFull() && hist_reply_.isFull(); }
-
-  void getFeatureForward(float *s) const {
-    hist_.extractForward<float>(FULL_ONLY, s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
-  }
-  void getFeatureReverse(float *s) const {
-    hist_.extractReverse<float>(FULL_ONLY, s, [&](const std::vector<float> &v, float *s) { return trait_.Extract(v, s); });
-  }
+  bool isFull() const { return hist_.isFull(); }
 
   const Hist& hist() const { return hist_; }
-  const HistR& histReply() const { return hist_reply_; }
 
  private:
   size_t last_step_ = 0;
   size_t curr_step_ = 0; 
-  size_t dim_;
-  elf::HistTrait<std::vector<float>> trait_;
   Hist hist_;
-  HistR hist_reply_;
 };
 
 }  // namespace decorator

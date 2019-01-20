@@ -26,6 +26,8 @@ using SpecItem = std::unordered_map<std::string, std::vector<std::string>>;
 using Spec = std::unordered_map<std::string, SpecItem>;
 
 struct Reply {
+  std::vector<float> s;
+
   int game_idx;
   int64_t a;
   float V;
@@ -35,7 +37,7 @@ struct Reply {
   int cnt = -1;
   std::vector<float> pi;
 
-  Reply(int num_action = 0) : pi(num_action) {
+  Reply(int dim = 0, int num_action = 0) : s(dim), pi(num_action) {
   }
 
   void clear() {
@@ -51,10 +53,13 @@ struct Reply {
     clear();
   }
 
+  void setS(std::vector<float> &&ss) { assert(s.size() == ss.size()); s = std::move(ss); }
+
   void setPi(const float *ppi) { assert(pi.size() > 0); std::copy(ppi, ppi + pi.size(), pi.begin()); }
   void setValue(const float *pV) { V = *pV; }
   void setAction(const int64_t *aa) { a = *aa; }
 
+  size_t getS(float *ss) const { std::copy(s.begin(), s.end(), ss); return s.size(); }
   size_t getValue(float *pV) const { *pV = V; return 1; }
   size_t getAction(int64_t *aa) const { *aa = a; return 1; }
   size_t getPi(float *ppi) const { assert(pi.size() > 0); std::copy(pi.begin(), pi.end(), ppi); return pi.size(); }
@@ -65,6 +70,7 @@ struct Reply {
 };
 
 using Replay = elf::decorator::ShortReplayBuffer<Reply>;
+using HistInterval = typename elf::HistT<Reply>::HistInterval;
 
 // Game has the following interface:
 class Game {
@@ -74,6 +80,14 @@ class Game {
   // return false if the game has come to an end, and change the reply.
   virtual bool step(Reply *) = 0;
   virtual void reset() = 0;
+
+  virtual HistInterval sendReplay(Replay& replay, bool game_end) {
+    if (replay.needSendReplay() || (replay.isFull() && game_end)) {
+      return replay.hist().getInterval();
+    } else {
+      return replay.hist().getEmptyInterval();
+    }
+  }
 
   virtual ~Game() = default;
 };
@@ -89,12 +103,11 @@ class Interface {
 };
 
 struct ActorSender {
-  const decorator::FrameStacking &stacking;
   Reply &reply;
 
-  ActorSender(const decorator::FrameStacking &stacking, Reply &reply) : stacking(stacking), reply(reply) { }
+  ActorSender(Reply &reply) : reply(reply) { }
 
-  void getFeature(float *f) const { auto ff = stacking.feature(); std::copy(ff.begin(), ff.end(), f); }
+  void getFeature(float *f) const { reply.getS(f); }
   void getCnt(int *cnt) const { reply.getCnt(cnt); }
   void getTick(int *t) const { reply.getTick(t); }
 
@@ -137,18 +150,20 @@ struct ActorSender {
   }
 };
 
+#define GET_FUNC(v, func) [&](const Reply &_reply) { v += _reply.func(v); }
+
 struct TrainSender {
-  const Replay &replay;
+  const HistInterval &interval;
 
-  TrainSender(const Replay &replay) : replay(replay) { }
+  TrainSender(const HistInterval &interval) : interval(interval) { }
 
-  void getFeature(float *s) const { replay.getFeatureForward(s); }
-  void getPi(float *pi) const { replay.histReply().extractForward(elf::FULL_ONLY, pi, &Reply::getPi); }
-  void getValue(float *V) const { replay.histReply().extractForward(elf::FULL_ONLY, V, &Reply::getValue); }
-  void getAction(int64_t *a) const { replay.histReply().extractForward(elf::FULL_ONLY, a, &Reply::getAction); }
-  void getTick(int *tick) const { replay.histReply().extractForward(elf::FULL_ONLY, tick, &Reply::getTick); }
-  void getReward(float *reward) const { replay.histReply().extractForward(elf::FULL_ONLY, reward, &Reply::getReward); }
-  void getTerminal(int *terminal) const { replay.histReply().extractForward(elf::FULL_ONLY, terminal, &Reply::getTerminal); }
+  void getFeature(float *s) const { interval.forward(GET_FUNC(s, getS)); }
+  void getPi(float *pi) const { interval.forward(GET_FUNC(pi, getPi)); }
+  void getValue(float *V) const { interval.forward(GET_FUNC(V, getValue)); }
+  void getAction(int64_t *a) const { interval.forward(GET_FUNC(a, getAction)); }
+  void getTick(int *tick) const { interval.forward(GET_FUNC(tick, getTick)); }
+  void getReward(float *reward) const { interval.forward(GET_FUNC(reward, getReward)); }
+  void getTerminal(int *terminal) const { interval.forward(GET_FUNC(terminal, getTerminal)); }
 
   static Extractor reg(const Interface &interface, int batchsize, int T, int frame_stack) {
      Extractor e;
@@ -191,7 +206,8 @@ struct TrainSender {
 };
 
 DEF_STRUCT(Options)
-  DEF_FIELD(int, T, 6, "len of history")
+  DEF_FIELD(int, T, 6, "len of history when sent")
+  DEF_FIELD(int, replay_buffer_len, 6, "maxlen of replay buffer")
   DEF_FIELD(int, frame_stack, 4, "Framestack")
   DEF_FIELD(float, reward_clip, 1.0f, "Reward clip")
   DEF_FIELD(int, num_eval_games, 0, "number of evaluation games")
@@ -357,6 +373,7 @@ class MyContext {
   Spec spec_;
 
   struct _Bundle {
+    Interface *interface = nullptr;
     std::unique_ptr<Game> game;
     Reply reply;
 
@@ -373,9 +390,10 @@ class MyContext {
 
     _Bundle(int idx, bool eval_mode, const Options &opt, GameClientInterface *client, Interface* factory,
             const std::string &eval_name, const std::string &train_name)
-      : game(factory->createGame(idx, eval_mode)), reply(factory->numActions()),
+      : interface(factory), game(factory->createGame(idx, eval_mode)), 
+        reply(opt.frame_stack * factory->dim(), factory->numActions()),
         stacking(opt.frame_stack, factory->dim()),
-        replay(opt.T, opt.frame_stack * factory->dim()),
+        replay(opt.T),
         eval_mode(eval_mode),
         client(client),
         eval_name(eval_name),
@@ -406,10 +424,11 @@ class MyContext {
 
       reply.clear();
       stacking.feedObs(game->feature());
+      reply.s = std::move(stacking.feature());
 
       bool game_end = false;
       // std::cout << "reply.size() = " << reply.pi.size() << std::endl;
-      ActorSender as(stacking, reply);
+      ActorSender as(reply);
 
       PRINT("Send wait");
       if (client->sendWait(eval_name, as)) {
@@ -436,17 +455,20 @@ class MyContext {
             reply.r = std::min(std::max(reply.r, -opt.reward_clip), opt.reward_clip);
           }
           reply.terminal = game_end ? 1 : 0;
-          replay.feedReplay(stacking.feature(), Reply(reply));
+          replay.feedReplay(Reply(reply));
           PRINT("Replay fed to buffer..");
         }
       }
 
-      if (! train_name.empty() && (replay.needSendReplay() || (game_end && replay.isFull())) ) {
-        // std::cout << "Sending training to " << train_name << std::endl;
-        TrainSender ts(replay);
-        PRINT("Send replay..");
-        client->sendWait(train_name, ts);
-        PRINT("Send replay done..");
+      if (! train_name.empty()) {
+        HistInterval it = game->sendReplay(replay, game_end);
+        if (it.length() > 0) {
+          // std::cout << "Sending training to " << train_name << ", length: " << it.length() << std::endl;
+          TrainSender ts(it);
+          PRINT("Send replay..");
+          client->sendWait(train_name, ts);
+          PRINT("Send replay done..");
+        }
       }
 
       if (game_end) {
