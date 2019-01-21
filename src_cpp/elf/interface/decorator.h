@@ -25,7 +25,7 @@ class FrameStacking {
   std::vector<float> feature() const {
     std::vector<float> v(dim_ * frame_stack_, trait_.getUndefValue());
     float *p = &v[0];
-    hist_.getInterval().backward([&](const std::vector<float> &v) { p += trait_.Extract(v, p); });
+    hist_.getIntervalC().backward([&](const std::vector<float> &v) { p += trait_.Extract(v, p); });
     return v;
   }
 
@@ -43,7 +43,7 @@ class ShortReplayBuffer {
  public:
   using Hist = elf::HistT<Reply>;
 
-  ShortReplayBuffer(int T) : hist_(T) {
+  ShortReplayBuffer(int maxlen) : hist_(maxlen) {
   }
 
   void reset(std::function<void (Reply &)> resetter = nullptr) {
@@ -58,8 +58,8 @@ class ShortReplayBuffer {
     curr_step_ ++;
   }
 
-  bool needSendReplay() {
-    if (isFull() && (curr_step_ - last_step_ == hist_.maxlen())) {
+  bool needSendReplay(size_t T) {
+    if (isFull() && (curr_step_ - last_step_ == T)) {
       // std::cout << "last_step: " << last_step_ << ", curr_step: " << curr_step_ << std::endl;
       last_step_ = curr_step_ - 1;
       return true;
@@ -69,6 +69,7 @@ class ShortReplayBuffer {
   bool isFull() const { return hist_.isFull(); }
 
   const Hist& hist() const { return hist_; }
+  Hist& hist() { return hist_; }
 
  private:
   size_t last_step_ = 0;

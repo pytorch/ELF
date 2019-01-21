@@ -70,7 +70,8 @@ struct Reply {
 };
 
 using Replay = elf::decorator::ShortReplayBuffer<Reply>;
-using HistInterval = typename elf::HistT<Reply>::HistInterval;
+using HistIntervalC = typename elf::HistT<Reply>::IntervalC;
+using HistInterval = typename elf::HistT<Reply>::Interval;
 
 // Game has the following interface:
 class Game {
@@ -81,11 +82,11 @@ class Game {
   virtual bool step(Reply *) = 0;
   virtual void reset() = 0;
 
-  virtual HistInterval sendReplay(Replay& replay, bool game_end) {
-    if (replay.needSendReplay() || (replay.isFull() && game_end)) {
-      return replay.hist().getInterval();
+  virtual HistIntervalC sendReplay(Replay& replay, size_t T, bool game_end) {
+    if (replay.needSendReplay(T) || (replay.isFull() && game_end)) {
+      return replay.hist().getIntervalC();
     } else {
-      return replay.hist().getEmptyInterval();
+      return replay.hist().getEmptyIntervalC();
     }
   }
 
@@ -153,9 +154,9 @@ struct ActorSender {
 #define GET_FUNC(v, func) [&](const Reply &_reply) { v += _reply.func(v); }
 
 struct TrainSender {
-  const HistInterval &interval;
+  const HistIntervalC &interval;
 
-  TrainSender(const HistInterval &interval) : interval(interval) { }
+  TrainSender(const HistIntervalC &interval) : interval(interval) { }
 
   void getFeature(float *s) const { interval.forward(GET_FUNC(s, getS)); }
   void getPi(float *pi) const { interval.forward(GET_FUNC(pi, getPi)); }
@@ -393,7 +394,7 @@ class MyContext {
       : interface(factory), game(factory->createGame(idx, eval_mode)), 
         reply(opt.frame_stack * factory->dim(), factory->numActions()),
         stacking(opt.frame_stack, factory->dim()),
-        replay(opt.T),
+        replay(opt.replay_buffer_len),
         eval_mode(eval_mode),
         client(client),
         eval_name(eval_name),
@@ -461,7 +462,7 @@ class MyContext {
       }
 
       if (! train_name.empty()) {
-        HistInterval it = game->sendReplay(replay, game_end);
+        HistIntervalC it = game->sendReplay(replay, opt.T, game_end);
         if (it.length() > 0) {
           // std::cout << "Sending training to " << train_name << ", length: " << it.length() << std::endl;
           TrainSender ts(it);

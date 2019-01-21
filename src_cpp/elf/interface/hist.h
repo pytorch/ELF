@@ -43,54 +43,62 @@ class HistTrait<std::vector<T>> {
 
 enum ExtractChoice { FULL_ONLY, CURR_SIZE };
 
+template <typename H, typename T>
+class IntervalT {
+ public:
+  IntervalT(H &h) 
+    : h_(h) {
+      b_ = 0;
+      e_ = h_.currSize();
+  }
+
+  IntervalT(H &h, size_t b, size_t l) 
+    : h_(h) {
+      b_ = b;
+      e_ = b + l;
+  }
+
+  // From oldest to most recent.
+  void forward(std::function<void (T &)> extractor) const {
+    for (auto i = b_; i != e_; ++i) {
+      extractor(h_[i]);
+    }
+  }
+
+  // From most recent to oldest
+  void backward(std::function<void (T &)> extractor) const {
+    auto i = e_;
+    do {
+      --i;
+      extractor(h_[i]);
+    } while (i != b_);
+  }
+
+  size_t length() const { return e_ - b_; }
+
+  IntervalT<H, T> sample(size_t l, std::mt19937 &rng) const {
+    size_t span = e_ - b_;
+    size_t idx = rng() % (span + 1 - l);
+    return IntervalT<H, T>(h_, b_ + idx, l);
+  }
+
+  IntervalT<const H, const T> toConst() const {
+    return IntervalT<const H, const T>(h_, b_, e_ - b_);
+  }
+
+ private:
+  H &h_;
+  size_t b_, e_;
+};
+
+
 // Accumulate history buffer.
 template <typename T>
 class HistT {
  public:
   using Initializer = std::function<void (T &)>;
-
-  class HistInterval {
-   public:
-    HistInterval(const HistT<T> &h) 
-      : h_(h) {
-        b_ = 0;
-        e_ = h_.currSize();
-    }
-
-    HistInterval(const HistT<T> &h, size_t b, size_t l) 
-      : h_(h) {
-        b_ = b;
-        e_ = b + l;
-    }
-
-    // From oldest to most recent.
-    void forward(std::function<void (const T &)> extractor) const {
-      for (auto i = b_; i != e_; ++i) {
-        extractor(h_[i]);
-      }
-    }
-
-    // From most recent to oldest
-    void backward(std::function<void (const T &)> extractor) const {
-      auto i = e_;
-      do {
-        --i;
-        extractor(h_[i]);
-      } while (i != b_);
-    }
-
-    size_t length() const { return e_ - b_; }
-
-    HistInterval sample(int l, std::mt19937 &rng) const {
-      size_t span = e_ - b_;
-      size_t idx = rng() % (span + 1 - l);
-      return HistInterval(h_, b_ + idx, l);
-    }
-
-   private:
-    const HistT<T> &h_;
-    size_t b_, e_;
-  };
+  using Interval = IntervalT<HistT<T>, T>;
+  using IntervalC = IntervalT<const HistT<T>, const T>;
 
   HistT(size_t q_size) {
     q_ = std::vector<T>(q_size + 1);
@@ -120,15 +128,23 @@ class HistT {
   }
 
   // From the oldest to the newest.
-  const T& operator[](size_t i) const { return q_[_offset(i)]; }
-  T& operator[](size_t i) { return q_[_offset(i)]; }
+  const T& operator[](size_t i) const { return q_[_offset(curr_size_ - 1 - i)]; }
+  T& operator[](size_t i) { return q_[_offset(curr_size_ - 1 - i)]; }
 
-  HistInterval getInterval() const {
-    return HistInterval(*this);
+  // From the newest to the oldest (newest(0) = last entry).
+  const T& newest(size_t i) const { return q_[_offset(i)]; }
+  T& newest(size_t i) { return q_[_offset(i)]; }
+
+  IntervalC getIntervalC() const {
+    return IntervalC(*this);
   }
 
-  HistInterval getEmptyInterval() const {
-    return HistInterval(*this, curr_size_, 0);
+  Interval getInterval() {
+    return Interval(*this);
+  }
+
+  IntervalC getEmptyIntervalC() const {
+    return IntervalC(*this, curr_size_, 0);
   }
 
  private:
@@ -136,9 +152,10 @@ class HistT {
   size_t q_idx_ = 0;
   size_t curr_size_ = 0;
 
+  // Newest to oldest idx.
   size_t _offset(size_t i) const {
     assert(i < curr_size_);
-    size_t idx = q_idx_ + q_.size() + i - curr_size_ + 1;
+    size_t idx = q_idx_ + q_.size() - i;
     if (idx >= q_.size()) idx -= q_.size();
     return idx;
   }
