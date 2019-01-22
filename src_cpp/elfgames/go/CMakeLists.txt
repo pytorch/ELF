@@ -77,6 +77,7 @@ set(GO_TEST_SOURCES
     base/test/go_test.cc
     base/test/board_feature_test.cc
     base/test/symmetry_test.cc
+    base/test/go_state_speed_test.cc
     sgf/sgf_test.cc
     #mcts/mcts_test.cc
 )

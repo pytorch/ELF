@@ -176,6 +176,18 @@ class GoState {
   const std::vector<Coord>& getAllMoves() const {
     return _moves;
   }
+
+  std::vector<Coord> getAllValidMoves() const {
+    AllMoves all_moves;
+    FindAllValidMoves(&_board, _board._next_player, &all_moves);
+
+    std::vector<Coord> coords;
+    for (int i = 0; i < all_moves.num_moves; ++i) {
+      coords.push_back(all_moves.moves[i]);
+    }
+    return coords;
+  }
+
   std::string getAllMovesString() const {
     std::stringstream ss;
     for (const Coord& c : _moves) {
