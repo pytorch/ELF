@@ -37,6 +37,7 @@ TEST(SpeedTest, testSpeed) {
       if (moves.size() == 0) break;
 
       Coord curr = moves[rng() % moves.size()];
+
       auto now = high_resolution_clock::now();
       b.forward(curr);
       dur += duration_cast<duration<double>>(high_resolution_clock::now() - now); 
@@ -44,7 +45,7 @@ TEST(SpeedTest, testSpeed) {
     }
   }
 
-  std::cout << "#Moves: " << move_count << " Time spent per move: " << dur.count() * 10e6 / move_count << " microseconds" << std::endl;
+  std::cout << "#Moves: " << move_count << ", Total time spent: " << dur.count() << " seconds, Time spent per move: " << dur.count() * 1e6 / move_count << " microseconds" << std::endl;
 }
 
 int main(int argc, char** argv) {
