@@ -3,6 +3,10 @@ cmake_minimum_required(VERSION 3.3)
 # These projects all have CMakeLists by default, thank you devs!
 
 add_subdirectory(googletest)
+
+set_target_properties(gtest
+    PROPERTIES
+    DEBUG_POSTFIX "")
 add_subdirectory(json)
 add_subdirectory(pybind11)
 add_subdirectory(spdlog)
