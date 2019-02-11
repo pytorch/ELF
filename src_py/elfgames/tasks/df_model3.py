@@ -16,7 +16,7 @@ from rlpytorch import Model
 from elfgames.go.mcts_prediction import MCTSPrediction
 from elfgames.go.multiple_prediction import MultiplePrediction
 
-OUTSIZE = 64 * 3
+OUTSIZE = 18*18*4
 
 class Block(Model):
     @classmethod
@@ -184,7 +184,7 @@ class Model_PolicyValue(Model):
         # Simple method. multiple conv layers.
         self.relu = nn.LeakyReLU(0.1) if self.options.leaky_relu else nn.ReLU()
         last_planes = self.num_planes
-        #print("number of planes = " + str(last_planes))
+        print("number of planes = " + str(last_planes))
         self.init_conv = self._conv_layer(last_planes)
         #print("self.options.dim=", self.options.dim)
 
@@ -194,8 +194,8 @@ class Model_PolicyValue(Model):
         d = OUTSIZE # FIXME self.board_size ** 2
 
         # Plus 1 for pass.
-        self.pi_linear = nn.Linear(128,192)#OUTSIZE/3)#OUTSIZE)   #d * 3, d + 1)    # FIXME: at most 256 actions...
-        self.value_linear1 = nn.Linear(64, 256)  #(d, 256)
+        self.pi_linear = nn.Linear(18*18*2,18*18*4)#OUTSIZE/3)#OUTSIZE)   #d * 3, d + 1)    # FIXME: at most 256 actions...
+        self.value_linear1 = nn.Linear(18*18, 256)  #(d, 256)
         self.value_linear2 = nn.Linear(256, 1)
 
 #        self.pi_final_conv = self._conv_layer(self.options.dim, OUTSIZE, 1)#256, OUTSIZE)
@@ -329,6 +329,7 @@ class Model_PolicyValue(Model):
 
 
     def forward(self, x):
+        print("net : " ,self)
         #print("forward1")
         s = self._var(x["s"])
         print("forward2   initial s = ", s.size(), "      should be batchsize x channels x h x v")
@@ -346,7 +347,7 @@ class Model_PolicyValue(Model):
 
         pi = self.pi_final_conv(s)
         print("forward6 " + str(pi.size()) + " should be of size batchsize x 2 x h x v")
-        pi = pi.view(-1, 128)
+        pi = pi.view(-1, 18*18*2)
         print("forward6.5 " + str(pi.size()) + " should be of size xxx, is ")
         pi = self.pi_linear(pi)    # This 256 is weird... we just take care of misalign, otherwise it's 2. FIXME
         print("forward7 " + str(pi.size()) + " should be of size batchsize x num_actions")
@@ -357,7 +358,7 @@ class Model_PolicyValue(Model):
 
         V = self.value_final_conv(s)
         print("forward10", V.size(), " should be batchsize x h*v")
-        V2 = V.view(-1, 64)
+        V2 = V.view(-1, 18*18)
         V3 = self.value_linear1(V2)
         V = self.relu(V3) 
         print(V.size(), " should be batchsize x 256")

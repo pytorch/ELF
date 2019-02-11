@@ -10,7 +10,7 @@
 #pragma once
 
 //#define OUTSIZE 2
-#define OUTSIZE 64 * 3
+#define OUTSIZE 18*18*4
 
 #include "../base/go_state.h"
 #include "go_game_specific.h"
