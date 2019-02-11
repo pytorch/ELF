@@ -1,10 +1,12 @@
 #!/bin/bash
 
+module purge
 module load anaconda3
 source scripts/devmode_set_pythonpath.sh
-module load gcc/7.1.0
+#module load gcc/7.1.0
 module load cuda/9.0
 module load cudnn/v7.0-cuda.9.0
+module load NCCL/2.3.7-1-cuda.9.0
 source activate otgo12
 source scripts/devmode_set_pythonpath.sh
 conda install -y numpy zeromq pyzmq
@@ -27,7 +29,7 @@ make
 sleep 1
 
 # Below, once per client: this launches something for checking how much we win against the baseline.
-#./letustest_check.sh &
+./letustest_check.sh &
 
 #sleep 1
 ./letustest_client.sh &
