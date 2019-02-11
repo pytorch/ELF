@@ -194,6 +194,7 @@ class Model_PolicyValue(Model):
         d = OUTSIZE # FIXME self.board_size ** 2
 
         # Plus 1 for pass.
+        # 128 below is the total size h x v x #channels (#channels is dim is the bash script)
         self.pi_linear = nn.Linear(128,192)#OUTSIZE/3)#OUTSIZE)   #d * 3, d + 1)    # FIXME: at most 256 actions...
         self.value_linear1 = nn.Linear(64, 256)  #(d, 256)
         self.value_linear2 = nn.Linear(256, 1)
@@ -339,14 +340,11 @@ class Model_PolicyValue(Model):
         s = self.resnet(s)
         print("forward4", s.size(), " should be batchsize x channels' x h x v")
 
-        # FIXME: should we have d equal to the action space cardinality ? more precisely an upper bound
-        # on the action space cardinality ?
-        d = None #64 #1  #self.board_size ** 2    FIXME FIXME
-        #print("forward5")
+        d = None
 
         pi = self.pi_final_conv(s)
         print("forward6 " + str(pi.size()) + " should be of size batchsize x 2 x h x v")
-        pi = pi.view(-1, 128)
+        pi = pi.view(-1, 128)  # this should match the input size in pi_linear
         print("forward6.5 " + str(pi.size()) + " should be of size xxx, is ")
         pi = self.pi_linear(pi)    # This 256 is weird... we just take care of misalign, otherwise it's 2. FIXME
         print("forward7 " + str(pi.size()) + " should be of size batchsize x num_actions")

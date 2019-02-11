@@ -255,6 +255,7 @@ class StateForChouFleur : public State {
   int length, turn;
 
   void init () {
+	fprintf(stderr, "BT INIT");
     for (int i = 0; i < Dx; i++)
       for (int j = 0; j < Dy; j++)
         board [i] [j] = Empty;
@@ -314,6 +315,7 @@ class StateForChouFleur : public State {
   }
 
   float evaluation (int color) {
+	fprintf(stderr, "eval");
     if (won (color))
       return 1000000.0;
     if (won (opponent (color)))
@@ -355,6 +357,7 @@ class StateForChouFleur : public State {
   }
 
   void play (Move m) {
+	fprintf(stderr, "play");
     board [m.x] [m.y] = Empty;
     hash ^= HashArray [m.color] [m.x] [m.y];
     if (board [m.x1] [m.y1] != Empty)
@@ -472,6 +475,7 @@ class StateForChouFleur : public State {
   void Initialize() {
     // People implementing classes should not have much to do in _moves; just _moves.clear().
     _moves.clear();
+	fprintf(stderr, "BTinitialize");
  //   std::cout << "OTGChouFleur initialize" << std::endl;
     _xsize[0]=StateForChouFleurX;_xsize[1]=StateForChouFleurY;_xsize[2]=StateForChouFleurZ;  // the features are just one number between 0 and 1 (the distance, normalized).                                                                                                      
     _actionSize[0]=8;_actionSize[1]=8;_actionSize[2]=3; // size of the output of the neural network; this should cover the positions of actions (above).                                                                                                                                   
@@ -531,6 +535,7 @@ class StateForChouFleur : public State {
 
   void ApplyAction(const Action& action) {
     Move m;
+	fprintf(stderr, "BTapplyaction");
     if (_status == 1) { // White                                                                                                             
       m.color = White;
       m.x = action.GetX ();
