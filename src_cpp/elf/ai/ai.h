@@ -29,14 +29,14 @@ class AI_T {
   struct BatchCtrl {
     ActionCallback action_cb = nullptr;
     size_t sub_batchsize = 0;
-    bool hasBatchCtrl() const { 
-      return action_cb != nullptr && sub_batchsize > 0; 
+    bool hasBatchCtrl() const {
+      return action_cb != nullptr && sub_batchsize > 0;
     }
 
     void apply(size_t offset, const std::vector<const A*> &replies) const {
       assert(action_cb != nullptr);
       assert(replies.size() <= sub_batchsize);
-      for (size_t i = 0; i < replies.size(); ++i) { 
+      for (size_t i = 0; i < replies.size(); ++i) {
         action_cb(offset + i, *replies[i]);
       }
     }
@@ -112,7 +112,7 @@ class AIClientT : public AI_T<S, A> {
 
   bool act_batch(
       const std::vector<const S*>& batch_s,
-      const std::vector<A*>& batch_a, 
+      const std::vector<A*>& batch_a,
       const BatchCtrl &batch_ctrl) override {
     assert(batch_s.size() == batch_a.size());
     auto binder = client_->getBinder();
@@ -139,7 +139,7 @@ class AIClientT : public AI_T<S, A> {
 
         for (size_t k = 0; k < batch_ctrl.sub_batchsize; ++k) {
           funcs_s[i].add(funcs_a[i]);
-          
+
           ptr_funcs_s[j].push_back(&funcs_s[i]);
           ptr_a[j].push_back(batch_a[i]);
           ++i;
@@ -161,7 +161,7 @@ class AIClientT : public AI_T<S, A> {
     return status == comm::ReplyStatus::SUCCESS;
   }
 
- private:
+ protected:
   elf::GameClientInterface* client_;
   std::vector<std::string> targets_;
 };
