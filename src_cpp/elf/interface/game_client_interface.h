@@ -17,8 +17,8 @@ class Binder {
  public:
   using RetrieverFunc = std::function<const std::vector<std::string> * (const std::string &)>;
 
-  Binder(const Extractor &e, RetrieverFunc retriever) 
-    : extractor_(e), retriever_(retriever) { 
+  Binder(const Extractor &e, RetrieverFunc retriever)
+    : extractor_(e), retriever_(retriever) {
     assert(retriever_ != nullptr);
   }
 
@@ -139,15 +139,36 @@ class GameClientInterface {
       const std::vector<FuncsWithState*>& funcs) = 0;
 
   virtual comm::ReplyStatus sendBatchesWait(
-      const std::vector<std::string>& targets, 
+      const std::vector<std::string>& targets,
       const std::vector<std::vector<FuncsWithState*>>& funcs,
       const std::vector<comm::SuccessCallback>& callbacks) = 0;
 
   template <typename S>
-  bool sendWait(const std::string &target, S &s) {
+  bool sendWait(const std::string& target, S& s) {
     auto binder = getBinder();
     FuncsWithState funcs = binder.BindStateToFunctions({target}, &s);
     return sendWait({target}, &funcs) == comm::SUCCESS;
+  }
+
+  template <typename... Args>
+  bool sendWaitMultiple(const std::string& target, Args&&... args) {
+    auto funcs = bind(target, std::forward<Args>(args)...);
+    return sendWait({target}, &funcs) == comm::SUCCESS;
+  }
+
+ private:
+  template <typename S>
+  FuncsWithState bind(const std::string& target, S& s) {
+    auto binder = getBinder();
+    auto funcs = binder.BindStateToFunctions({target}, &s);
+    return funcs;
+  }
+
+  template <typename S, typename... Args>
+  FuncsWithState bind(const std::string& target, S& s, Args&&... args) {
+    auto funcs = bind(target, s);
+    funcs.add(bind(target, std::forward<Args>(args)...));
+    return funcs;
   }
 };
 
