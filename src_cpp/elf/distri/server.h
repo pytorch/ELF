@@ -113,7 +113,7 @@ class Server {
       auto* g = ctx->getGame(i);
       if (g != nullptr) {
         games_.emplace_back(new _Game(i, this));
-        g->setCallbacks(std::bind(&_Game::OnAct, games_[i].get(), _1));
+        g->setCallbacks(nullptr, std::bind(&_Game::OnAct, games_[i].get(), _1), nullptr);
       }
     }
 
