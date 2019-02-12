@@ -28,6 +28,7 @@ class TypeNameT;
     }                           \
   };
 
+TYPE_NAME_CLASS(char);
 TYPE_NAME_CLASS(float);
 TYPE_NAME_CLASS(double);
 TYPE_NAME_CLASS(int64_t);
