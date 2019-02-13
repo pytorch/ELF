@@ -27,7 +27,7 @@ shift
 GPU=$1
 shift
 
-DIM=224
+DIM=256
 NUM_BLOCK=20
 
 game=elfgames.go.game model=df_pred model_file=elfgames.go.df_model3 python3 selfplay.py \
