@@ -52,15 +52,19 @@ If you use ELF in your research, please consider citing the original NIPS paper 
 
 If you use ELF OpenGo or OpenGo-like functionality, please consider citing the library as follows::
 
-    @misc{ELFOpenGo2018,
-      author = {Yuandong Tian and {Jerry Ma*} and {Qucheng Gong*} and Shubho Sengupta and Zhuoyuan Chen and C. Lawrence Zitnick},
-      title = {ELF OpenGo},
-      year = {2018},
-      journal = {GitHub repository},
-      howpublished = {\url{https://github.com/pytorch/ELF}}
-    }
+   @article{tian2019elfopengo,
+     author = {{Yuandong Tian} and {Jerry Ma*} and {Qucheng Gong*} and {Shubho Sengupta*} and
+               {Zhuoyuan Chen} and {James Pinkerton} and {C. Lawrence Zitnick}},
+     title     = {ELF OpenGo: An Analysis and Open Reimplementation of AlphaZero},
+     journal   = {CoRR},
+     volume    = {abs/1902.04522},
+     year      = {2019},
+     url       = {http://arxiv.org/abs/1902.04522},
+     archivePrefix = {arXiv},
+     eprint    = {1902.04522}
+   }
 
-\* Qucheng Gong and Jerry Ma equally contributed as second authors.
+\* Equal contribution.
 
 \*\* We also thank Yuxin Wu for his help on this project.
 
