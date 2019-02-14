@@ -13,7 +13,7 @@ rm ../../../log.log
 # LICENSE file in the root directory of this source tree.
 
 save=./myserver game=elfgames.tasks.game model=df_kl model_file=elfgames.tasks.df_model3 \
-    stdbuf -o 0 -e 0 python -u ./train.py \
+    stdbuf -o 0 -e 0 nohup python -u ./train.py \
     --mode train    --batchsize 20 \
     --num_games 20 --keys_in_reply V \
     --T 1    --use_data_parallel \

@@ -82,6 +82,7 @@ class State {
   bool checkMove(const unsigned short& c) const { return c < _actions.size(); }
   unsigned long int GetHash() const { return _hash; }
   float evaluate() const {
+	fprintf(stderr, "evaluate");
     if (_status == 3) {std::cout << "blackwon" << std::endl;}
     if (_status == 4) {std::cout << "whitewon" << std::endl;}
     if (_status == 3) {return 1;}
@@ -97,7 +98,9 @@ class State {
   return _status; };
   bool terminated() const {
   return _status > 1; };
-  float getFinalValue() const { return evaluate(); }
+  float getFinalValue() const {
+	fprintf(stderr, "BTgetfinalvalue");
+  return evaluate(); }
   // Returns a pointer to GetXSize x GetYSize x GetZSize float, input for the
   // NN.
   const float* GetFeatures() const { return &_features[0]; }
@@ -111,7 +114,7 @@ class State {
   int GetYActionSize() const {return _actionSize[1];}
   int GetZActionSize() const {return _actionSize[2];}
   virtual void DoGoodAction() {
-    //std::cout << "OTG-DoGoodAction" << std::endl;
+    std::cout << "OTG-BT-DoGoodAction" << std::endl;
     exit(-1);
   }
   bool moves_since(size_t* next_move_number, std::vector<Coord>* moves) const {
@@ -125,6 +128,7 @@ class State {
       moves->push_back(_moves[i]);
     }
     *next_move_number = _moves.size();
+    std::cout << "OTG-BT-nmn" << _moves.size() << std::endl;
     return true;
   }
   // helper functions for compatibility with some parts of ELF2, you might ignore this..
@@ -500,11 +504,15 @@ class StateForChouFleur : public State {
     generator.seed(time(NULL));
     init ();
     findFeatures ();
-    if (_actions.size() > 0) return;
-    findActions (White);
+    if (_actions.size() > 0) {
+    std::cout << "OTGBreakthrough initendmid" << std::endl;
+	return;
+    }findActions (White);
+    std::cout << "OTGBreakthrough initend" << std::endl;
   }
 
   void findActions (int color) {
+    std::cout << "OTGBreakthrough findActions " << std::endl;
     Move moves [MaxLegalMoves];
     int nb = legalMoves (color, moves);
 
@@ -520,6 +528,7 @@ class StateForChouFleur : public State {
       _actions.push_back(new ActionForChouFleur(x, y, dir));
       _actions[i]->SetIndex(i);
     }
+    std::cout << "OTGBreakthrough findActions end " << std::endl;
   }
 
   void findFeatures () {
@@ -534,9 +543,11 @@ class StateForChouFleur : public State {
   }
 
   void ApplyAction(const Action& action) {
+    std::cout << "OTGBreakthrough ApplyAction " << std::endl;
     Move m;
 	fprintf(stderr, "BTapplyaction");
     if (_status == 1) { // White                                                                                                             
+	  fprintf(stderr, "BTwhite");
       m.color = White;
       m.x = action.GetX ();
       m.y = action.GetY ();
@@ -560,6 +571,7 @@ class StateForChouFleur : public State {
         _status = 0;
     }
     else { // Black                                                                                                                          
+	  fprintf(stderr, "BTBlack");
       m.color = Black;
       m.x = action.GetX ();
       m.y = action.GetY ();
@@ -584,6 +596,7 @@ class StateForChouFleur : public State {
     }
     findFeatures ();
     _hash = hash;
+    std::cout << "OTGBreakthrough ApplyAction end " << std::endl;
   }
   
   // For this trivial example we just compare to random play. Ok, this is not really a good action.
@@ -594,6 +607,7 @@ class StateForChouFleur : public State {
     int i = rand () % _actions.size ();
     ActionForChouFleur a = *_actions [i];
     ApplyAction(a);
+    std::cout << "OTGBreakthrough DoGoodAction end" << std::endl;
   }
 
  protected:

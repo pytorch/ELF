@@ -11,7 +11,7 @@
 echo $PYTHONPATH $SLURMD_NODENAME $CUDA_VISIBLE_DEVICES
 
 root=./myserver game=elfgames.tasks.game model=df_pred model_file=elfgames.tasks.df_model3 \
-stdbuf -o 0 -e 0 python -v ./selfplay.py \
+stdbuf -o 0 -e 0 nohup python -v ./selfplay.py \
     --T 1    --batchsize 300 \
     --dim0 2    --dim1 2    --gpu 1 \
     --keys_in_reply V rv    --mcts_alpha 0.03 \

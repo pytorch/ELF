@@ -11,15 +11,15 @@
 echo $PYTHONPATH $SLURMD_NODENAME $CUDA_VISIBLE_DEVICES
 
 root=./myserver game=elfgames.tasks.game model=df_pred model_file=elfgames.tasks.df_model3 \
-stdbuf -o 0 -e 0 python -v ./selfplay.py \
+stdbuf -o 0 -e 0 nohup python -v ./selfplay.py \
     --T 1    --batchsize 1 \
-    --dim0 1    --dim1 1    --gpu 0 \
-    --keys_in_reply V rv    --mcts_alpha 0.03 \
-    --mcts_epsilon 0.25    --mcts_persistent_tree \
+    --dim0 2    --dim1 2    --gpu 2 \
+    --keys_in_reply V rv    --mcts_alpha 0.00 \
+    --mcts_epsilon 0.00    --mcts_persistent_tree \
     --mcts_puct 0.85    --mcts_rollout_per_thread 200 \
     --mcts_threads 1    --mcts_use_prior \
     --mcts_virtual_loss 5   --mode selfplay \
-    --num_block0 20    --num_block1 20 \
+    --num_block0 2    --num_block1 2 \
     --num_games 1    --ply_pass_enabled 160 \
     --policy_distri_cutoff 30    --policy_distri_training_for_all \
     --port 1234 \
@@ -32,15 +32,15 @@ stdbuf -o 0 -e 0 python -v ./selfplay.py \
     --use_mcts_ai2  | sed 's/^/blackdga/g'  > ../../../blackdgachecklogs &
 
 root=./myserver game=elfgames.tasks.game model=df_pred model_file=elfgames.tasks.df_model3 \
-stdbuf -o 0 -e 0 python -v ./selfplay.py \
+stdbuf -o 0 -e 0 nohup python -v ./selfplay.py \
     --T 1    --batchsize 1 \
-    --dim0 1    --dim1 1    --gpu 0 \
-    --keys_in_reply V rv    --mcts_alpha 0.03 \
-    --mcts_epsilon 0.25    --mcts_persistent_tree \
+    --dim0 2    --dim1 2    --gpu 3 \
+    --keys_in_reply V rv    --mcts_alpha 0.00 \
+    --mcts_epsilon 0.00   --mcts_persistent_tree \
     --mcts_puct 0.85    --mcts_rollout_per_thread 200 \
     --mcts_threads 1    --mcts_use_prior \
     --mcts_virtual_loss 5   --mode selfplay \
-    --num_block0 20    --num_block1 20 \
+    --num_block0 2    --num_block1 2 \
     --num_games 1    --ply_pass_enabled 160 \
     --policy_distri_cutoff 30    --policy_distri_training_for_all \
     --port 1234 \
