@@ -24,11 +24,8 @@ class Binder {
 
   template <typename S>
   FuncsWithState BindStateToFunctions(
-      const std::vector<std::string>& smem_names,
-      S* s) {
+      const std::vector<std::string>& smem_names, S* s, std::string match_key="") {
     FuncsWithState funcsWithState;
-
-    std::set<std::string> dup;
 
     for (const auto& name : smem_names) {
       const std::vector<std::string>* keys = retriever_(name);
@@ -38,33 +35,38 @@ class Binder {
       }
 
       for (const auto& key : *keys) {
-        if (dup.find(key) != dup.end()) {
+        if (!match_key.empty() && match_key != key) {
           continue;
         }
 
+        // std::cout << "binding to key: " << key << std::endl;
         const FuncMapBase* funcs = extractor_.getFunctions(key);
-
         if (funcs == nullptr) {
-          continue;
+          std::cout << "Warning: cannot find callback function for feature: " << key << std::endl;
+          assert(false);
         }
 
-        if (funcsWithState.state_to_mem_funcs.addFunction(
-              key, funcs->BindStateToStateToMemFunc(*s))) {
-          // LOG(INFO) << "GetPackage: key: " << key << "Add s2m "
-          //           << std:: endl;
+        bool binded = false;
+        auto s2m = funcs->BindStateToStateToMemFunc(*s);
+        if (funcsWithState.state_to_mem_funcs.addFunction(key, s2m)) {
+          binded = true;
         }
 
-        if (funcsWithState.mem_to_state_funcs.addFunction(
-              key, funcs->BindStateToMemToStateFunc(*s))) {
-          // LOG(INFO) << "GetPackage: key: " << key << "Add m2s "
-          //           << std::endl;
+        auto m2s = funcs->BindStateToMemToStateFunc(*s);
+        if (funcsWithState.mem_to_state_funcs.addFunction(key, m2s)) {
+          binded = binded || true;
         }
-        dup.insert(key);
+
+        if (!binded) {
+          std::cout << "Warning: fail to bind to key: " << key << std::endl;
+          assert(false);
+        }
       }
     }
     return funcsWithState;
   }
 
+  // TODO: this function does not check name matching
   template <typename S>
   std::vector<FuncsWithState> BindStateToFunctions(
       const std::vector<std::string>& smem_names,
@@ -158,17 +160,18 @@ class GameClientInterface {
 
  private:
   template <typename S>
-  FuncsWithState bind(const std::string& target, S& s) {
+  FuncsWithState bind(const std::string& target, S& s, const std::string& name) {
     auto binder = getBinder();
-    auto funcs = binder.BindStateToFunctions({target}, &s);
+    auto funcs = binder.BindStateToFunctions({target}, &s, name);
     return funcs;
   }
 
   template <typename S, typename... Args>
-  FuncsWithState bind(const std::string& target, S& s, Args&&... args) {
-    auto funcs = bind(target, s);
-    funcs.add(bind(target, std::forward<Args>(args)...));
-    return funcs;
+  FuncsWithState bind(const std::string& target, S& s, const std::string& name, Args&&... args) {
+    auto funcs = bind(target, s, name);
+    auto more_funcs = bind(target, std::forward<Args>(args)...);
+    more_funcs.add(funcs);
+    return more_funcs;
   }
 };
 

@@ -71,6 +71,7 @@ struct FuncStateMemT {
     auto* p = dynamic_cast<_Func<S>*>(func_.get());
 
     if (p == nullptr) {
+      // std::cout << "!!! In Bind: function cast fails" << std::endl;
       return nullptr;
     }
 
@@ -425,9 +426,9 @@ class FuncsWithStateT {
  public:
   using FuncsWithState = FuncsWithStateT<use_const>;
 
-  template <typename T>
-  using PointerFunc = std::function<void(
-      typename std::conditional<use_const, T*, const T*>::type)>;
+  // template <typename T>
+  // using PointerFunc = std::function<void(
+  //     typename std::conditional<use_const, T*, const T*>::type)>;
 
   using AnyP_t = typename std::conditional<use_const, AnyP, const AnyP>::type&;
   using Func = std::function<void(AnyP_t, int batch_idx)>;
@@ -437,58 +438,26 @@ class FuncsWithStateT {
   FuncsWithStateT() {}
 
   bool addFunction(const std::string& key, Func func) {
-    if (func != nullptr) {
-      funcs_[key] = func;
-      return true;
+    if (func == nullptr) {
+      return false;
     }
-    return false;
+    auto it = funcs_.insert({key, func});
+    if (!it.second) {
+      std::cout << "Warning: duplicated function for key = " << key
+                << ", new function is ignored"<< std::endl;
+    }
+    return it.second;
   }
-
-#if 0
-    template <typename T>
-    bool add(const std::string &key, PointerFunc<T> func) {
-        if (func == nullptr) {
-            return false;
-        }
-
-        auto f = [func](AnyP_t anyp, int batch_idx) {
-            func(anyp.template get<T>({batch_idx}));
-        };
-        return addFunc(key, f);
-    }
-#endif
 
   void transfer(int batch_idx, SharedMemData_t smem) const;
 
-#if 0
-    Func getFunction(const std::string &key) const {
-        auto it = funcs_.find(key);
-
-        if (it == funcs_.end()) {
-            return nullptr;
-        } else {
-            return it->second;
-        }
-    }
-#endif
-
-#if 0
-    friend FuncsWithState _MergePackage(const FuncsWithState &pkg1, const FuncsWithState &pkg2) {
-        FuncsWithState funcs;
-        for (const auto &p : pkg1.funcs_) {
-            funcs.funcs_.insert(p);
-        }
-
-        for (const auto &p : pkg2.funcs_) {
-            funcs.funcs_.insert(p);
-        }
-        return funcs;
-    }
-#endif
-
   void add(const FuncsWithState& funcs) {
     for (const auto& p : funcs.funcs_) {
-      funcs_.insert(p);
+      auto it = funcs_.insert(p);
+      if (!it.second) {
+        std::cout << "Warning: duplicated function for key = " << p.first
+                  << ", new function is ignored"<< std::endl;
+      }
     }
   }
 
@@ -502,20 +471,6 @@ using FuncMemToStateWithState = FuncsWithStateT<false>;
 struct FuncsWithState {
   FuncStateToMemWithState state_to_mem_funcs;
   FuncMemToStateWithState mem_to_state_funcs;
-
-#if 0
-    static FuncsWithState MergePkg(const FuncsWithState &pkg1,
-                                   const FuncsWithState &pkg2) {
-        FuncsWithState funcs;
-        funcs.state_to_mem_funcs =
-            _MergePackage(pkg1.state_to_mem_funcs,
-                          pkg2.state_to_mem_funcs);
-        funcs.mem_to_state_funcs =
-            _MergePackage(pkg1.mem_to_state_funcs,
-                          pkg2.mem_to_state_funcs);
-        return funcs;
-    }
-#endif
 
   void add(const FuncsWithState& funcs) {
     state_to_mem_funcs.add(funcs.state_to_mem_funcs);
@@ -619,7 +574,7 @@ class Extractor {
       auto it = fields_.find(k);
       if (it == fields_.end()) {
         // TODO: This should be Google log (ssengupta@fb)
-        //std::cout << "Warning! key[" << k << "] is missing!" << std::endl;
+        std::cout << "Warning! key[" << k << "] is missing in C++!" << std::endl;
       } else {
         pointers.emplace(k, AnyP(*it->second));
       }
