@@ -243,7 +243,7 @@ class Loader(object):
         spec.addBoolOption(
             'cheat_eval_new_model_wins_half',
             'When enabled, in evaluation mode, when the game '
-            'finishes, the player with the most recent model gets 100% '
+            'finishes, the player with the most recent model gets 100%% '
             'win rate half of the time.'
             'This is used to test the framework',
             False)
