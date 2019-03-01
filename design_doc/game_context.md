@@ -1,37 +1,35 @@
 # Game Context Interface
 
 ## Game Context
-- class **GameContext**, with a python binding class in elfgames.go:
-- **constructor**: 
+class **GameContext** from src_cpp/elfgames/go/train/game_context.h, with a python binding class in elfgames.go:
+- Constructor: 
  ```cpp
   set new context;
-  if mode is "selfplay" or "online", set ``eval control`` and ``writer``; else ("train mode"), initialize ``reader``, reset the ``Data Online Loader`` or ``Offline Loader``. 
-  Push into the vector _games of size num_game Train or Selfplay;
-  set start call back as games[i]->mainLoop()
+  if mode is "train mode":
+    initialize DistriServer, set ``reader`` reset the ``Data Online Loader`` or ``Offline Loader``;
+  if mode is "selfplay" or "online":
+    initialize DistriClient, set ``eval control`` and ``writer``; 
+  
+  Push into the vector games_ of size num_game Train or Selfplay;
+  set start call back as games_[i]->mainLoop()
   set callback after game start as load_offline_selfplay_data()
  ```
-- Other public members:
+- Public members(all with python binding):
 ```cpp
- getParams() // with python binding;
- getGame() // with python binding;
- getGameStats()
- notifyNewVersion(); setInitialVersion(); setEvalMode(); // all used in training side;
- setRequest() // for the client side; 
- Context* ctx() // get _context, with python binding
+ map<str, int>   getParams();
+ GameBase*       getGame(int game_idx);
+ DistriServer*   getServer(); // used in training side
+ DistriClient*   getClient(); // used on client side
+ elf::Context*   ctx();
 ```
-- private members:
+- Private members:
 ```cpp
- unique_ptr<Context> _context;
- vector<unique_ptr<GoGameBase>> _games;
- _contex_options;
- unique_ptr<TrainCtrl> _train_ctrl;
- unique_ptr<EvalCtrl> _eval_ctrl;
- unique_ptr<Writer> _writer
- unique_ptr<ReaderQueuesT<Record>> _reader
- GoFeature _go_feature;
- get_net_options() // get connection options like address, server, ipv6, port
- load_offline_selfplay_data() // load batches from JSON files in a multi-threading way into _reader;
- init_reader()
+unique_ptr<elf::Context>     context_;
+vector<unique_ptr<GameBase>> games_;
+unique_ptr<DistriServer>     server_;
+unique_ptr<DistriClient>     client_;
+GameFeature                  gameFeature_;
+shared_ptr<logger>           logger_;
 ```
 
 ## Context
