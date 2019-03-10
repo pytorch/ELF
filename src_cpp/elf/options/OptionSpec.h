@@ -247,33 +247,43 @@ class Option<std::vector<ItemT>> : public OptionBaseTyped<std::vector<ItemT>> {
 } // namespace option_spec_detail
 
 class OptionSpec {
+  // using namespace elf::options::option_spec_detail;
+
   friend class OptionMap;
 
   using json = nlohmann::json;
+  using OptionBase = option_spec_detail::OptionBase;
+  template <typename T>
+  using Option = option_spec_detail::Option<T>;
 
  public:
   static void registerPy(pybind11::module& m);
 
   template <typename T>
   bool addOption(std::string optionName, std::string help) {
-    std::shared_ptr<option_spec_detail::OptionBase> option(
-        new option_spec_detail::Option<T>(optionName, std::move(help)));
-    return optionSpecMap_.emplace(std::move(optionName), std::move(option))
-        .second;
+    if (optionSpecMap_.find(optionName) != optionSpecMap_.end()) {
+      std::cout << "Warning: redefine option [" << optionName << "]"
+                << ", new definition will be ignored"<< std::endl;
+      return false;
+    }
+
+    std::shared_ptr<OptionBase> option(new Option<T>(optionName, std::move(help)));
+    optionSpecMap_.emplace(std::move(optionName), std::move(option));
+    return true;
   }
 
   template <typename T>
   bool addOption(std::string optionName, std::string help, T defaultValue) {
-    std::shared_ptr<option_spec_detail::OptionBase> option(
-        new option_spec_detail::Option<T>(
-            optionName, std::move(help), std::move(defaultValue)));
+    if (optionSpecMap_.find(optionName) != optionSpecMap_.end()) {
+      std::cout << "Warning: redefine option [" << optionName << "]"
+                << ", new definition will be ignored"<< std::endl;
+      return false;
+    }
 
-    // std::cout << "[" << std::hex << this << std::dec << "] Register " <<
-    // optionName
-    //   << ", type: " << typeid(T).name() << std::endl; // << " with " <<
-    //   defaultValue << std::endl;
-    return optionSpecMap_.emplace(std::move(optionName), std::move(option))
-        .second;
+    std::shared_ptr<OptionBase> option(
+        new Option<T>(optionName, std::move(help), std::move(defaultValue)));
+    optionSpecMap_.emplace(std::move(optionName), std::move(option));
+    return true;
   }
 
   std::vector<std::string> getOptionNames() const {

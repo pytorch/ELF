@@ -186,16 +186,15 @@ class Client {
     writer_callback_.reset(new WriterCallback(writer_.get(), ctrl_));
 
     using std::placeholders::_1;
-    using std::placeholders::_2;
 
     for (size_t i = 0; i < num_games; ++i) {
       auto* g = ctx->getGame(i);
       if (g != nullptr) {
         games_.emplace_back(new _Game(i, this));
         g->setCallbacks(
+            [&, i](elf::game::Base*) { dispatcher_->RegGame(i); },
             std::bind(&_Game::OnAct, games_[i].get(), _1),
-            std::bind(&_Game::OnEnd, games_[i].get(), _1),
-            [&, i](elf::game::Base*) { dispatcher_->RegGame(i); });
+            std::bind(&_Game::OnEnd, games_[i].get(), _1));
       }
     }
 

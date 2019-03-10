@@ -328,7 +328,7 @@ class MyContext {
          games_.emplace_back(
              new _Bundle(i, i >= num_games - options_.num_eval_games,
                options_, ctx->getClient(), factory_, eval_name_, train_name_));
-         g->setCallbacks(std::bind(&_Bundle::OnAct, games_[i].get(), _1));
+         g->setCallbacks(nullptr, std::bind(&_Bundle::OnAct, games_[i].get(), _1), nullptr);
        }
      }
 
@@ -391,7 +391,7 @@ class MyContext {
 
     _Bundle(int idx, bool eval_mode, const Options &opt, GameClientInterface *client, Interface* factory,
             const std::string &eval_name, const std::string &train_name)
-      : interface(factory), game(factory->createGame(idx, eval_mode)), 
+      : interface(factory), game(factory->createGame(idx, eval_mode)),
         reply(opt.frame_stack * factory->dim(), factory->numActions()),
         stacking(opt.frame_stack, factory->dim()),
         replay(opt.replay_buffer_len),

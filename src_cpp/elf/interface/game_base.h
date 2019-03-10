@@ -24,11 +24,12 @@ struct Options {
 
 class Base {
  public:
+  // TODO[elf]: remove Base in args, blocked by Go
   using StartFunc = std::function<void(Base*)>;
   using ActFunc = std::function<void(Base*)>;
   using EndFunc = std::function<void(Base*)>;
 
-  Base(elf::GameClientInterface *client, const Options& options) 
+  Base(elf::GameClientInterface *client, const Options& options)
     : client_(client), options_(options) {
     if (options_.seed == 0) {
       options_.seed = elf_utils::get_seed(
@@ -51,14 +52,15 @@ class Base {
     while (!client_->DoStopGames()) {
       act_func_(this);
     }
-    if (end_func_ != nullptr)
+    if (end_func_ != nullptr) {
       end_func_(this);
+    }
   }
 
   void setCallbacks(
+      StartFunc start_func,
       ActFunc func,
-      EndFunc end_func = nullptr,
-      StartFunc start_func = nullptr) {
+      EndFunc end_func) {
     start_func_ = start_func;
     act_func_ = func;
     end_func_ = end_func;
