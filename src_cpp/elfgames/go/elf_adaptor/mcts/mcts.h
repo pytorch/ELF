@@ -68,12 +68,12 @@ class MCTSActor {
   }
 
   // batch evaluate.
-  void evaluate(
+  bool evaluate(
       const std::vector<const GoState*>& states,
       std::function<void (size_t, NodeResponse &&)> callback) {
     // std::cout << "In evaluation! states.size() = " << states.size() << std::endl;
     if (states.empty())
-      return;
+      return true;
 
     if (oo_ != nullptr)
       *oo_ << "Evaluating batch state. #states: " << states.size() << std::endl;
@@ -99,7 +99,7 @@ class MCTSActor {
     }
 
     if (sel_bfs.empty())
-      return;
+      return true;
 
     std::vector<GoReply> replies;
     for (size_t i = 0; i < sel_bfs.size(); ++i) {
@@ -142,6 +142,7 @@ class MCTSActor {
     }
 
     for (const bool &b : visited) assert(b);
+    return true;
   }
 
   void evaluate(const GoState& s, NodeResponse* resp) {

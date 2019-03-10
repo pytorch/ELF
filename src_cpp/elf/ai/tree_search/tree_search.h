@@ -378,7 +378,14 @@ class TreeSearchSingleThreadT {
 
     // Batch evaluate.
     auto start = elf_utils::usec_since_epoch_from_now();
-    actor.evaluate(locked_states, on_success);
+    if (! actor.evaluate(locked_states, on_success)) {
+      // try simple for-loop evaluation. 
+      for (size_t i = 0; i < locked_states.size(); ++i) {
+        NodeResponse resp;
+        actor.evaluate(*locked_states[i], &resp);
+        on_success(i, std::move(resp));  
+      }
+    }
     usec_evaluation_ += elf_utils::usec_since_epoch_from_now() - start;
 
     for (const auto &p : others.counts) {
