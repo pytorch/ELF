@@ -184,34 +184,32 @@ class TreeSearchSingleThreadT {
       }
 
       // Start from the root and run one path
-      int num_rollout = batch_rollouts<Actor>(
+      RolloutStats stats = batch_rollouts<Actor>(
           RunContext(threadId_, rollouts_curr_root, options_.num_rollout_per_thread),
           root,
           actor,
           search_tree);
 
-      if (num_rollout == 0) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      }
-
       // std::cout << "#rollout: " << num_rollout << std::endl;
-      rollouts_curr_root += num_rollout;
-      rollouts_since_last_resume += num_rollout;
+      rollouts_curr_root += stats.num_backprop;
+      rollouts_since_last_resume += stats.num_backprop;
 
       MCTSThreadState state;
       state.thread_id = threadId_;
       state.num_rollout_curr_root = rollouts_curr_root;
       state.num_rollout_since_last_resume = rollouts_since_last_resume;
-      const int max_rollouts = 1e6;
-      const int min_rollouts = 1e2;
-      if (((options_.num_rollout_per_thread > 0 &&
-          rollouts_curr_root >= options_.num_rollout_per_thread) ||
-          rollouts_curr_root >= max_rollouts) && 
-          rollouts_curr_root >= min_rollouts) {
+      if (options_.num_rollout_per_thread > 0 &&
+          rollouts_curr_root >= options_.num_rollout_per_thread) {
         state.done = true;
         wait_state = true;
       }
       ctrl.push(state);
+
+      if (stats.num_expanded == 0) {
+        // std::cout << "no leaf expanded, wait ... " << std::endl;
+        // std::cout << "no leaf expanded, wait ... rollouts_curr_root: " << rollouts_curr_root << ", rollouts_since_last_resume: " << rollouts_since_last_resume << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
     }
   }
 
@@ -224,6 +222,7 @@ class TreeSearchSingleThreadT {
   struct Traj {
     std::vector<std::pair<Node*, Action>> traj;
     Node* leaf;
+    bool leaf_terminal = false;
   };
 
   struct TrajCount {
@@ -241,6 +240,16 @@ class TreeSearchSingleThreadT {
       assert(it != counts.end());
       return it->second;
     }
+  };
+
+  struct RolloutStats {
+    // Number of rollouts expanded (not expanded) by this thread.
+    int num_expanded = 0;
+    int num_not_expanded = 0;
+
+    // Number of terminals in the rollouts that are not expanded by this thread. 
+    int num_not_expanded_terminal = 0;
+    int num_backprop = 0;
   };
 
   // TODO: The weird variable name below needs to change (ssengupta@fb)
@@ -307,7 +316,7 @@ class TreeSearchSingleThreadT {
   }
 
   template <typename Actor>
-  int batch_rollouts(
+  RolloutStats batch_rollouts(
       const RunContext& ctx,
       Node* root,
       Actor& actor,
@@ -327,15 +336,16 @@ class TreeSearchSingleThreadT {
     // Reason:
     //   1. Other threads lock it
     //   2. Duplicated leaf.
-    int num_real_rollout = 0;
+    RolloutStats stats;
     for (Traj& traj : trajs) {
       if (traj.leaf->requestEvaluation()) {
         locked_leaves.push_back(traj.leaf);
         locked_states.push_back(traj.leaf->getStatePtr());
         ours.add(&traj);
-        num_real_rollout ++;
+        stats.num_expanded ++;
       } else {
         others.add(&traj);
+        stats.num_not_expanded ++;
       }
     }
 
@@ -350,11 +360,15 @@ class TreeSearchSingleThreadT {
       // std::cout << "value: " << reward << std::endl << std::endl;
       // PRINT_TS("Reward: " << reward << " Start backprop");
 
-      // Add reward back.
-      for (const auto& pp : p.first->traj) {
+      // Backpropagation and remove virtual loss. 
+      for (int i = p.first->traj.size() - 1; i >= 0; --i) {
+        const auto &pp = p.first->traj[i];
         pp.first->updateEdgeStats(
             pp.second, reward, options_.virtual_loss * count);
+        // discount reward.
+        reward *= options_.discount_factor;
       }
+      stats.num_backprop ++;
     };
 
     auto remove_virtual_loss = [&](const std::pair<Traj *, int> &p) {
@@ -388,11 +402,22 @@ class TreeSearchSingleThreadT {
     }
     usec_evaluation_ += elf_utils::usec_since_epoch_from_now() - start;
 
+    // Don't backprop those trajectories which didn't end up with evaluating a new leaf 
+    // (ideally a new leaf should only backprop once). 
+    // Otherwise a shallow value will flood the node statistics, biasing it.
+    // One exception: the leaf node is a terminal node. 
     for (const auto &p : others.counts) {
-      remove_virtual_loss(p.second);
+      // Do not backprop unless the state is terminal. 
+      const auto &record = p.second;
+      if (record.first->leaf_terminal) {
+        stats.num_not_expanded_terminal ++;
+        backprop(record);
+      } else {
+        remove_virtual_loss(record);
+      }
     } 
     printHelper(ctx, "Done backprop");
-    return num_real_rollout;
+    return stats;
   }
 
   template <typename Actor>
@@ -409,6 +434,7 @@ class TreeSearchSingleThreadT {
           node->findMove(options_.alg_opt, ctx.depth, &action, output_.get());
       if (!has_move) {
         printHelper(ctx, "No available action");
+        traj.leaf_terminal = true;
         break;
       }
 
@@ -430,6 +456,7 @@ class TreeSearchSingleThreadT {
       // Note that next might be invalid, if there is not valid move.
       Node* next_node = search_tree.getStorage()[next];
       if (next_node == nullptr) {
+        traj.leaf_terminal = true;
         break;
       }
 
@@ -440,6 +467,7 @@ class TreeSearchSingleThreadT {
       // action is valid, then next_node is set with the new state
       // Otherwise next_node's state is a nullptr
       if (!allocateState(node, action, actor, next_node)) {
+        traj.leaf_terminal = true;
         break;
       }
 
@@ -526,6 +554,7 @@ class TreeSearchT {
     searchTree_.deleteOldRoot();
 
     std::vector<std::pair<int, int>> num_rollouts(threadPool_.size());
+
     size_t num_done = 0;
     uint64_t overhead = 0;
     while (true) {

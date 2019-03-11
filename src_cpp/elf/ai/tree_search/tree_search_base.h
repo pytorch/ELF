@@ -328,7 +328,8 @@ struct MCTSResultT {
   std::string info() const {
     std::stringstream ss;
     ss << "BestA: " << ActionTrait<Action>::to_string(best_action)
-       << ", MaxScore: " << max_score << ", Info: " << best_edge_info.info();
+       << ", TotalVisit: " << total_visits << ", MaxScore: " << max_score 
+       << ", Info: " << best_edge_info.info();
     return ss.str();
   }
 };

@@ -83,7 +83,7 @@ DEF_FIELD(int, num_rollout_per_thread, 100, "#rollouts per thread");
 DEF_FIELD(int, num_rollout_per_batch, 8, "#rollouts per batch");
 DEF_FIELD(bool, verbose, false, "MCTS Verbose");
 DEF_FIELD(bool, verbose_time, false, "MCTS VerboseTime");
-DEF_FIELD(int, seed, 0, "MCTS seed");
+DEF_FIELD(long, seed, 0, "MCTS seed");
 DEF_FIELD(bool, persistent_tree, false, "Use Persistent Tree");
 DEF_FIELD(float, root_epsilon, 0.0f, "Dirichlet epsilon");
 DEF_FIELD(float, root_alpha, 0.0f, "Dirichlet alpha");
@@ -103,10 +103,11 @@ DEF_FIELD(
     "most_visited",
     "Ways to pick final MCTS moves (most_visited, strongest_prior, uniform)");
 
+DEF_FIELD(float, discount_factor, 1.0f, "Discount Factor");
 DEF_FIELD_NODEFAULT(SearchAlgoOptions, alg_opt, "MCTS Algorithm Options");
 
 // Pre-added pseudo playout.
-DEF_FIELD(int, virtual_loss, 0, "Virtual loss");
+DEF_FIELD(float, virtual_loss, 0.0f, "Virtual loss");
 
 std::string info(bool verbose = false) const {
   std::stringstream ss;
@@ -124,6 +125,7 @@ std::string info(bool verbose = false) const {
     ss << "Persistent tree: " << elf_utils::print_bool(persistent_tree)
        << std::endl;
     ss << "#Virtual loss: " << virtual_loss << std::endl;
+    ss << "Discount factor: " << discount_factor << std::endl;
     ss << "Pick method: " << pick_method << std::endl;
 
     if (root_epsilon > 0) {
@@ -184,6 +186,9 @@ friend bool operator==(const TSOptions& t1, const TSOptions& t2) {
   if (t1.virtual_loss != t2.virtual_loss) {
     return false;
   }
+  if (t1.discount_factor != t2.discount_factor) {
+    return false;
+  }
   return true;
 }
 
@@ -201,6 +206,7 @@ void setJsonFields(json& j) const {
   JSON_SAVE(j, root_epsilon);
   JSON_SAVE(j, root_alpha);
   JSON_SAVE(j, virtual_loss);
+  JSON_SAVE(j, discount_factor);
   JSON_SAVE_OBJ(j, alg_opt);
 }
 
@@ -219,6 +225,7 @@ static TSOptions createFromJson(const json& j) {
   JSON_LOAD(opt, j, root_epsilon);
   JSON_LOAD(opt, j, root_alpha);
   JSON_LOAD(opt, j, virtual_loss);
+  JSON_LOAD(opt, j, discount_factor);
   JSON_LOAD_OBJ(opt, j, alg_opt);
   return opt;
 }
