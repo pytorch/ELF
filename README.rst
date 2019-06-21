@@ -52,19 +52,24 @@ If you use ELF in your research, please consider citing the original NIPS paper 
 
 If you use ELF OpenGo or OpenGo-like functionality, please consider citing the technical report as follows::
 
-   @article{tian2019elfopengo,
-     author = {{Yuandong Tian} and {Jerry Ma*} and {Qucheng Gong*} and {Shubho Sengupta*} and
-               {Zhuoyuan Chen} and {James Pinkerton} and {C. Lawrence Zitnick}},
-     title     = {ELF OpenGo: An Analysis and Open Reimplementation of AlphaZero},
-     journal   = {CoRR},
-     volume    = {abs/1902.04522},
-     year      = {2019},
-     url       = {http://arxiv.org/abs/1902.04522},
-     archivePrefix = {arXiv},
-     eprint    = {1902.04522}
-   }
+    @inproceedings{tian2019opengo,
+      author    = {Yuandong Tian and
+                   Jerry Ma and
+                   Qucheng Gong and
+                   Shubho Sengupta and
+                   Zhuoyuan Chen and
+                   James Pinkerton and
+                   Larry Zitnick},
+      title     = {{ELF} OpenGo: an analysis and open reimplementation of AlphaZero},
+      booktitle = {Proceedings of the 36th International Conference on Machine Learning,
+                   {ICML} 2019, 9-15 June 2019, Long Beach, California, {USA}},
+      pages     = {6244--6253},
+      year      = {2019},
+      url       = {http://proceedings.mlr.press/v97/tian19a.html}
+    }
 
-\* Equal contribution.
+
+\* Jerry Ma, Qucheng Gong, and Shubho Sengupta contributed equally.
 
 \*\* We also thank Yuxin Wu for his help on this project.
 
